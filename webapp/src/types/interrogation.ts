@@ -44,6 +44,10 @@ export interface CaseSummary {
   identityCapturedAt?: number | null
   officerName: string
   state: string
+  workflowState?: string
+  documentStatus?: string
+  reportStatus?: string
+  caseType?: string
   stage: InterrogationStage
   createdAt?: number
   updatedAt?: number
