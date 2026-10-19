@@ -270,6 +270,9 @@ try {
   await client.send('Runtime.enable')
   await client.send('Log.enable')
 
+  await navigate(client, `${baseUrl}/?view=login`, '.login-preview-page')
+  await screenshot(client, 'login-preview', 1920, 1080)
+
   await navigate(client, `${baseUrl}/`, '.case-list-page')
   await screenshot(client, 'case-list', 1920, 1080)
 
