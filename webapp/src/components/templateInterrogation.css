@@ -765,3 +765,40 @@ button:disabled {
 @media print{.record-no-print,.live-dialogue-panel,.record-preparation-drawer{display:none!important}.template-interrogation-grid{display:block!important}.formal-column{width:100%!important}.formal-record-shell{background:#fff;overflow:visible}.formal-record-paper{max-width:none;min-height:0;margin:0;padding:18mm 16mm;box-shadow:none;font-size:12pt}.record-qa,.record-meta-grid p{break-inside:avoid}.record-title-block h1{font-size:22pt}}
  .answer-draggable{cursor:grab}.answer-draggable:active{cursor:grabbing}
 @media print{.workspace>.topbar,.workspace>.workspace-page-tabs,.workspace>.workspace-toast-region,.workspace .dialogue-column{display:none!important}.workspace-page-body{padding:0!important}.interrogation-workspace-stack{height:auto!important}}
+
+/* Review and signing reuse the formal-record APIs while keeping their tools separate. */
+.template-driven-interrogation-page { display:flex; flex-direction:column; }
+.template-driven-interrogation-page > .template-interrogation-grid { flex:1; height:auto; min-height:0; }
+.record-mode-tabs { display:flex; flex:0 0 auto; align-items:center; gap:12px; padding:12px 20px; background:#f4f6fb; }
+.record-mode-tabs button { min-height:42px; padding:0 18px; border:0; border-radius:8px; background:#fff; color:#7c8ca4; font:600 14px 'Microsoft YaHei',sans-serif; cursor:pointer; }
+.record-mode-tabs button.active { color:#fff; background:#205293; }
+.record-completion-mode { padding:24px 28px 28px; background:#f4f6fb; box-sizing:border-box; }
+.record-completion-heading { flex:0 0 auto; }
+.record-completion-heading h1 { font:700 26px 'Microsoft YaHei',sans-serif; color:#1c2e49; margin:0 0 12px; }
+.record-completion-heading p { margin:0; color:#7f8fa6; font-size:14px; line-height:1.8; }
+.record-completion-mode .record-mode-tabs { padding:18px 0 22px; }
+.record-completion-mode > .record-signing-page { flex:1; height:auto; min-height:0; }
+.record-review-grid { gap:24px; grid-template-columns:minmax(0,1.8fr) minmax(380px,1fr); background:transparent; }
+.record-review-grid .formal-column { display:flex; flex-direction:column; background:#fff; border-radius:13px; }
+.review-formal-heading { display:flex; flex:0 0 auto; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; padding:22px 26px 12px; color:#33425a; font-size:17px; }
+.review-formal-heading span { font-size:13px; color:#8c9ab0; }
+.record-review-grid .formal-record-shell { flex:1; min-height:0; border-radius:0; background:#fff; }
+.record-review-grid .review-record-paper { padding:18px 30px 32px; min-height:0; margin:0; box-shadow:none; font-size:17px; line-height:1.9; }
+.review-record-paper .record-paper-header { min-height:48px; }
+.review-record-paper .record-title-block h1 { font-size:22px; letter-spacing:4px; }
+.review-record-paper .record-title-block > span { font-size:14px; }
+.record-meta-toggle { min-height:40px; margin:12px 0 18px; padding:0 12px; border:1px solid #d3dfed; border-radius:7px; background:#f7f9fc; color:#456c9d; font:14px 'Microsoft YaHei',sans-serif; cursor:pointer; }
+.review-record-paper .record-question,.review-record-paper .record-answer { border-bottom:0; padding:9px 0; }
+.review-record-paper .record-answer { background:#f7f9fd; border:1px solid #e0e7f1; border-radius:8px; padding:12px; margin:6px 0 14px; }
+.review-record-paper .record-answer > small,.review-record-paper .record-question > small { display:none; }
+.review-record-paper .body-question-tools { opacity:1; min-height:38px; font-size:12px; color:#8a98ad; }
+.review-record-paper .body-question-tools button { min-height:34px; font-size:13px; color:#5276a6; }
+.review-record-paper .record-section-label { font-size:14px; color:#4c6e99; margin-top:18px; }
+.review-record-paper .record-section-label small { display:none; }
+.review-record-paper .record-drop-zone.compact { opacity:1; min-height:30px; display:flex; justify-content:center; align-items:center; margin-top:12px; background:#fafbfe; border-color:#e0e7f0; color:#94a1b4; }
+.record-mode-tabs button:focus-visible,.record-meta-toggle:focus-visible { outline:3px solid #87afe1; outline-offset:3px; }
+.template-page-error > button { margin-left:12px; padding:7px 12px; border:1px solid #d5a39e; border-radius:6px; background:#fff; color:#a23128; font:inherit; cursor:pointer; }
+@media(max-width:1350px) { .record-completion-mode { padding:22px 24px; }.record-review-grid { gap:18px; grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr); }.record-review-grid .review-record-paper { padding:16px 24px 28px; font-size:16px; } }
+@media(max-width:1000px) { .record-completion-mode { overflow:auto; }.record-completion-mode .record-review-grid { flex:none; display:flex; flex-direction:column; }.record-review-grid .formal-column { height:650px; flex:none; }.record-review-grid .record-review-panel { height:650px; flex:none; }.record-completion-mode > .record-signing-page { flex:none; height:auto; } }
+@media(max-width:700px) { .record-completion-mode { padding:18px 16px; }.record-completion-heading h1 { font-size:23px; }.record-mode-tabs { gap:6px; padding-left:12px; padding-right:12px; }.record-mode-tabs button { padding:0 12px; font-size:13px; }.record-review-grid .review-record-paper { padding:16px 20px; }.review-formal-heading { padding:18px 20px 10px; } }
+@media print { @page { size:A4; margin:18mm 16mm; } body,#app,.workspace,.workspace-page-body,.template-driven-interrogation-page,.interrogation-workspace-stack { height:auto!important; min-height:0!important; overflow:visible!important; }.record-completion-mode { padding:0!important; display:block!important; }.record-review-panel,.review-formal-heading,.record-mode-tabs,.record-completion-heading,.record-meta-toggle { display:none!important; }.record-meta-grid { display:block!important; }.record-review-grid { display:block!important; }.record-review-grid .formal-column { height:auto!important; display:block!important; overflow:visible!important; }.record-review-grid .review-record-paper { padding:0; margin:0; font-size:12pt; } }

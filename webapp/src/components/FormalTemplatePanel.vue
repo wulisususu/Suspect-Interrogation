@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import type { CaseSummary, DocumentSignerRole, DocumentSigningState, FactItem, SessionState } from '../types/interrogation'
 import type { CaseQuestionUpdateInput, FormalQuestion, FormalQuestionRound, QAUnitResolution } from '../types/templateInterrogation'
 import { clearDrop, dropArmed, pendingDrop } from '../composables/pendingDrop'
@@ -16,6 +16,7 @@ const props = defineProps<{
   signingState: DocumentSigningState | null
   signingBusy: string
   captureRunning: boolean
+  completionMode?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -38,18 +39,29 @@ const questionDrafts = reactive<Record<string, string>>({})
 const canonicalAnswerDrafts = reactive<Record<string, string>>({})
 const draggingBodyId = ref('')
 const dragOverKey = ref('')
+const paper = ref<HTMLElement | null>(null)
+const showMetadata = ref(false)
 const orderedQuestions = computed(() => [...props.questions].sort((a, b) => a.sortOrder - b.sortOrder))
 const openingQuestions = computed(() => orderedQuestions.value.filter((q) => q.sectionType === 'OPENING'))
 const bodyQuestions = computed(() => orderedQuestions.value.filter((q) => q.sectionType === 'BODY'))
 const closingQuestions = computed(() => orderedQuestions.value.filter((q) => q.sectionType === 'CLOSING'))
 const lastOpeningId = computed(() => openingQuestions.value.at(-1)?.id ?? null)
 
-watch(() => props.questions, (items) => {
+watch(() => props.questions, async (items) => {
   for (const item of items) {
     questionDrafts[item.id] = item.text
     canonicalAnswerDrafts[item.id] = item.formalAnswerText ?? ''
   }
+  await nextTick()
+  resizeEditors()
 }, { immediate: true, deep: true })
+function resizeEditors() {
+  paper.value?.querySelectorAll('textarea').forEach(input => {
+    input.style.height = 'auto'
+    input.style.height = `${input.scrollHeight}px`
+  })
+}
+onMounted(resizeEditors)
 
 function roundsFor(questionId: string) {
   return props.rounds.filter((r) => r.caseQuestionId === questionId && r.status !== 'DETACHED').sort((a, b) => a.roundNo - b.roundNo)
@@ -229,7 +241,7 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
 
 <template>
   <section class="formal-record-shell">
-    <article class="formal-record-paper" aria-label="正式询问笔录编辑器">
+    <article ref="paper" class="formal-record-paper" :class="{ 'review-record-paper': completionMode }" aria-label="正式询问笔录编辑器">
       <div v-if="pendingDrop" role="status" style="position:sticky;top:0;z-index:6;display:flex;gap:12px;align-items:center;justify-content:space-between;margin:12px 16px 0;padding:9px 12px;border:1px solid #173b68;border-radius:8px;background:#e9f3ff;color:#173b68;font:13px system-ui,sans-serif">
         <span v-if="transcriptFragmentArmed">已选中一段转写——请点击正式笔录中的「问」或「答」栏录入</span>
         <span v-else>已选中「{{ pendingDrop.label }}」—— 请点击要放入的「问」或「答」栏位</span>
@@ -237,7 +249,7 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
       </div>
       <header class="record-paper-header">
         <div class="record-title-block"><h1>询问笔录</h1><span>第 1 次</span></div>
-        <div class="record-top-actions record-no-print">
+        <div v-if="!completionMode" class="record-top-actions record-no-print">
           <button :disabled="busy || signingBusy !== ''" @click="emit('print')">
             {{ documentFrozen ? '打印正式笔录' : '打印预览' }}
           </button>
@@ -253,7 +265,8 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
         </div>
       </header>
 
-      <section class="record-meta-grid">
+      <button v-if="completionMode" class="record-meta-toggle record-no-print" :aria-expanded="showMetadata" @click="showMetadata = !showMetadata">{{ showMetadata ? '收起身份与询问信息' : '展开身份与询问信息' }}</button>
+      <section v-show="!completionMode || showMetadata" class="record-meta-grid">
         <p><b>时间</b><span>{{ formatRecordTime(session.startedAt || summary.createdAt) }} 至 {{ session.endedAt ? formatRecordTime(session.endedAt) : '____________' }}</span></p>
         <p><b>地点</b><input class="record-meta-editor" aria-label="地点" :value="factText('interrogation_place')" :disabled="busy || documentFrozen" placeholder="填写询问地点" @change="saveHeader($event, 'fact', 'interrogation_place')"></p>
         <p><b>询问人</b><input class="record-meta-editor short" aria-label="询问人" :value="summary.officerName === '当前警官' ? '' : summary.officerName" :disabled="busy || documentFrozen" placeholder="填写询问人" @change="saveHeader($event, 'case', 'officerName')"><span class="record-meta-label">工作单位</span><input class="record-meta-editor" aria-label="询问人工作单位" :value="factText('officer_unit')" :disabled="busy || documentFrozen" @change="saveHeader($event, 'fact', 'officer_unit')"></p>

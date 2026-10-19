@@ -92,14 +92,23 @@ function startOrReRecord() {
 </script>
 
 <template>
-  <aside class="voiceprint-enrollment-gate" :class="{ compact }" aria-label="嫌疑人声纹注册">
+  <div v-if="!compact" class="capture-page-content">
+    <section class="capture-card" aria-label="嫌疑人声纹注册">
+      <header class="capture-heading"><div><span class="section-kicker">正式审讯前置条件</span><h2>完成嫌疑人声纹注册</h2></div><span class="capture-state" :class="{ ready: readiness.suspectReady, recording: suspectRecording }">{{ suspectRecording ? '有效语音累计中' : enrollmentState.phase === 'PROCESSING' ? '正在注册' : readiness.suspectReady ? '声纹已注册' : '尚未注册' }}</span></header>
+      <p class="capture-identity">嫌疑人 · {{ suspectName || '待录入姓名' }}<span>完成声纹注册后，即可解锁正式审讯与实时对话。</span></p>
+      <div class="speech-measure"><strong>{{ readiness.suspectReady && enrollmentState.phase === 'IDLE' ? referenceUsableSeconds : progress.usableSeconds }}</strong><span>/ {{ progress.targetSeconds }} 秒 · 有效语音<br /><small>达到目标时长后自动停止采集并进行声纹注册</small></span></div>
+      <div class="speech-track" role="progressbar" aria-label="嫌疑人有效语音采集进度" :aria-valuemin="0" :aria-valuemax="progress.targetSeconds" :aria-valuenow="readiness.suspectReady && enrollmentState.phase === 'IDLE' ? Math.min(referenceUsableSeconds, progress.targetSeconds) : progress.usableSeconds"><i :style="{ width: (readiness.suspectReady && enrollmentState.phase === 'IDLE' ? Math.min(100, referenceUsableSeconds / progress.targetSeconds * 100) : progress.percent) + '%' }"></i></div>
+      <p class="speech-caption">有效语音 {{ readiness.suspectReady && enrollmentState.phase === 'IDLE' ? referenceUsableSeconds : progress.usableSeconds }} / {{ progress.targetSeconds }} 秒<span>静音和长时间停顿不计入有效时长</span></p>
+      <div v-if="showProgress" class="capture-result" :class="enrollmentState.phase.toLowerCase()"><p class="voiceprint-enrollment-status" role="status" aria-live="polite" aria-atomic="true">{{ liveStatus }}</p><span v-if="enrollmentState.phase === 'PROCESSING'">正在复核有效语音并生成声纹，请稍候。</span><span v-else-if="enrollmentState.phase === 'COMPLETE'">质量：{{ readiness.enrollmentQuality || '以注册结果为准' }} · 有效语音 {{ finalUsableSeconds }} 秒</span><span v-if="reEnrollFailure">当前已有声纹仍然有效</span></div>
+      <p v-if="readiness.simulated" class="capture-simulation">当前为开发模拟，模拟结果不能解锁正式审讯。</p>
+    </section>
+    <slot name="guide" />
+    <footer class="capture-actions"><button v-if="!suspectRecording" class="primary" :disabled="busy || enrollmentState.phase === 'PROCESSING'" @click="startOrReRecord">{{ readiness.suspectReady ? reEnrollLabel : '开始录制' }}</button><button v-else class="danger" :disabled="busy" @click="emits('suspectStop')">提前停止并尝试注册</button><slot name="return" /></footer>
+    <p v-if="degradationNotice" class="voiceprint-mode-degradation" role="status" aria-live="polite" aria-atomic="true">{{ degradationNotice }}</p>
+    <details class="optional-officer-binding capture-binding"><summary>可选：绑定民警声纹</summary><p>嫌疑人声纹是唯一必需项；不选择民警声纹仍可开始正式审讯。</p><div class="role-binding-grid"><label>主审民警<select :value="selectedInterrogatorOfficerId || ''" :disabled="busy || suspectRecording" aria-label="选择主审民警声纹" @change="emits('selectInterrogator', normalizedSelect($event))"><option value="">不启用民警声纹</option><option v-for="officer in officers" :key="officer.officerId" :value="officer.officerId">{{ officer.officerName }} · {{ officer.officerId }}</option></select></label><label>记录民警<select :value="selectedRecorderOfficerId || ''" :disabled="busy || suspectRecording" aria-label="选择记录民警声纹" @change="emits('selectRecorder', normalizedSelect($event))"><option value="">不启用民警声纹</option><option v-for="officer in officers" :key="officer.officerId" :value="officer.officerId">{{ officer.officerName }} · {{ officer.officerId }}</option></select></label><button :disabled="busy || suspectRecording" @click="emits('bindRoles')">保存本次角色选择</button></div></details>
+  </div>
+  <aside v-else class="voiceprint-enrollment-gate" :class="{ compact }" aria-label="嫌疑人声纹注册">
     <div class="voiceprint-enrollment-content" :class="{ 'compact-card': compact }">
-      <header v-if="!compact">
-        <span class="section-kicker">正式审讯前置条件</span>
-        <h2>完成嫌疑人声纹注册</h2>
-        <p>完成声纹注册后，即可解锁正式审讯与实时对话。</p>
-      </header>
-
       <div :class="suspectRowClass">
         <div class="suspect-identity">
           <strong>嫌疑人 · {{ suspectName || '待录入姓名' }}</strong>
@@ -197,4 +206,19 @@ button:disabled { opacity:.5; }
 .compact-card .voiceprint-enrollment-progress { margin-top:8px; padding:7px 9px; font-size:12px; }
 .compact-card .voiceprint-enrollment-status { margin-top:6px; font-size:12px; }
 @media (max-width:980px) { .suspect-row { align-items:flex-start; flex-direction:column; } }
+
+.capture-page-content { display:grid; gap:18px; color:#243550; min-width:0; font-size:15px; }
+.capture-card { background:#fff; padding:24px; border-radius:13px; }
+.capture-heading { display:flex; align-items:center; justify-content:space-between; gap:18px; }.capture-heading h2 { font-size:21px; margin:6px 0 0; color:#26364c; }.capture-heading .section-kicker { font-size:13px; color:#8190a6; letter-spacing:0; }
+.capture-state { background:#f1f4f9; color:#7c8ca4; border-radius:20px; padding:7px 13px; font-size:13px; white-space:nowrap; }.capture-state.recording { background:#fff2df; color:#aa731e; }.capture-state.ready { background:#e8f6ed; color:#27824e; }
+.capture-identity { display:flex; flex-wrap:wrap; gap:10px 20px; margin:16px 0 0; font-weight:600; color:#34445d; }.capture-identity > span { font-size:14px; color:#8594aa; font-weight:400; }
+.speech-measure { display:flex; align-items:center; gap:18px; margin:20px 0 18px; }.speech-measure > strong { font-size:52px; line-height:1.15; color:#205293; font-variant-numeric:tabular-nums; }.speech-measure > span { line-height:1.9; color:#6e809b; font-size:15px; }.speech-measure small { font-size:13px; color:#8b9ab0; }
+.speech-track { height:16px; background:#e3ebf7; overflow:hidden; border-radius:20px; }.speech-track i { display:block; height:100%; background:#205293; border-radius:inherit; transition:width .25s; }
+.speech-caption { display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; font-size:14px; color:#3b659c; margin:14px 0 0; }.speech-caption > span { color:#8a99af; font-size:13px; }
+.capture-result { margin-top:14px; padding:12px 18px; border-radius:8px; background:#edf3fc; font-size:14px; color:#396396; }.capture-result .voiceprint-enrollment-status { color:inherit; margin:0; font-size:14px; line-height:1.8; }.capture-result > span { display:block; margin-top:7px; }.capture-result.error { background:#fff0ee; color:#a53b32; }.capture-result.complete { background:#edf8f1; color:#287748; }.capture-simulation { color:#a57322; background:#fff5e5; padding:12px; border-radius:8px; font-size:14px; }
+.capture-actions { display:flex; justify-content:space-between; align-items:center; gap:16px; }.capture-actions button { min-height:52px; padding:0 30px; font-size:15px; font-family:inherit; border-radius:9px; }.capture-actions button.primary { background:#205293; border-color:#205293; }.capture-actions button.danger { background:#fff; border-color:#d9b4ae; }
+.capture-binding { margin-top:0; padding:20px 24px; background:#fff; border:0; border-radius:13px; }.capture-binding summary { font-size:15px; color:#205293; }.capture-binding p { margin:16px 0; font-size:14px; color:#8291a8; }.role-binding-grid { display:grid; grid-template-columns:1fr 1fr auto; gap:18px; align-items:end; }.capture-binding label { margin-top:0; gap:9px; font-size:14px; }.capture-binding select { font:inherit; min-height:44px; border-color:#d5deeb; background:#f7f9fc; }.capture-binding button { font:inherit; min-height:44px; margin:0; border-color:#c9d5e5; color:#205293; }
+.capture-page-content button:focus-visible,.capture-page-content select:focus-visible,.capture-page-content summary:focus-visible { outline:3px solid #87afe1; outline-offset:3px; }
+@media(max-width:900px) { .role-binding-grid { grid-template-columns:1fr; }.capture-card { padding:22px; }.capture-heading { align-items:flex-start; }.capture-heading h2 { font-size:19px; } }
+@media(max-width:600px) { .capture-actions { flex-direction:column; align-items:stretch; }.capture-heading { flex-direction:column; }.speech-measure { gap:12px; }.speech-measure > strong { font-size:44px; } }
 </style>

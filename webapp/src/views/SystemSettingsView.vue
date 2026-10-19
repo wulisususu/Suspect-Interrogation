@@ -13,9 +13,8 @@ const activeTab = ref<'library' | 'calibration'>('library')
     <header class="settings-topbar">
       <div>
         <button class="back-button" @click="$emit('back')">‹ 返回案件管理</button>
-        <span>系统设置</span>
-        <h1>声纹系统管理</h1>
-        <p>ERes2Net-large 声纹登记、状态与设备校准统一在此维护。</p>
+        <h1>嫌疑人询问系统</h1>
+        <p>声纹登记与设备管理 · ERes2Net-large</p>
       </div>
     </header>
 
@@ -30,16 +29,18 @@ const activeTab = ref<'library' | 'calibration'>('library')
 </template>
 
 <style scoped>
-.system-settings-view { min-height:100vh; box-sizing:border-box; padding:22px; background:#edf3f7; }
+.system-settings-view { height:100vh; overflow:auto; box-sizing:border-box; padding:0 32px 32px; background:#f4f6fb; font-size:15px; }
 .settings-topbar,.runtime-header { padding:18px 20px; border:1px solid #c7d5e0; border-radius:10px; background:#fff; color:#20384d; }
-.settings-topbar { margin-bottom:12px; }
-.settings-topbar > div { display:grid; gap:4px; }
+.settings-topbar { margin:0 -32px 0; padding:14px 24px; border:0; border-radius:0; background:#19365d; color:#fff; }
+.settings-topbar > div { display:flex; align-items:center; gap:20px; }
 .settings-topbar span,.settings-topbar p,.runtime-header p,.runtime-note,.backend-health-grid small { color:#607588; }
 .settings-topbar h1,.runtime-header h2 { margin:0; }
-.back-button { width:max-content; min-height:36px; margin-bottom:6px; border:1px solid #afc0ce; border-radius:6px; padding:0 12px; background:#fff; color:#31526c; font-weight:700; }
-.settings-tabs { display:flex; gap:8px; margin:0 0 16px; padding:8px; border:1px solid #c7d5e0; border-radius:9px; background:#fff; }
-.settings-tabs button { min-height:38px; border:1px solid transparent; border-radius:6px; padding:0 16px; background:transparent; color:#49647a; font-weight:700; }
-.settings-tabs button.active { border-color:#9bb2c3; background:#edf5fa; color:#1f4a6a; }
+.settings-topbar h1 { font-size:20px; }.settings-topbar p { color:#a7b9d0; margin:0; font-size:14px; }
+.back-button { width:max-content; min-height:40px; border:1px solid #7188a5; border-radius:7px; padding:0 14px; background:transparent; color:#fff; font:inherit; font-size:14px; cursor:pointer; }
+.settings-tabs { display:flex; gap:8px; margin:0 -32px 28px; padding:0 32px; border-bottom:1px solid #dce5f1; background:#fff; }
+.settings-tabs button { min-height:48px; border:0; border-bottom:3px solid transparent; padding:0 18px; background:transparent; color:#74859d; font:inherit; font-size:14px; cursor:pointer; }
+.settings-tabs button.active { border-bottom-color:#327be8; background:#edf4ff; color:#205293; font-weight:600; }
+.back-button:focus-visible,.settings-tabs button:focus-visible { outline:3px solid #87afe1; outline-offset:2px; }
 .runtime-panel { display:grid; gap:14px; }
 .runtime-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
 .runtime-header button { min-height:40px; border:1px solid #2476c9; border-radius:6px; padding:0 14px; background:#2476c9; color:#fff; font-weight:700; }
@@ -60,4 +61,5 @@ const activeTab = ref<'library' | 'calibration'>('library')
 .runtime-loading { color:#607588; }
 .runtime-note { margin:0; font-size:12px; }
 @media (max-width:900px) { .mode-grid,.backend-health-grid,.authority-row { grid-template-columns:1fr; } .runtime-header { flex-direction:column; } }
+@media(max-width:720px) { .system-settings-view { padding:0 16px 24px; }.settings-topbar { margin:0 -16px; padding:12px 16px; }.settings-topbar > div { flex-wrap:wrap; gap:12px; }.settings-topbar p { display:none; }.settings-tabs { margin:0 -16px 20px; padding:0 16px; } }
 </style>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 
-import { backendErrorMessage } from '../api/interrogation'
+import { backendErrorMessage, confirmAsrFragmentBatch, discardAsrFragment } from '../api/interrogation'
 import { fetchDocumentSigningState, finalizeDocument, signDocument } from '../api/documentSigning'
 import type {
   AsrCaptureStatus,
@@ -27,6 +27,9 @@ import type {
 import FormalTemplatePanel from './FormalTemplatePanel.vue'
 import LiveDialoguePanel from './LiveDialoguePanel.vue'
 import QuestionPreparationPanel from './QuestionPreparationPanel.vue'
+import RecordReviewPanel from './RecordReviewPanel.vue'
+import RecordSigningPage from './RecordSigningPage.vue'
+import { freezeBlockReason, orderedReviewFragments } from '../utils/recordCompletion'
 import './templateInterrogation.css'
 
 const props = defineProps<{
@@ -73,7 +76,7 @@ const emit = defineEmits<{
   createLiveQuestionFromFragments: [fragmentIds: string[], afterQuestionId: string | null]
   print: []
   saveLibrary: [questionId: string]
-  correctFragment: [fragmentId: string, speaker: TemporaryAsrSpeaker, reason: string]
+  correctFragment: [fragmentId: string, speaker: TemporaryAsrSpeaker, reason: string, text?: string]
   updateHeader: [target: 'case' | 'fact', key: string, value: string]
 }>()
 
@@ -82,31 +85,97 @@ type SignaturePoint = { x: number; y: number; t: number; p: number }
 const signingState = ref<DocumentSigningState | null>(null)
 const signingBusy = ref('')
 const signingError = ref('')
+const signingLoading = ref(true)
+const signingLoadError = ref('')
+const reviewBusy = ref(false)
+const completionMode = ref<'interrogation' | 'review' | 'sign'>('interrogation')
+const freezeChecks = ref([false, false, false, false, false])
+let signingRequest = 0
+const reviewFragments = computed(() => orderedReviewFragments(props.dialogueHistory, false))
+const unresolvedFragments = computed(() => reviewFragments.value.filter(item => item.state !== 'CONFIRMED' || !item.confirmedMessageId).length)
+const unresolvedQa = computed(() => props.workspace.qaUnits.filter(item => ['OPEN', 'CLOSED', 'ROUTING', 'NEEDS_REVIEW'].includes(item.status)).length)
+const completionBusy = computed(() => props.templateBusy || props.captureBusy || reviewBusy.value || !!signingBusy.value)
+const freezeReason = computed(() => freezeBlockReason({
+  sessionStatus: props.session.status, captureRunning: props.capture.running, busy: completionBusy.value,
+  loading: signingLoading.value, loadError: signingLoadError.value, frozen: documentFrozen.value,
+  checks: freezeChecks.value, unresolvedFragments: unresolvedFragments.value, unresolvedQa: unresolvedQa.value,
+  recordError: props.templateError || (props.workspace.caseId !== props.caseId ? '笔录尚未读取' : ''), hasQuestions: props.workspace.questions.length > 0,
+  asrStatus: props.capture.asrStatus, speakerStatus: props.capture.speakerStatus, recordingStatus: props.capture.recordingStatus,
+}))
 const signatureRole = ref<DocumentSignerRole | null>(null)
 const signatureCanvas = ref<HTMLCanvasElement | null>(null)
 const signatureStrokes = ref<SignaturePoint[][]>([])
 let activeStroke: SignaturePoint[] | null = null
 
-const documentFrozen = computed(() => !!signingState.value)
+const documentFrozen = computed(() => !!signingState.value || ['FROZEN', 'SIGNED', 'REPORT_GENERATED'].includes(props.summary.workflowState || ''))
 const documentLocked = computed(() => signingState.value?.status === 'LOCKED')
 
 watch(
   () => props.caseId,
-  () => { void loadSigningState() },
+  () => {
+    signingState.value = null
+    signingBusy.value = ''
+    reviewBusy.value = false
+    signatureRole.value = null
+    signatureStrokes.value = []
+    freezeChecks.value = [false, false, false, false, false]
+    completionMode.value = props.session.status === 'COMPLETED' ? 'review' : 'interrogation'
+    void loadSigningState()
+  },
   { immediate: true },
 )
+watch(() => props.session.status, (status) => {
+  if (status === 'COMPLETED' && completionMode.value === 'interrogation') completionMode.value = 'review'
+})
+// A changed record must be inspected again before the operator freezes it.
+watch(() => JSON.stringify([props.summary, props.facts, props.workspace.questions, props.workspace.rounds, props.dialogueHistory, props.workspace.qaUnits]), () => {
+  freezeChecks.value = [false, false, false, false, false]
+})
 
 async function loadSigningState() {
+  const request = ++signingRequest
+  const caseId = props.caseId
   signingError.value = ''
-  if (!props.caseId) {
+  signingLoadError.value = ''
+  signingLoading.value = true
+  if (!caseId) {
     signingState.value = null
+    signingLoading.value = false
     return
   }
   try {
-    signingState.value = await fetchDocumentSigningState(props.caseId)
+    const state = await fetchDocumentSigningState(caseId)
+    if (request !== signingRequest || props.caseId !== caseId) return
+    signingState.value = state
+    if (state) completionMode.value = 'sign'
   } catch (err) {
-    signingError.value = backendErrorMessage(err)
+    if (request !== signingRequest || props.caseId !== caseId) return
+    signingLoadError.value = backendErrorMessage(err)
+  } finally {
+    if (request === signingRequest && props.caseId === caseId) signingLoading.value = false
   }
+}
+
+async function reviewAction(ids: string[], discard = false) {
+  if (completionBusy.value || documentFrozen.value || signingLoading.value || signingLoadError.value || !ids.length) return
+  const caseId = props.caseId
+  const request = signingRequest
+  reviewBusy.value = true
+  signingError.value = ''
+  try {
+    if (discard) await discardAsrFragment(caseId, ids[0]!)
+    else await confirmAsrFragmentBatch(caseId, ids)
+    if (caseId === props.caseId && request === signingRequest) emit('saved')
+  } catch (err) {
+    if (caseId === props.caseId && request === signingRequest) signingError.value = backendErrorMessage(err)
+  } finally {
+    if (caseId === props.caseId && request === signingRequest) reviewBusy.value = false
+  }
+}
+
+function updateFreezeCheck(index: number, checked: boolean) {
+  if (index < 0 || index >= 5 || documentFrozen.value || completionBusy.value) return
+  freezeChecks.value[index] = checked
 }
 
 function toggleCapture() {
@@ -119,16 +188,20 @@ function toggleCapture() {
 }
 
 async function finishAndFreeze() {
-  if (signingBusy.value || documentFrozen.value) return
+  if (freezeReason.value) { signingError.value = freezeReason.value; return }
+  const caseId = props.caseId
+  const request = signingRequest
   signingBusy.value = 'freeze'
   signingError.value = ''
   try {
-    signingState.value = await finalizeDocument(props.caseId)
+    const state = await finalizeDocument(caseId)
+    if (caseId !== props.caseId || request !== signingRequest) return
+    signingState.value = state
     emit('saved')
   } catch (err) {
-    signingError.value = backendErrorMessage(err)
+    if (caseId === props.caseId && request === signingRequest) signingError.value = backendErrorMessage(err)
   } finally {
-    signingBusy.value = ''
+    if (caseId === props.caseId && request === signingRequest) signingBusy.value = ''
   }
 }
 
@@ -229,6 +302,8 @@ function forwardQuestionUpdate(questionId: string, input: CaseQuestionUpdateInpu
 }
 
 async function confirmSignature() {
+  const caseId = props.caseId
+  const request = signingRequest
   const role = signatureRole.value
   const canvas = signatureCanvas.value
   const hasInk = signatureStrokes.value.some((stroke) => stroke.length > 1)
@@ -240,35 +315,42 @@ async function confirmSignature() {
   signingBusy.value = 'sign'
   signingError.value = ''
   try {
-    signingState.value = await signDocument(
-      props.caseId,
+    const state = await signDocument(
+      caseId,
       role,
       signerName(role),
       canvas.toDataURL('image/png'),
       JSON.stringify(signatureStrokes.value),
     )
+    if (caseId !== props.caseId || request !== signingRequest) return
+    signingState.value = state
     signatureRole.value = null
     signatureStrokes.value = []
     emit('saved')
   } catch (err) {
-    signingError.value = backendErrorMessage(err)
+    if (caseId === props.caseId && request === signingRequest) signingError.value = backendErrorMessage(err)
   } finally {
-    signingBusy.value = ''
+    if (caseId === props.caseId && request === signingRequest) signingBusy.value = ''
   }
 }
 </script>
 
 <template>
-  <section class="template-driven-interrogation-page">
-    <p v-if="templateError || signingError" class="template-page-error">{{ templateError || signingError }}</p>
+  <section class="template-driven-interrogation-page" :class="{ 'record-completion-mode': completionMode !== 'interrogation' }">
+    <p v-if="templateError || signingError || signingLoadError" class="template-page-error" role="alert">{{ templateError || signingError || signingLoadError }}<button v-if="signingLoadError" :disabled="signingLoading" @click="loadSigningState">重新读取签署状态</button></p>
+    <header v-if="completionMode !== 'interrogation'" class="record-completion-heading record-no-print"><h1>{{ completionMode === 'review' ? '复核笔录' : '冻结与打印' }} · {{ documentFrozen ? documentLocked ? '签署完成' : '已冻结' : session.status === 'COMPLETED' ? '审讯已结束' : '准备复核' }}</h1><p>{{ summary.id }} · {{ summary.suspectName || '姓名未填写' }} · 待确认转写 {{ unresolvedFragments }} 条 · 待处理问答 {{ unresolvedQa }} 组</p></header>
+    <nav class="record-mode-tabs record-no-print" aria-label="笔录处理阶段"><button :class="{ active: completionMode === 'interrogation' }" :aria-current="completionMode === 'interrogation' ? 'page' : undefined" @click="completionMode = 'interrogation'">2 审讯记录</button><button :class="{ active: completionMode === 'review' }" :aria-current="completionMode === 'review' ? 'page' : undefined" @click="completionMode = 'review'">3 笔录复核</button><button :class="{ active: completionMode === 'sign' }" :aria-current="completionMode === 'sign' ? 'page' : undefined" @click="completionMode = 'sign'">4 签署打印</button></nav>
 
-    <div class="template-interrogation-grid">
+    <RecordSigningPage v-if="completionMode === 'sign'" :summary="summary" :facts="facts" :session="session" :questions="workspace.questions" :signing-state="signingState" :busy="completionBusy || signingLoading" :checks="freezeChecks" :block-reason="freezeReason" @check="updateFreezeCheck" @freeze="finishAndFreeze" @print="emit('print')" @sign="openSignature" @review="completionMode = 'review'" />
+
+    <div v-else class="template-interrogation-grid" :class="{ 'record-review-grid': completionMode === 'review' }">
       <div class="formal-column">
+        <header v-if="completionMode === 'review'" class="review-formal-heading record-no-print"><strong>询问笔录 · 复核中</strong><span>修改内容离开输入框后保存</span></header>
         <details v-if="session.status === 'READY'" class="record-preparation-drawer record-no-print">
           <summary>问题准备 / 常用问题库</summary>
         <QuestionPreparationPanel
           :library="questionLibrary"
-          :busy="templateBusy"
+          :busy="templateBusy || reviewBusy || signingLoading || !!signingLoadError"
           :voice-available="questionDictationAvailable"
           :voice-busy="questionDictationActive || questionDictationBusy"
           :voice-draft="questionDictationDraft"
@@ -286,7 +368,8 @@ async function confirmSignature() {
           :session="session"
           :questions="workspace.questions"
           :rounds="workspace.rounds"
-          :busy="templateBusy"
+          :busy="templateBusy || reviewBusy || signingLoading || !!signingLoadError"
+          :completion-mode="completionMode === 'review'"
           :document-frozen="documentFrozen"
           :document-locked="documentLocked"
           :signing-state="signingState"
@@ -302,13 +385,14 @@ async function confirmSignature() {
           @create-live-question-from-fragments="(fragmentIds, afterQuestionId) => emit('createLiveQuestionFromFragments', fragmentIds, afterQuestionId)"
           @print="emit('print')"
           @save-library="emit('saveLibrary', $event)"
-          @freeze="finishAndFreeze"
+          @freeze="completionMode = 'sign'"
           @sign="openSignature"
           @update-header="(target, key, value) => emit('updateHeader', target, key, value)"
         />
       </div>
 
-      <div class="dialogue-column">
+      <RecordReviewPanel v-if="completionMode === 'review'" :fragments="reviewFragments" :qa-units="workspace.qaUnits" :busy="completionBusy || signingLoading || !!signingLoadError" :frozen="documentFrozen" @confirm="reviewAction($event)" @discard="reviewAction([$event], true)" @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)" @correct="(id, speaker, reason, text) => emit('correctFragment', id, speaker, reason, text)" />
+      <div v-else class="dialogue-column">
         <LiveDialoguePanel
           v-if="readiness.suspectReady"
           :case-id="caseId"

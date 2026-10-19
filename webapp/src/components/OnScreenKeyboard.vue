@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 触屏软键盘:点击输入框自动弹出、失焦自动收起;中文拼音(离线词典)+ 英文/数字直输
 // 仅在触屏设备(coarse pointer / maxTouchPoints>0)自动启用,远程桌面浏览器不受影响
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   createSyllableSet,
   loadPinyinDict,
@@ -33,6 +33,8 @@ const shiftOn = ref(false)
 const cnMode = ref(true)
 const buffer = ref('')
 const dictReady = ref(false)
+const keyboardElement = ref<HTMLElement | null>(null)
+let keyboardSizeObserver: ResizeObserver | null = null
 
 let dict: PinyinDict | null = null
 let syllables: Set<string> | null = null
@@ -47,6 +49,22 @@ const candidates = computed(() => {
 const firstCandidate = computed(() => candidates.value.all[0] ?? '')
 const showCandidateBar = computed(() => cnMode.value && buffer.value.length > 0)
 const spaceLabel = computed(() => (showCandidateBar.value && firstCandidate.value ? firstCandidate.value : '空格'))
+
+function updateKeyboardSpace() {
+  const height = visible.value ? keyboardElement.value?.getBoundingClientRect().height || 0 : 0
+  document.documentElement.style.setProperty('--osk-height', height + 'px')
+  if (height) target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
+watch([visible, showCandidateBar], async () => {
+  await nextTick()
+  keyboardSizeObserver?.disconnect()
+  if (keyboardElement.value && typeof ResizeObserver !== 'undefined') {
+    keyboardSizeObserver = new ResizeObserver(updateKeyboardSpace)
+    keyboardSizeObserver.observe(keyboardElement.value)
+  }
+  updateKeyboardSpace()
+})
 
 function isTouchDevice(): boolean {
   return (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches)
@@ -233,6 +251,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  keyboardSizeObserver?.disconnect()
+  document.documentElement.style.removeProperty('--osk-height')
   document.removeEventListener('focusin', onfocusin, true)
   document.removeEventListener('focusout', onfocusout, true)
   if (hideTimer) clearTimeout(hideTimer)
@@ -241,7 +261,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="visible" class="osk-root" aria-label="屏幕键盘" @pointerdown.stop>
+    <div v-if="visible" ref="keyboardElement" class="osk-root" aria-label="屏幕键盘" @pointerdown.stop>
       <div v-if="showCandidateBar" class="osk-candidate-bar">
         <span class="osk-buffer">{{ buffer }}</span>
         <div class="osk-candidate-list">

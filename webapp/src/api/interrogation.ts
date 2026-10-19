@@ -390,7 +390,7 @@ export interface CaseIntakeInput {
 }
 export async function createCaseWithIdentity(payload: CaseIntakeInput): Promise<CaseSummary> {
   const identity = payload.identity
-  return normalizeCaseSummary(await runtime().invoke<unknown>('case.intake', payload as unknown as Record<string, unknown>), {
+  return normalizeCaseSummary(await runtime().invoke<unknown>('case.intake', { ...payload, case_type: payload.caseType }), {
     suspectName: identity.name,
     gender: identity.gender,
     nation: identity.nation,

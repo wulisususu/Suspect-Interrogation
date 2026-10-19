@@ -162,6 +162,19 @@ function allNodes(target: TestNode): TestNode[] {
 }
 
 describe('VoiceprintEnrollmentGate', () => {
+  it('prevents a second recording while registration is processing', () => {
+    const root = mount({ phase: 'PROCESSING', kind: 'SUSPECT', capturedDurationMs: 60000, targetDurationMs: 60000 })
+    const start = findNode(root, (item) => item.type === 'button' && textContent(item).trim() === '开始录制')
+    expect(start.props.disabled).toBe(true)
+    expect(textContent(root)).toContain('正在进行最终声纹注册')
+  })
+
+  it('keeps the previous registered voiceprint visible after a failed retry on the capture page', () => {
+    const root = mount({ phase: 'ERROR', kind: 'SUSPECT', message: '有效语音不足' }, {}, { readiness: readyReadiness })
+    expect(textContent(root)).toContain('当前已有声纹仍然有效')
+    expect(buttonLabels(root)).toContain('再次重新录制')
+  })
+
   it('renders the start control before suspect enrollment', () => {
     const root = mount({ phase: 'IDLE', kind: 'SUSPECT' })
 

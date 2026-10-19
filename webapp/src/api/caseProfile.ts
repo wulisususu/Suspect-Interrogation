@@ -12,3 +12,11 @@ export async function updateCaseFact(
 ): Promise<FactItem> {
   return getRuntimeAdapter().invoke<FactItem>('fact.update', { caseId, factKey, patch: patch as Record<string, unknown> })
 }
+
+export async function saveIdentityProfileFacts(caseId: string, values: Record<string, string>): Promise<void> {
+  const results = await Promise.allSettled(Object.entries(values).map(([key, value]) => updateCaseFact(caseId, key, {
+    value: value || '未录入', status: value ? 'confirmed' : 'missing',
+  })))
+  const failure = results.find((result) => result.status === 'rejected')
+  if (failure?.status === 'rejected') throw failure.reason
+}

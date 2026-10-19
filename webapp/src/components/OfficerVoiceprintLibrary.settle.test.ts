@@ -33,10 +33,12 @@ function compileClientComponent(fileName: string, dependencies: Record<string, u
   const { descriptor } = parse(source, { filename: fileName })
   const script = compileScript(descriptor, { id: fileName })
   const template = compileTemplate({
-    source: descriptor.template?.content || '',
+    // This renderer has no document.body. Keep the real modal subtree inline;
+    // actual Teleport placement and focus are verified in the browser.
+    source: (descriptor.template?.content || '').replace('<Teleport to="body">', '<div>').replace('</Teleport>', '</div>'),
     filename: fileName,
     id: fileName,
-    compilerOptions: { mode: 'function', bindingMetadata: script.bindings },
+    compilerOptions: { mode: 'function', bindingMetadata: script.bindings, hoistStatic: false },
   })
   if (template.errors.length) throw new Error(String(template.errors[0]))
   const scriptWithoutImports = script.content
@@ -47,7 +49,7 @@ function compileClientComponent(fileName: string, dependencies: Record<string, u
     .replace(/^export default /m, 'return ')
     .replace(/Object\.defineProperty\(__returned__, '__isScriptSetup', \{ enumerable: false, value: true \}\)\r?\n/, '')
   const factorySource = `return function createComponent(Vue, dependencies) {
-    const { defineComponent: _defineComponent, computed, onMounted, onUnmounted, ref, unref } = Vue
+    const { defineComponent: _defineComponent, computed, nextTick, onMounted, onUnmounted, ref, unref } = Vue
     const {
       audioInputMode,
       disableOfficerVoiceSample,
@@ -225,6 +227,8 @@ function setupHarness(): Harness {
   app.mount(root)
 
   const start = async () => {
+    click(root, '新增声纹登记')
+    await flush()
     setInput(root, '例如 P-001', 'P-001')
     setInput(root, '请输入姓名', '民警甲')
     click(root, '开始添加新样本')

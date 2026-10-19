@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { backendErrorMessage, updateAsrFragment } from '../api/interrogation'
+import { backendErrorMessage, fetchRuntimeCapabilities, updateAsrFragment } from '../api/interrogation'
 import { updateCaseFact, updateCaseProfile } from '../api/caseProfile'
 import {
   startQuestionPreparationDictation,
@@ -8,12 +8,13 @@ import {
 } from '../api/templateInterrogation'
 import AiSettingsPanel from '../components/AiSettingsPanel.vue'
 import CaseProfilePage from '../components/CaseProfilePage.vue'
+import CasePreparationPage, { preparationStartGuard } from '../components/CasePreparationPage.vue'
+import type { RuntimeCapabilities } from '../runtime/types'
 import MossTranscriptionPanel from '../components/MossTranscriptionPanel.vue'
 import SessionControls from '../components/SessionControls.vue'
 import TemplateDrivenInterrogationPage from '../components/TemplateDrivenInterrogationPage.vue'
 import VoiceprintAudioSourceBanner from '../components/VoiceprintAudioSourceBanner.vue'
 import VoiceprintSetupPage from '../components/VoiceprintSetupPage.vue'
-import { voiceprintStartGuard } from '../components/VoiceprintPreparationPanel.vue'
 import { useAutoVoiceprintEnrollment } from '../composables/useAutoVoiceprintEnrollment'
 import { useInterrogationStore } from '../stores/interrogation'
 import { useTemplateInterrogationStore } from '../stores/templateInterrogation'
@@ -26,20 +27,51 @@ import type {
   RoundReassociateInput,
 } from '../types/templateInterrogation'
 
-type WorkspacePage = 'profile' | 'interrogation' | 'moss' | 'voiceprint'
+type WorkspacePage = 'prepare' | 'profile' | 'interrogation' | 'moss' | 'voiceprint'
 
 const props = defineProps<{ caseId: string }>()
 defineEmits<{ back: [] }>()
 const store = useInterrogationStore()
 const templateStore = useTemplateInterrogationStore()
 const autoVoiceprint = useAutoVoiceprintEnrollment()
-const activePage = ref<WorkspacePage>('profile')
+const activePage = ref<WorkspacePage>('prepare')
+const recordSavingCount = ref(0)
+let recordSaveGeneration = 0
+const preparationDevices = ref<RuntimeCapabilities | null>(null)
+const preparationDeviceError = ref('')
+const preparationBusy = ref(false)
+async function checkPreparationDevices() {
+  const caseId = props.caseId
+  preparationDeviceError.value = ''
+  try {
+    const capabilities = await fetchRuntimeCapabilities(true)
+    if (props.caseId === caseId) preparationDevices.value = capabilities
+  } catch (cause) {
+    if (props.caseId !== caseId) return
+    preparationDevices.value = null
+    preparationDeviceError.value = backendErrorMessage(cause)
+  }
+}
+async function refreshPreparation() {
+  if (preparationBusy.value) return
+  preparationBusy.value = true
+  try { await Promise.all([refreshCaseWorkspace(), checkPreparationDevices()]) }
+  finally { preparationBusy.value = false }
+}
+async function startPreparedSession() {
+  if (preparationGuard.value.disabled || preparationBusy.value || questionDictationActive.value || questionDictationBusy.value || store.session.status !== 'READY') return
+  preparationBusy.value = true
+  try {
+    await store.startSession()
+    if (['RUNNING'].includes(store.session.status)) openInterrogation()
+  } finally { preparationBusy.value = false }
+}
 const recorderName = computed(() => {
   const recorder = store.officerVoiceprints.find((item) => item.officerId === store.selectedRecorderOfficerId)
   return recorder?.officerName || '未指定'
 })
 
-const voiceprintGuard = computed(() => voiceprintStartGuard(store.voiceprintReadiness))
+const preparationGuard = computed(() => preparationStartGuard(store.caseSummary, store.voiceprintReadiness, preparationDevices.value, store.voiceprintEnrollmentState))
 const questionDictationDraft = ref('')
 const questionDictationActive = ref(false)
 const questionDictationBusy = ref(false)
@@ -55,13 +87,17 @@ function resetQuestionDictationState() {
 watch(
   () => props.caseId,
   async (nextCaseId) => {
+    recordSaveGeneration += 1
+    recordSavingCount.value = 0
     const previousCaseId = store.caseId
     await autoVoiceprint.dispose()
     if (questionDictationActive.value && previousCaseId && previousCaseId !== nextCaseId) {
       void stopQuestionPreparationDictation(previousCaseId).catch(() => undefined)
     }
     resetQuestionDictationState()
-    activePage.value = 'profile'
+    activePage.value = 'prepare'
+    preparationDevices.value = null
+    void checkPreparationDevices()
     store.resetCaseContext(nextCaseId)
     templateStore.reset(nextCaseId)
     await store.initialize()
@@ -158,25 +194,33 @@ function printFormalRecord() { window.print() }
 function saveFormalQuestionToLibrary(questionId: string) { return runTemplateAction(() => templateStore.saveQuestionToLibrary(questionId)) }
 
 async function saveRecordHeader(target: 'case' | 'fact', key: string, value: string) {
-  if (!store.caseId) return
+  const caseId = store.caseId
+  const generation = recordSaveGeneration
+  if (!caseId) return
+  recordSavingCount.value += 1
   try {
     if (target === 'case') {
-      await updateCaseProfile(store.caseId, { [key]: value } as Partial<CaseSummary>)
+      await updateCaseProfile(caseId, { [key]: value } as Partial<CaseSummary>)
     } else {
-      await updateCaseFact(store.caseId, key, {
+      await updateCaseFact(caseId, key, {
         value: value || '未录入',
         status: value ? 'confirmed' : 'missing',
       })
     }
+    if (store.caseId !== caseId || generation !== recordSaveGeneration) return
     await refreshCaseWorkspace()
+    if (store.caseId !== caseId || generation !== recordSaveGeneration) return
     store.feedback('笔录抬头已保存')
   } catch (err) {
-    store.feedback(backendErrorMessage(err), true)
+    if (store.caseId === caseId && generation === recordSaveGeneration) store.feedback(backendErrorMessage(err), true)
+  } finally {
+    if (generation === recordSaveGeneration) recordSavingCount.value -= 1
   }
 }
 
-async function correctRecognitionFragment(fragmentId: string, speaker: TemporaryAsrSpeaker, reason: string) {
+async function correctRecognitionFragment(fragmentId: string, speaker: TemporaryAsrSpeaker, reason: string, text?: string) {
   const caseId = store.caseId
+  const generation = recordSaveGeneration
   if (!caseId) return
   const fragment = templateStore.dialogueHistory.find((item) => item.id === fragmentId)
   if (!fragment) {
@@ -188,21 +232,25 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
     store.feedback('人工修正必须填写原因。', true)
     return
   }
+  recordSavingCount.value += 1
   try {
     await updateAsrFragment(
       caseId,
       fragmentId,
-      fragment.editedText || fragment.rawText,
+      text ?? (fragment.editedText || fragment.rawText),
       speaker,
       store.caseSummary.officerName || '当前警官',
       cleanReason,
     )
-    if (store.caseId !== caseId) return
+    if (store.caseId !== caseId || generation !== recordSaveGeneration) return
     await templateStore.initialize(caseId)
+    if (store.caseId !== caseId || generation !== recordSaveGeneration) return
     store.feedback('人工修正已保存；原始 AI 识别证据仍独立保留。')
   } catch (err) {
-    if (store.caseId !== caseId) return
+    if (store.caseId !== caseId || generation !== recordSaveGeneration) return
     store.feedback(backendErrorMessage(err), true)
+  } finally {
+    if (generation === recordSaveGeneration) recordSavingCount.value -= 1
   }
 }
 </script>
@@ -234,6 +282,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
       </header>
 
       <nav class="workspace-page-tabs" aria-label="案件工作区页面">
+        <button :class="{ active: activePage === 'prepare' }" @click="activePage = 'prepare'; checkPreparationDevices()"><b>1</b><span>询问准备</span></button>
         <button :class="{ active: activePage === 'profile' }" @click="activePage = 'profile'">
           <b>A</b><span>身份信息</span>
         </button>
@@ -247,10 +296,11 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
           <b>D</b><span>MOSS 转写</span>
         </button>
         <SessionControls
+          v-if="activePage !== 'prepare' && activePage !== 'voiceprint'"
           :session="store.session"
-          :start-disabled="voiceprintGuard.disabled || questionDictationActive || questionDictationBusy"
-          :start-disabled-reason="questionDictationActive || questionDictationBusy ? '请先停止准备阶段语音输入，再开始正式审讯。' : voiceprintGuard.reason"
-          @start="store.startSession"
+          :start-disabled="preparationGuard.disabled || preparationBusy || questionDictationActive || questionDictationBusy"
+          :start-disabled-reason="questionDictationActive || questionDictationBusy ? '请先停止准备阶段语音输入，再开始正式审讯。' : preparationBusy ? '正在处理，请稍候' : preparationGuard.reason"
+          @start="startPreparedSession"
           @toggle-pause="store.togglePause"
           @finish="store.finishSession"
           @next-stage="store.nextStage"
@@ -262,14 +312,18 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
         <div v-else-if="store.actionMessage" class="workspace-toast success">{{ store.actionMessage }}</div>
       </div>
 
-      <section class="workspace-page-body" :class="{ 'interrogation-workspace-body': activePage === 'interrogation' }">
-        <CaseProfilePage v-if="activePage === 'profile'" :summary="store.caseSummary" :facts="store.facts" @saved="refreshCaseWorkspace" />
+      <section class="workspace-page-body" :class="{ 'interrogation-workspace-body': activePage === 'interrogation', 'preparation-workspace-body': activePage === 'prepare' || activePage === 'voiceprint' }">
+        <CasePreparationPage v-if="activePage === 'prepare'" :summary="store.caseSummary" :facts="store.facts" :readiness="store.voiceprintReadiness" :enrollment-state="store.voiceprintEnrollmentState" :capabilities="preparationDevices" :session-status="store.session.status" :recorder-name="recorderName" :busy="preparationBusy || questionDictationActive || questionDictationBusy" :device-error="preparationDeviceError" @profile="activePage = 'profile'" @voiceprint="activePage = 'voiceprint'" @refresh="refreshPreparation" @start="startPreparedSession" @interrogation="openInterrogation" />
+        <CaseProfilePage v-else-if="activePage === 'profile'" :summary="store.caseSummary" :facts="store.facts" @saved="refreshCaseWorkspace" />
 
         <MossTranscriptionPanel v-else-if="activePage === 'moss'" :case-id="store.caseId || props.caseId" />
 
         <VoiceprintSetupPage
           v-else-if="activePage === 'voiceprint'"
           :suspect-name="store.caseSummary.suspectName || ''"
+          :summary="store.caseSummary"
+          :facts="store.facts"
+          :recorder-name="recorderName"
           :readiness="store.voiceprintReadiness"
           :officers="store.officerVoiceprints"
           :selected-interrogator-officer-id="store.selectedInterrogatorOfficerId"
@@ -281,6 +335,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
           @select-interrogator="store.selectInterrogatorOfficer($event)"
           @select-recorder="store.selectRecorderOfficer($event)"
           @bind-roles="store.bindVoiceprintRoles()"
+          @back="activePage = 'prepare'; checkPreparationDevices()"
         />
 
         <div v-else class="interrogation-workspace-stack">
@@ -298,7 +353,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             :dialogue-history="templateStore.dialogueHistory"
             :fragment-history="store.fragmentHistory"
             :question-library="templateStore.questionLibrary"
-            :template-busy="templateStore.loading || templateStore.mutating"
+            :template-busy="templateStore.loading || templateStore.mutating || recordSavingCount > 0"
             :template-error="templateStore.error"
             :question-dictation-available="store.nativeCaptureAvailable && store.session.status === 'READY'"
             :question-dictation-active="questionDictationActive"
@@ -334,6 +389,12 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
 </template>
 
 <style scoped>
+.preparation-workspace-body { padding: 0; overflow: auto; background: #f4f6fb; }
+.topbar { min-height: 60px; padding: 12px 24px; gap: 16px; background: #19345e; flex-wrap: wrap; }
+.topbar h1 { font-size: 18px; }
+.topbar-field { font-size: 13px; }
+.workspace-page-tabs { padding: 0 24px; min-height: 46px; }
+.workspace-page-tabs > button { min-width: 130px; font-size: 14px; }
 .interrogation-workspace-body { padding: 0; overflow: hidden; }
 .interrogation-workspace-stack {
   min-height: 0;
