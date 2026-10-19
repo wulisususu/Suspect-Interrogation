@@ -167,7 +167,7 @@ onMounted(() => { void load(); void refreshDevices(); void loadVoiceprints() })
 </script>
 
 <template>
-  <main class="case-dashboard">
+  <main class="case-dashboard case-list-page">
     <div class="dashboard-columns">
       <section class="case-primary">
         <header class="dashboard-title-row">
