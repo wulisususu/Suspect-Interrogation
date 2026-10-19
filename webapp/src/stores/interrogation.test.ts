@@ -93,16 +93,16 @@ describe('interrogation capture event reducer', () => {
       startedAt: Date.now(), sampleRate: 16000, partialText: '', fragments: [],
     } })
 
-    for (let index = 0; index < 85; index += 1) {
+    for (let index = 0; index < 300; index += 1) {
       store.applyCaptureEvent({ event: 'AUDIO_LEVEL', payload: {
         caseId: 'case-1', captureSessionId: 'capture-1',
         sampleCount: (index + 1) * 160, sampleRate: 16000, rms: index, peak: index,
       } })
     }
 
-    expect(store.capture.audioLevels).toHaveLength(80)
-    expect(store.capture.audioLevels?.[0].peak).toBe(5)
-    expect(store.capture.audioLevels?.[79].peak).toBe(84)
+    expect(store.capture.audioLevels).toHaveLength(240)
+    expect(store.capture.audioLevels?.[0].peak).toBe(60)
+    expect(store.capture.audioLevels?.[239].peak).toBe(299)
   })
 
   it('computes elapsed capture time from the active status start time', async () => {

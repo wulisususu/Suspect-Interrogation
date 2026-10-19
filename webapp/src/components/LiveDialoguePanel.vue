@@ -596,7 +596,7 @@ onMounted(() => {
           </div>
           <div class="capture-meter-waveform" role="img" aria-label="实时麦克风输入振幅波形">
             <RecorderWaveformCanvas
-              v-if="audioMeterSamples.length"
+              v-if="captureRunning && audioMeterSamples.length"
               :key="captureStatus.captureSessionId ?? 'active-capture'"
               :samples="audioMeterSamples"
             />

@@ -47,8 +47,8 @@ describe('live dialogue audio meter', () => {
       updatedAt: Date.now(),
     })
 
-    expect(html).toContain('aria-label="实时麦克风输入波形"')
-    expect(html.indexOf('capture-meter')).toBeGreaterThan(html.indexOf('class="dialogue-feed"'))
+    expect(html).toContain('aria-label="实时麦克风输入振幅波形"')
+    expect(html.indexOf('waveform-region')).toBeLessThan(html.indexOf('transcript-region'))
     expect(html).toContain('class="recorder-waveform-canvas"')
     expect(html).toContain('实时音频')
     expect(html).toContain('停止录音 00:02')
@@ -58,7 +58,7 @@ describe('live dialogue audio meter', () => {
     const waiting = await renderMeter({ running: true })
     expect(waiting).toContain('等待音频输入')
     expect(waiting).not.toContain('<i')
-    expect(waiting).toContain('class="recorder-waveform-canvas"')
+    expect(waiting).not.toContain('class="recorder-waveform-canvas"')
 
     const stale = await renderMeter({
       running: true,
@@ -68,14 +68,14 @@ describe('live dialogue audio meter', () => {
     expect(stale).toContain('暂无新音频信号')
   })
 
-  it('hides the waveform after recording stops', async () => {
+  it('hides the last waveform after recording stops', async () => {
     const html = await renderMeter({
       running: false,
       samples: [{ sampleCount: 160, sampleRate: 16000, rms: 4096, peak: 8192 }],
       updatedAt: Date.now(),
     })
 
-    expect(html).not.toContain('capture-meter')
-    expect(html).not.toContain('实时麦克风输入波形')
+    expect(html).toContain('录音未进行')
+    expect(html).not.toContain('class="recorder-waveform-canvas"')
   })
 })
