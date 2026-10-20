@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import type { CaseSummary, DocumentSignerRole, DocumentSigningState, FactItem, SessionState } from '../types/interrogation'
 import type { CaseQuestionUpdateInput, FormalQuestion, FormalQuestionRound, QAUnitResolution } from '../types/templateInterrogation'
 import { clearDrop, dropArmed, pendingDrop } from '../composables/pendingDrop'
+import { dynamicAppendAfterId } from '../utils/dynamicQuestionInsert'
 
 const props = defineProps<{
   summary: CaseSummary
@@ -45,7 +46,8 @@ const orderedQuestions = computed(() => [...props.questions].sort((a, b) => a.so
 const openingQuestions = computed(() => orderedQuestions.value.filter((q) => q.sectionType === 'OPENING'))
 const bodyQuestions = computed(() => orderedQuestions.value.filter((q) => q.sectionType === 'BODY'))
 const closingQuestions = computed(() => orderedQuestions.value.filter((q) => q.sectionType === 'CLOSING'))
-const lastOpeningId = computed(() => openingQuestions.value.at(-1)?.id ?? null)
+/** 动态问答区「追加到最后」的落点：最后一条动态问题，空区时退化为开场问题之后。 */
+const dynamicAppendTargetId = computed(() => dynamicAppendAfterId(props.questions))
 
 watch(() => props.questions, async (items) => {
   for (const item of items) {
@@ -243,7 +245,7 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
   <section class="formal-record-shell">
     <article ref="paper" class="formal-record-paper" :class="{ 'review-record-paper': completionMode }" aria-label="正式询问笔录编辑器">
       <div v-if="pendingDrop" role="status" style="position:sticky;top:0;z-index:6;display:flex;gap:12px;align-items:center;justify-content:space-between;margin:12px 16px 0;padding:9px 12px;border:1px solid #173b68;border-radius:8px;background:#e9f3ff;color:#173b68;font:13px system-ui,sans-serif">
-        <span v-if="transcriptFragmentArmed">已选中一段转写——请点击正式笔录中的「问」或「答」栏录入</span>
+        <span v-if="transcriptFragmentArmed">已选中一段转写——请点击正式笔录中的「问」「答」栏录入，或点动态问答区的投放条新增问题</span>
         <span v-else>已选中「{{ pendingDrop.label }}」—— 请点击要放入的「问」或「答」栏位</span>
         <button type="button" style="border:1px solid #173b68;background:#fff;color:#173b68;border-radius:6px;padding:3px 10px;font:12px system-ui,sans-serif" @click="clearDrop()">取消</button>
       </div>
@@ -288,7 +290,7 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
       </section>
 
       <div class="record-section-label record-no-print"><span>案件动态问答区</span><small>右侧实时对话可拖入；本区可拖动排序、编辑或移出</small></div>
-      <div class="record-drop-zone record-no-print" :class="{ active: dragOverKey === 'body-start' }" @dragover="allowPendingDrop($event, 'body-start')" @dragleave="dragOverKey = ''" @drop="dropGap($event, lastOpeningId)">拖到这里插入为第一条案件问题 / 民警提问 / 整组问答</div>
+      <div class="record-drop-zone record-no-print" :class="{ active: dragOverKey === 'body-start', 'record-drop-zone-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, 'body-start')" @dragleave="dragOverKey = ''" @drop="dropGap($event, dynamicAppendTargetId)" @click.stop="tapGap(dynamicAppendTargetId)">点击或拖到这里，追加为动态问答区最后一条问题 / 民警提问 / 整组问答</div>
 
       <section class="record-qa-section body-section">
         <article v-for="q in bodyQuestions" :key="q.id" class="record-qa body-question" draggable="true" @dragstart="startBodyDrag($event, q.id)" @dragover.prevent @drop="dropBody($event, q.id)">
@@ -296,9 +298,9 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
           <label class="record-question editable-question qa-question-drop" :class="{ 'record-question-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `qa-${q.id}`)" @drop.stop="dropQaOnQuestion($event, q.id)" @click="tapQaOnQuestionField(q.id, $event)"><b>问：</b><textarea v-model="questionDrafts[q.id]" :disabled="busy || documentFrozen" rows="1" @input="autoGrow($event)" @blur="saveQuestion(q)"></textarea><small class="record-no-print">整组 QA 可拖到本题</small></label>
           <label class="record-answer qa-answer-drop" :class="{ 'record-answer-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `answer-${q.id}`)" @dragleave="dragOverKey = ''" @drop.stop="dropAnswerOnQuestion($event, q.id)" @click="tapAnswerOnQuestion(q.id)"><b>答：</b><textarea v-model="canonicalAnswerDrafts[q.id]" :disabled="busy || documentFrozen" rows="2" placeholder="等待现场回答" @input="autoGrow($event)" @blur="saveCanonicalAnswer(q)"></textarea><small class="record-no-print">聊天记录或答案可拖到这里</small></label>
           <small v-if="latestRound(q.id)?.actualQuestionText && latestRound(q.id)?.actualQuestionText !== q.text" class="actual-question record-no-print">现场原问法：{{ latestRound(q.id)?.actualQuestionText }}</small>
-          <div class="record-drop-zone compact record-no-print" :class="{ active: dragOverKey === q.id }" @dragover="allowPendingDrop($event, q.id)" @dragleave="dragOverKey = ''" @drop="dropGap($event, q.id)">拖到这里，插入在本题之后 / 民警提问新建现场问题</div>
+          <div class="record-drop-zone compact record-no-print" :class="{ active: dragOverKey === q.id, 'record-drop-zone-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, q.id)" @dragleave="dragOverKey = ''" @drop="dropGap($event, q.id)" @click.stop="tapGap(q.id)">点击或拖到这里，插入在本题之后 / 民警提问新建现场问题</div>
         </article>
-        <div v-if="!bodyQuestions.length" class="record-body-empty record-no-print">案件动态问答区暂为空。将右侧民警提问拖到这里，或从问题准备区加入。</div>
+        <div v-if="!bodyQuestions.length" class="record-body-empty record-no-print" :class="{ 'record-drop-zone-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, 'body-empty')" @dragleave="dragOverKey = ''" @drop="dropGap($event, dynamicAppendTargetId)" @click.stop="tapGap(dynamicAppendTargetId)">案件动态问答区暂为空。点击这里把选中的民警提问加为第一条问题，或从问题准备区加入。</div>
       </section>
 
       <section class="record-qa-section fixed-closing">
@@ -323,4 +325,6 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
 .qa-answer-drop.record-answer-armed { outline: 2px solid #2874e5; background: #f2f7ff; cursor: pointer; }
 .qa-question-drop:has(textarea:focus):not(.record-question-armed), .qa-answer-drop:has(textarea:focus):not(.record-answer-armed) { outline: none; }
 .qa-question-drop > small, .qa-answer-drop > small { margin-left: 8px; color: #84909d; font-size: 10px; }
+/* 已选中转写片段时，动态问答区的三个投放点同样高亮为可点击落点。 */
+.record-drop-zone.record-drop-zone-armed, .record-body-empty.record-drop-zone-armed { outline: 2px solid #2874e5; background: #f2f7ff; color: #173b68; cursor: pointer; }
 </style>

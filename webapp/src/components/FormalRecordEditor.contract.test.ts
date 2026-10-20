@@ -58,6 +58,17 @@ describe('formal record editor source contract', () => {
     expect(workspace).toContain('@create-live-question-from-fragments=')
   })
 
+  it('lets a touch selection create a dynamic question by tapping the dynamic question area', () => {
+    // 三个投放点（顶部、每题之后、空态）都必须能点击落位，否则触摸屏一体机上
+    // 只能依赖鼠标拖拽，动态问答区无法新增问题。
+    expect(formal.match(/@click\.stop="tapGap\(/g)).toHaveLength(3)
+    expect(formal).toContain('tapGap(dynamicAppendTargetId)')
+    expect(formal).toContain('tapGap(q.id)')
+    expect(formal).toContain("'record-drop-zone-armed': transcriptFragmentArmed")
+    expect(formal).toContain('@drop="dropGap($event, dynamicAppendTargetId)"')
+    expect(formal).toContain('dynamicAppendAfterId')
+  })
+
   it('renders the canonical case-question answer while retaining round provenance', () => {
     expect(formal).toContain('formalAnswerText')
     expect(formal).toContain('canonicalAnswerDrafts')
