@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import CasePreparationPage from './CasePreparationPage.vue'
 import { capabilitySet } from '../runtime/types'
 
-const summary = { id: 'CASE-1', suspectName: '测试人员', officerName: '民警', state: 'DRAFT', stage: 'IDENTITY', identitySource: 'MANUAL', idNumber: '330100198001010011' }
+const summary = { id: 'CASE-1', suspectName: '测试人员', officerName: '民警', state: 'DRAFT', stage: 'IDENTITY', identitySource: 'MANUAL', idNumber: '330100198001010011', workflowState: 'IDENTITY_READY' }
 const readiness = { suspectReady: true, canStart: true, interrogatorReady: false, recorderReady: false, recognitionMode: 'SUSPECT_ONLY' }
 
 async function screen(overrides = {}) {
@@ -35,11 +35,24 @@ describe('preparation start conditions', () => {
     expect(noSpeech).toContain('语音识别服务')
   })
 
-  it('requires recorded identity and does not label missing data as verified', async () => {
-    const html = await screen({ summary: { ...summary, suspectName: '', idNumber: '', identitySource: '' } })
+  it('unlocks start once the backend identity step is complete, even with a blank id number', async () => {
+    const html = await screen({ summary: { ...summary, idNumber: '' } })
+    expect(html).not.toMatch(/<button[^>]*disabled[^>]*>开始审讯/)
+    expect(html).toContain('证件号待补充')
+  })
+
+  it('keeps start locked while the backend still requires identity', async () => {
+    const html = await screen({ summary: { ...summary, suspectName: '', idNumber: '', identitySource: '', workflowState: 'IDENTITY_REQUIRED' } })
     expect(html).toMatch(/<button[^>]*disabled[^>]*>开始审讯/)
     expect(html).toContain('待补充')
     expect(html).not.toContain('身份核验 · 已通过')
+  })
+
+  it('falls back to the suspect name when the workflow state is not reported', async () => {
+    const withName = await screen({ summary: { ...summary, idNumber: '', workflowState: undefined } })
+    expect(withName).not.toMatch(/<button[^>]*disabled[^>]*>开始审讯/)
+    const withoutName = await screen({ summary: { ...summary, suspectName: '', idNumber: '', workflowState: undefined } })
+    expect(withoutName).toMatch(/<button[^>]*disabled[^>]*>开始审讯/)
   })
 
   it('keeps a simulated enrollment locked and uses usable speech for progress', async () => {

@@ -3,8 +3,17 @@ import { voiceprintStartGuard } from './VoiceprintPreparationPanel.vue'
 import type { CaseSummary, VoiceprintEnrollmentState, VoiceprintReadiness } from '../types/interrogation'
 import type { RuntimeCapabilities } from '../runtime/types'
 
+/** 身份步骤是否已完成：以后端 workflow_state 为准。
+ *  后端只在 IDENTITY_REQUIRED 时拒绝开始审讯，证件号可以审讯中补录；
+ *  旧版接口没有该字段时退化为「有被询问人姓名即可」。 */
+export function identityStepCompleted(summary: CaseSummary) {
+  const state = (summary.workflowState || '').trim()
+  if (state) return state !== 'IDENTITY_REQUIRED'
+  return Boolean(summary.suspectName && summary.suspectName !== '待录入')
+}
+
 export function preparationStartGuard(summary: CaseSummary, readiness: VoiceprintReadiness, capabilities: RuntimeCapabilities | null, enrollmentState: VoiceprintEnrollmentState) {
-  const identityRecorded = Boolean(summary.suspectName && summary.suspectName !== '待录入' && summary.idNumber && summary.identitySource)
+  const identityRecorded = identityStepCompleted(summary)
   const deviceReady = capabilities?.microphone.state === 'AVAILABLE' && capabilities?.asr.state === 'AVAILABLE'
   const voiceReady = !voiceprintStartGuard(readiness).disabled && !readiness.simulated
   const enrollmentBusy = ['RECORDING', 'PROCESSING'].includes(enrollmentState.phase)
@@ -71,7 +80,7 @@ const currentStep = computed(() => {
         <header><h2>开始前检查</h2><p>完成身份信息、声纹注册和设备检查后，即可开始审讯</p></header>
         <article class="check-row" :class="{ complete: identityRecorded }">
           <span class="check-icon"><Check v-if="identityRecorded" :size="28" /><ShieldCheck v-else :size="28" /></span>
-          <div class="check-content"><h3>身份信息 · {{ identityRecorded ? '已录入' : '待补充' }}</h3><p>{{ summary.suspectName || '姓名待录入' }} · {{ summary.gender || '性别未填写' }} · {{ summary.age ? summary.age + ' 岁' : '年龄未填写' }} · {{ identitySource }}</p><small>请对照证件原件核对本人信息</small></div>
+          <div class="check-content"><h3>身份信息 · {{ identityRecorded ? '已录入' : '待补充' }}</h3><p>{{ summary.suspectName || '姓名待录入' }} · {{ summary.gender || '性别未填写' }} · {{ summary.age ? summary.age + ' 岁' : '年龄未填写' }} · {{ identitySource }}</p><small>{{ summary.idNumber ? '请对照证件原件核对本人信息' : '证件号待补充，可在审讯中补录' }}</small></div>
           <button class="check-link" @click="$emit('profile')">{{ identityRecorded ? '核对 / 编辑' : '补充身份信息' }}<ArrowRight :size="16" /></button>
         </article>
         <article class="check-row voice-check" :class="{ complete: voiceReady }">
