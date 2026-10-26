@@ -105,15 +105,15 @@ onMounted(syncFromProps)
 <style scoped>
 .manual-profile-page { background: var(--surface); height: calc(100% - var(--osk-height,0px)); }
 .manual-profile-page .page-card-header { align-items: flex-start; padding: 26px 30px 0; border: 0; }
-.manual-profile-page h2 { font-size: 24px; color: var(--primary-700); }
-.manual-profile-page .page-card-header p { margin: 14px 0 0; color: var(--ink-400); font-size: 14px; }
-.identity-source { padding: 7px 12px; border-radius: 99px; background: var(--primary-100); color: var(--ink-500); font-size: 13px; white-space: nowrap; }
+.manual-profile-page h2 { font-size: var(--text-2xl); color: var(--primary-700); }
+.manual-profile-page .page-card-header p { margin: 14px 0 0; color: var(--ink-400); font-size: var(--text-base); }
+.identity-source { padding: 7px 12px; border-radius: 99px; background: var(--primary-100); color: var(--ink-500); font-size: var(--text-sm); white-space: nowrap; }
 .profile-content.profile-content-single { display: block; overflow: auto; padding: 20px 30px 26px; scroll-padding-block: 24px; }
 .profile-content-single .profile-main { width: min(1180px,100%); margin: 0 auto; }
-.manual-profile-notice { margin: 0 0 20px; padding: 15px 17px; background: var(--warning-100); color: var(--warning-600); border-radius: 9px; font-size: 14px; line-height: 1.6; }
+.manual-profile-notice { margin: 0 0 20px; padding: 15px 17px; background: var(--warning-100); color: var(--warning-600); border-radius: 9px; font-size: var(--text-base); line-height: 1.6; }
 .profile-footer { display: grid; grid-template-columns: minmax(150px,1fr) 4fr; gap: 14px; border: 0; padding-top: 0; }
-.profile-footer button { min-height: 52px; border-radius: 9px; font-size: 15px; font-weight: 600; }
+.profile-footer button { min-height: 52px; border-radius: 9px; font-size: var(--text-md); font-weight: 600; }
 .profile-cancel { background: var(--surface); border: 1px solid var(--primary-100); color: var(--ink-500); }
 .profile-footer .primary-action { background: var(--primary-600); }
-.profile-lock-note { margin: 14px 0 0; color: var(--ink-400); font-size: 13px; text-align: center; }
+.profile-lock-note { margin: 14px 0 0; color: var(--ink-400); font-size: var(--text-sm); text-align: center; }
 </style>

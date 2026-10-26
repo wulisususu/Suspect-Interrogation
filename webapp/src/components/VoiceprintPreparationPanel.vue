@@ -187,25 +187,25 @@ function normalizedSelect(event: Event) {
 <style scoped>
 .voiceprint-preparation-panel { padding: 16px 18px; border-bottom: 1px solid var(--line-300); background: linear-gradient(180deg, var(--surface-sunken) 0%, var(--surface-sunken) 100%); color: var(--navy-900); }
 .voiceprint-preparation-header,.voiceprint-preparation-footer { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-.voiceprint-preparation-header h2 { margin:3px 0 0; font-size:22px; }
-.section-kicker { color:var(--ink-500); font-size:12px; letter-spacing:.08em; }
-.voiceprint-mode-chip,.voiceprint-status { border:1px solid var(--primary-200); border-radius:999px; padding:5px 10px; background:var(--surface); color:var(--ink-500); font-size:12px; font-weight:700; }
+.voiceprint-preparation-header h2 { margin:3px 0 0; font-size:var(--text-2xl); }
+.section-kicker { color:var(--ink-500); font-size:var(--text-xs); letter-spacing:.08em; }
+.voiceprint-mode-chip,.voiceprint-status { border:1px solid var(--primary-200); border-radius:999px; padding:5px 10px; background:var(--surface); color:var(--ink-500); font-size:var(--text-xs); font-weight:700; }
 .voiceprint-mode-chip.ready,.voiceprint-status.ok { border-color:var(--success-100); background:var(--success-100); color:var(--success-700); }
-.voiceprint-mode-degradation { display:flex; align-items:flex-start; gap:8px; margin:10px 0 0; padding:8px 10px; border:1px solid var(--warning-600); border-left:4px solid var(--warning-600); border-radius:7px; background:var(--warning-100); color:var(--warning-700); font-size:12px; font-weight:700; }
-.voiceprint-mode-degradation-icon { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; width:16px; height:16px; border-radius:50%; background:var(--warning-600); color:var(--surface); font-size:11px; }
+.voiceprint-mode-degradation { display:flex; align-items:flex-start; gap:8px; margin:10px 0 0; padding:8px 10px; border:1px solid var(--warning-600); border-left:4px solid var(--warning-600); border-radius:7px; background:var(--warning-100); color:var(--warning-700); font-size:var(--text-xs); font-weight:700; }
+.voiceprint-mode-degradation-icon { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; width:16px; height:16px; border-radius:50%; background:var(--warning-600); color:var(--surface); font-size:var(--text-xs); }
 .voiceprint-warning { margin-top:10px; padding:9px 12px; border:1px solid var(--warning-600); border-radius:7px; background:var(--warning-100); color:var(--warning-700); font-weight:700; }
-.eres-backend-hint { margin:10px 0 0; padding:9px 12px; border:1px solid var(--line-300); border-radius:7px; background:var(--surface); color:var(--ink-500); font-size:12px; }
+.eres-backend-hint { margin:10px 0 0; padding:9px 12px; border:1px solid var(--line-300); border-radius:7px; background:var(--surface); color:var(--ink-500); font-size:var(--text-xs); }
 .voiceprint-preparation-grid { display:grid; gap:8px; margin-top:12px; }
 .voiceprint-person-row { display:grid; grid-template-columns:minmax(190px,1fr) minmax(220px,1.4fr) auto; align-items:center; gap:12px; min-height:50px; padding:9px 12px; border:1px solid var(--line-300); border-radius:8px; background:rgba(255,255,255,.9); }
 .voiceprint-person-row.required { border-left:4px solid var(--primary-600); }
 .voiceprint-person-main { display:flex; align-items:center; gap:8px; }
-.voiceprint-person-main > span { color:var(--ink-400); font-size:12px; }
+.voiceprint-person-main > span { color:var(--ink-400); font-size:var(--text-xs); }
 .voiceprint-person-row select { min-height:38px; border:1px solid var(--primary-200); border-radius:6px; padding:0 10px; background:var(--surface); color:var(--ink-700); }
 .voiceprint-action,.voiceprint-preparation-footer button { min-height:38px; border:1px solid var(--ink-300); border-radius:6px; padding:0 13px; background:var(--surface); color:var(--ink-700); font-weight:700; }
 .voiceprint-action.primary,.voiceprint-preparation-footer > button { border-color:var(--primary-600); background:var(--primary-600); color:var(--surface); }
 .voiceprint-action.danger { border-color:var(--danger-700); color:var(--danger-600); }
 button:disabled,select:disabled { opacity:.5; }
-.global-library-hint { margin:10px 0 0; padding:9px 12px; border:1px solid var(--line-300); border-radius:7px; background:var(--surface); color:var(--ink-500); font-size:12px; }
+.global-library-hint { margin:10px 0 0; padding:9px 12px; border:1px solid var(--line-300); border-radius:7px; background:var(--surface); color:var(--ink-500); font-size:var(--text-xs); }
 .voiceprint-capture-meter { height:8px; overflow:hidden; border-radius:999px; background:var(--line-300); flex:1 1 180px; min-width:160px; }
 .voiceprint-capture-meter > i { display:block; height:100%; border-radius:inherit; background:var(--primary-600); transition:width .25s ease; }
 .voiceprint-enrollment-progress { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:10px; padding:9px 12px; border-radius:7px; background:var(--primary-100); color:var(--primary-600); }
@@ -214,6 +214,6 @@ button:disabled,select:disabled { opacity:.5; }
 .voiceprint-enrollment-progress small { margin-left:auto; }
 .voiceprint-preparation-footer { margin-top:11px; padding-top:10px; border-top:1px solid var(--line-300); }
 .voiceprint-preparation-footer > div { display:grid; gap:3px; }
-.voiceprint-preparation-footer span { color:var(--ink-500); font-size:12px; }
+.voiceprint-preparation-footer span { color:var(--ink-500); font-size:var(--text-xs); }
 @media (max-width:980px) { .voiceprint-person-row { grid-template-columns:1fr; } .voiceprint-preparation-footer,.voiceprint-preparation-header { align-items:flex-start; flex-direction:column; } }
 </style>

@@ -92,13 +92,13 @@ onUnmounted(() => {
 }
 .maintenance-kicker {
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-500);
 }
-h1 { margin: 0 0 16px; font-size: 30px; }
+h1 { margin: 0 0 16px; font-size: var(--text-3xl); }
 p { line-height: 1.7; }
 .maintenance-details { color: var(--warning-600); line-height: 1.6; }
 button {

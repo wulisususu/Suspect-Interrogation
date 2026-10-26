@@ -175,10 +175,10 @@ function time(value?: number | null) {
 .print-preview-scroll { overflow: auto; min-width: 0; min-height: 0; padding: var(--space-5); }
 .print-preview-size { margin: 0 auto; }
 
-.signing-paper { width: 794px; min-height: 1123px; padding: 52px 48px 38px; box-sizing: border-box; background: var(--paper-bg); color: var(--paper-ink); font: 17px/1.85 var(--font-serif); }
+.signing-paper { width: 794px; min-height: 1123px; padding: 52px 48px 38px; box-sizing: border-box; background: var(--paper-bg); color: var(--paper-ink); font: var(--text-lg)/1.85 var(--font-serif); }
 .signing-paper > header { text-align: center; margin-bottom: 26px; }
-.signing-paper h2 { margin: 0; font-size: 30px; font-weight: 600; letter-spacing: 4px; }
-.signing-paper header p { margin: 4px 0; color: var(--paper-muted); font-size: 14px; }
+.signing-paper h2 { margin: 0; font-size: var(--text-3xl); font-weight: 600; letter-spacing: 4px; }
+.signing-paper header p { margin: 4px 0; color: var(--paper-muted); font-size: var(--text-base); }
 .signing-paper-meta { padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--paper-rule); }
 .signing-paper-meta p { margin: 0 0 6px; }
 .signing-paper p { overflow-wrap: anywhere; }
@@ -187,7 +187,7 @@ function time(value?: number | null) {
 .print-empty { color: var(--paper-muted); }
 
 .paper-signatures { margin-top: 32px; }
-.paper-signatures > p { padding-top: 16px; border-top: 1px solid var(--paper-rule); font: 12px/1.7 var(--font-sans); color: var(--paper-muted); }
+.paper-signatures > p { padding-top: 16px; border-top: 1px solid var(--paper-rule); font: var(--text-xs)/1.7 var(--font-sans); color: var(--paper-muted); }
 
 .paper-hotspots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
 .hotspot {
@@ -202,14 +202,14 @@ function time(value?: number | null) {
   border-radius: var(--radius-sm);
   background: var(--paper-hotspot-bg);
   color: var(--primary-700);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 .hotspot:hover:not(:disabled) { border-color: var(--primary-600); background: var(--primary-50); }
 .hotspot.signed { border-style: solid; border-color: var(--success-600); background: var(--success-100); }
 .hotspot:disabled { cursor: default; opacity: 0.75; }
 .hotspot.is-unavailable { border-style: dotted; border-color: var(--line-300); background: var(--surface-sunken); color: var(--ink-400); }
 .hotspot-title { font-weight: 600; }
-.hotspot-hint { font-size: 12px; color: var(--ink-400); }
+.hotspot-hint { font-size: var(--text-xs); color: var(--ink-400); }
 .hotspot img { max-width: 150px; max-height: 60px; object-fit: contain; }
 
 .print-preview-controls { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; padding: var(--space-3); font-size: var(--text-sm); color: var(--ink-400); }

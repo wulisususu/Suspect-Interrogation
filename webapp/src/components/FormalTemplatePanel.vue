@@ -324,5 +324,5 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
 .qa-question-drop.record-question-armed { outline: 2px solid var(--primary-500); background: var(--primary-50); cursor: pointer; }
 .qa-answer-drop.record-answer-armed { outline: 2px solid var(--primary-500); background: var(--primary-50); cursor: pointer; }
 .qa-question-drop:has(textarea:focus):not(.record-question-armed), .qa-answer-drop:has(textarea:focus):not(.record-answer-armed) { outline: none; }
-.qa-question-drop > small, .qa-answer-drop > small { margin-left: 8px; color: var(--paper-muted); font-size: 10px; }
+.qa-question-drop > small, .qa-answer-drop > small { margin-left: 8px; color: var(--paper-muted); font-size: var(--text-xs); }
 </style>

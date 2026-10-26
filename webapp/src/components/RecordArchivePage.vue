@@ -138,10 +138,10 @@ function escapeHtml(value: string) {
 .record-archive { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; min-height: 0; height: 100%; color: var(--ink-700); font-size: var(--text-base); }
 
 .archive-preview { min-height: 0; overflow: auto; padding: var(--space-5); border-radius: var(--radius-lg); background: var(--surface-muted); }
-.archive-paper { width: 794px; margin: 0 auto; padding: 52px 48px 38px; background: var(--paper-bg); color: var(--paper-ink); font: 17px/1.85 var(--font-serif); }
+.archive-paper { width: 794px; margin: 0 auto; padding: 52px 48px 38px; background: var(--paper-bg); color: var(--paper-ink); font: var(--text-lg)/1.85 var(--font-serif); }
 .archive-paper > header { text-align: center; margin-bottom: 26px; }
-.archive-paper h2 { margin: 0; font-size: 30px; font-weight: 600; letter-spacing: 4px; }
-.archive-paper header p { margin: 4px 0; color: var(--paper-muted); font-size: 14px; }
+.archive-paper h2 { margin: 0; font-size: var(--text-3xl); font-weight: 600; letter-spacing: 4px; }
+.archive-paper header p { margin: 4px 0; color: var(--paper-muted); font-size: var(--text-base); }
 .archive-meta { padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--paper-rule); }
 .archive-meta p { margin: 0 0 6px; }
 .archive-qa p { margin: 0 0 12px; white-space: pre-wrap; }
@@ -149,7 +149,7 @@ function escapeHtml(value: string) {
 .archive-signatures { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--paper-rule); }
 .archive-signature { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; min-height: 40px; }
 .archive-signature img { max-width: 200px; max-height: 70px; object-fit: contain; }
-.archive-signatures > p { margin: 0; color: var(--paper-muted); font: 12px/1.7 var(--font-sans); }
+.archive-signatures > p { margin: 0; color: var(--paper-muted); font: var(--text-xs)/1.7 var(--font-sans); }
 
 .archive-side { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; overflow: auto; }
 .archive-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-5); border: 1px solid var(--line-200); border-radius: var(--radius-lg); background: var(--surface); }

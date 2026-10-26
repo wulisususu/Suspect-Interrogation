@@ -289,7 +289,7 @@ function updateFragmentSpeaker(fragment: TemporaryAsrFragment, event: Event) {
   border-radius: 7px;
   color: var(--ink-500);
   background: var(--surface-sunken);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .fragment-lineage summary {

@@ -207,13 +207,13 @@ onMounted(load)
   color: var(--surface);
   border-bottom: 4px solid var(--warning-600);
 }
-.system-title > span { display: block; color: var(--ink-300); font-size: 12px; letter-spacing: .14em; }
-.system-title h1 { margin: 3px 0 2px; font-size: 25px; letter-spacing: .04em; }
-.system-title p { margin: 0; color: var(--primary-200); font-size: 13px; }
+.system-title > span { display: block; color: var(--ink-300); font-size: var(--text-xs); letter-spacing: .14em; }
+.system-title h1 { margin: 3px 0 2px; font-size: var(--text-2xl); letter-spacing: .04em; }
+.system-title p { margin: 0; color: var(--primary-200); font-size: var(--text-sm); }
 .case-list-actions { display: flex; align-items: center; gap: 18px; }
 .case-count { min-width: 94px; display: flex; align-items: baseline; justify-content: center; gap: 7px; padding: 8px 12px; border: 1px solid var(--ink-500); background: var(--navy-900); }
-.case-count strong { font-size: 22px; }
-.case-count span { color: var(--line-300); font-size: 12px; }
+.case-count strong { font-size: var(--text-2xl); }
+.case-count span { color: var(--line-300); font-size: var(--text-xs); }
 .btn-primary, .refresh-button {
   min-height: 50px;
   border: 1px solid var(--ink-300);
@@ -221,7 +221,7 @@ onMounted(load)
   padding: 0 20px;
   background: var(--surface);
   color: var(--ink-700);
-  font-size: 15px;
+  font-size: var(--text-md);
   font-weight: 700;
   touch-action: manipulation;
 }
@@ -236,8 +236,8 @@ onMounted(load)
   background: var(--surface-sunken);
 }
 .case-list-toolbar > div { display: flex; align-items: baseline; gap: 14px; }
-.case-list-toolbar strong { color: var(--ink-700); font-size: 18px; }
-.case-list-toolbar span { color: var(--ink-400); font-size: 13px; }
+.case-list-toolbar strong { color: var(--ink-700); font-size: var(--text-xl); }
+.case-list-toolbar span { color: var(--ink-400); font-size: var(--text-sm); }
 .case-search { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .case-search input { width: 320px; min-height: 40px; box-sizing: border-box; border: 1px solid var(--ink-300); border-radius: 4px; padding: 0 12px; color: var(--ink-700); font: inherit; }
 .case-search button { min-height: 40px; border: 1px solid var(--primary-600); border-radius: 4px; padding: 0 17px; background: var(--primary-600); color: var(--surface); font: inherit; font-weight: 700; touch-action: manipulation; }
@@ -245,7 +245,7 @@ onMounted(load)
 .status-banner { margin: 18px 32px; padding: 18px; border: 1px solid var(--primary-200); background: var(--surface-sunken); text-align: center; color: var(--ink-500); }
 .status-banner.error { border-color: var(--danger-100); background: var(--danger-100); color: var(--danger-600); }
 .empty-state { align-self: center; justify-self: center; width: 520px; padding: 42px; text-align: center; border: 1px solid var(--primary-200); background: var(--surface); }
-.empty-state strong { display: block; color: var(--ink-700); font-size: 20px; }
+.empty-state strong { display: block; color: var(--ink-700); font-size: var(--text-xl); }
 .empty-state p { margin: 12px 0 22px; color: var(--ink-400); line-height: 1.7; }
 .case-list { min-height: 0; overflow: auto; padding: 18px 32px 30px; }
 .case-row {
@@ -268,21 +268,21 @@ onMounted(load)
 }
 .case-row:focus-visible { outline: 3px solid rgba(31,101,151,.25); outline-offset: 2px; }
 .person-cell { min-width: 0; display: grid; grid-template-columns: 58px minmax(0,1fr); align-items: center; gap: 12px; }
-.person-avatar { width: 58px; height: 66px; display: grid; place-items: center; border: 1px solid var(--ink-400); background: var(--primary-100); color: var(--ink-500); font-size: 22px; font-weight: 700; }
+.person-avatar { width: 58px; height: 66px; display: grid; place-items: center; border: 1px solid var(--ink-400); background: var(--primary-100); color: var(--ink-500); font-size: var(--text-2xl); font-weight: 700; }
 .case-row-title { display: flex; align-items: baseline; gap: 9px; }
-.case-row-title strong { color: var(--ink-700); font-size: 18px; }
-.case-row-title span, .person-cell small { color: var(--ink-400); font-size: 12px; }
+.case-row-title strong { color: var(--ink-700); font-size: var(--text-xl); }
+.case-row-title span, .person-cell small { color: var(--ink-400); font-size: var(--text-xs); }
 .person-cell small { display: block; margin-top: 6px; }
 .case-info-cell { min-width: 0; display: grid; gap: 7px; }
-.case-info-cell span { color: var(--ink-400); font-size: 11px; }
-.case-info-cell strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-700); font-size: 13px; white-space: nowrap; }
+.case-info-cell span { color: var(--ink-400); font-size: var(--text-xs); }
+.case-info-cell strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-700); font-size: var(--text-sm); white-space: nowrap; }
 .case-status-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; justify-content: flex-end; }
-.tag { padding: 6px 9px; border: 1px solid var(--primary-200); border-radius: 3px; background: var(--surface-sunken); color: var(--ink-500); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.tag { padding: 6px 9px; border: 1px solid var(--primary-200); border-radius: 3px; background: var(--surface-sunken); color: var(--ink-500); font-size: var(--text-xs); font-weight: 700; white-space: nowrap; }
 .tag.identity { border-color: var(--success-100); background: var(--success-100); color: var(--success-700); }
 .tag.stage { border-color: var(--ink-300); background: var(--surface-sunken); color: var(--primary-600); }
 .tag.state[data-state="INTERROGATING"] { border-color: var(--warning-600); background: var(--warning-100); color: var(--warning-700); }
 .tag.state[data-state="REVIEWING"], .tag.state[data-state="COMPLETED"] { border-color: var(--success-100); background: var(--success-100); color: var(--success-700); }
 .tag.state[data-state="DRAFT"] { border-color: var(--line-300); background: var(--surface-sunken); color: var(--ink-500); }
-.enter-arrow { justify-self: end; color: var(--primary-600); font-size: 14px; font-weight: 700; white-space: nowrap; }
+.enter-arrow { justify-self: end; color: var(--primary-600); font-size: var(--text-base); font-weight: 700; white-space: nowrap; }
 button:disabled { opacity: .48; cursor: not-allowed; }
 </style>

@@ -157,7 +157,7 @@ async function recoverLocalAudio() {
   color: var(--primary-700);
   background: var(--surface-sunken);
   border-bottom: 1px solid var(--line-300);
-  font: 12px/1.45 system-ui, sans-serif;
+  font: var(--text-xs)/1.45 system-ui, sans-serif;
 }
 
 .asr-workflow-status.compact {
@@ -165,7 +165,7 @@ async function recoverLocalAudio() {
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .workflow-compact-copy {
@@ -191,7 +191,7 @@ async function recoverLocalAudio() {
   border-radius: 4px;
   color: var(--surface);
   background: var(--primary-600);
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 

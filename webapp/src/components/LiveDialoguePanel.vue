@@ -510,17 +510,17 @@ onMounted(() => {
   gap: 10px;
   padding: 9px 12px 7px;
   color: var(--ink-700);
-  font: 12px/1.45 system-ui, sans-serif;
+  font: var(--text-xs)/1.45 system-ui, sans-serif;
 }
 
 .region-heading strong {
   color: var(--navy-700);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .capture-meter-state {
   color: var(--ink-500);
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -540,7 +540,7 @@ onMounted(() => {
   place-items: center;
   width: 100%;
   color: var(--ink-400);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .transcript-heading > div,
@@ -567,7 +567,7 @@ onMounted(() => {
 .transcript-paragraph {
   margin: 0;
   color: var(--navy-900);
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.75;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -596,14 +596,14 @@ onMounted(() => {
   padding: 3px 8px;
   color: var(--primary-700);
   background: var(--surface);
-  font-size: 10px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
 .recognition-count {
   flex: 0 0 auto;
   color: var(--ink-400);
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .recognition-list {
@@ -635,7 +635,7 @@ onMounted(() => {
   padding: 3px 9px;
   color: var(--primary-600);
   background: var(--surface);
-  font-size: 10px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -647,7 +647,7 @@ onMounted(() => {
 
 .recognition-time {
   color: var(--ink-500);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -656,7 +656,7 @@ onMounted(() => {
   margin: 0;
   overflow: hidden;
   color: var(--ink-700);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -668,7 +668,7 @@ onMounted(() => {
   padding: 3px 8px;
   color: var(--primary-600);
   background: var(--surface-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -681,7 +681,7 @@ onMounted(() => {
 
 .recognition-result-state {
   color: var(--success-700);
-  font-size: 10px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -692,7 +692,7 @@ onMounted(() => {
 .recognition-empty {
   margin: 12px 2px;
   color: var(--ink-400);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 @media (max-width: 1100px) {
@@ -712,7 +712,7 @@ onMounted(() => {
   border-radius: 8px;
   color: var(--ink-500);
   background: var(--surface-sunken);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .fragment-lineage summary {
@@ -743,7 +743,7 @@ onMounted(() => {
   border-top: 1px solid rgba(76, 112, 156, .16);
 }
 .revision-history h4,
-.recognition-correction h4 { margin: 0 0 6px; font-size: 12px; color: var(--navy-900); }
+.recognition-correction h4 { margin: 0 0 6px; font-size: var(--text-xs); color: var(--navy-900); }
 .revision-row {
   display: grid;
   grid-template-columns: auto 1fr 1.4fr 1fr auto;
@@ -774,9 +774,9 @@ onMounted(() => {
   .revision-row { grid-template-columns: auto 1fr; }
   .correction-controls { grid-template-columns: 1fr; }
 }
-.recognition-tools { margin-top: 6px; color: var(--ink-500); font-size: 11px; }
+.recognition-tools { margin-top: 6px; color: var(--ink-500); font-size: var(--text-xs); }
 .recognition-tools summary { cursor: pointer; padding: 4px; }
-.qa-review-rail { margin-bottom: 10px; color: var(--ink-500); font-size: 12px; }
+.qa-review-rail { margin-bottom: 10px; color: var(--ink-500); font-size: var(--text-xs); }
 .qa-review-rail summary { cursor: pointer; padding: 4px 2px; }
 .qa-review-rail[open] { display: grid; gap: 8px; }
 .qa-review-card { border: 1px solid var(--warning-600); background: var(--warning-100); border-radius: 10px; padding: 10px; }
@@ -787,7 +787,7 @@ onMounted(() => {
 .qa-review-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .qa-review-actions button { cursor: grab; }
 .qa-review-actions .qa-ignore { cursor: pointer; }
-.qa-routing-status { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--success-100); color: var(--success-700); font-size: 12px; }
+.qa-routing-status { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--success-100); color: var(--success-700); font-size: var(--text-xs); }
 .qa-routing-status small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qa-rollback { margin-left: auto; border: 1px solid var(--warning-600); border-radius: 6px; padding: 3px 7px; background: var(--surface); color: var(--warning-700); cursor: pointer; }
 .qa-status-muted { background: var(--surface-sunken); color: var(--ink-500); opacity: .78; }

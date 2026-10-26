@@ -209,7 +209,7 @@ onUnmounted(() => {
 .kiosk-greeting h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 600; letter-spacing: 0.5px; }
 .kiosk-greeting p { margin: var(--space-2) 0 0; color: var(--ink-500); font-size: var(--text-md); }
 .kiosk-clock { text-align: right; }
-.kiosk-clock strong { display: block; color: var(--primary-700); font-size: 40px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.kiosk-clock strong { display: block; color: var(--primary-700); font-size: 40px; /* token-exempt: 大厅时钟读数 */ font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 .kiosk-clock span { color: var(--ink-400); font-size: var(--text-sm); }
 
 .kiosk-pending {
@@ -350,7 +350,7 @@ onUnmounted(() => {
 @media (max-width: 900px) {
   .kiosk-body { padding: var(--space-5); }
   .kiosk-greeting h1 { font-size: var(--text-2xl); }
-  .kiosk-clock strong { font-size: 30px; }
+  .kiosk-clock strong { font-size: var(--text-3xl); }
   .kiosk-steps { flex-direction: column; }
 }
 </style>
