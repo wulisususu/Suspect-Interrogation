@@ -126,3 +126,15 @@ export function stepMeta(key: FlowStepKey): FlowStepMeta {
 export function stepIndex(key: FlowStepKey): number {
   return ORDER.indexOf(key)
 }
+
+/** 工作台主体区域的页面；建档步骤下有询问准备 / 身份信息 / 声纹注册三个子页。 */
+export type WorkspacePage = 'template' | 'prepare' | 'profile' | 'interrogation' | 'moss' | 'voiceprint'
+
+const INTAKE_PAGES: readonly WorkspacePage[] = ['prepare', 'profile', 'voiceprint']
+
+/** 步骤 → 主体页面。进入建档时保留当前所在的建档子页。 */
+export function pageForStep(key: FlowStepKey, current: WorkspacePage): WorkspacePage {
+  if (key === 'template') return 'template'
+  if (key === 'intake') return INTAKE_PAGES.includes(current) ? current : 'prepare'
+  return 'interrogation'
+}

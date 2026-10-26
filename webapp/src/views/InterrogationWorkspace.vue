@@ -14,9 +14,11 @@ import MossTranscriptionPanel from '../components/MossTranscriptionPanel.vue'
 import SessionControls from '../components/SessionControls.vue'
 import StepBar from '../components/StepBar.vue'
 import TemplateDrivenInterrogationPage from '../components/TemplateDrivenInterrogationPage.vue'
+import TemplatePickerPage from '../components/TemplatePickerPage.vue'
 import {
   FLOW_STEPS,
   modeForStep,
+  pageForStep,
   resolveFlowProgress,
   stepIndex,
   stepKeyForMode,
@@ -24,6 +26,7 @@ import {
   type FlowProgress,
   type FlowStepKey,
   type RecordMode,
+  type WorkspacePage,
 } from '../flow/steps'
 import VoiceprintAudioSourceBanner from '../components/VoiceprintAudioSourceBanner.vue'
 import VoiceprintSetupPage from '../components/VoiceprintSetupPage.vue'
@@ -39,8 +42,6 @@ import type {
   RoundReassociateInput,
 } from '../types/templateInterrogation'
 
-type WorkspacePage = 'prepare' | 'profile' | 'interrogation' | 'moss' | 'voiceprint'
-
 const props = defineProps<{ caseId: string }>()
 defineEmits<{ back: [] }>()
 const store = useInterrogationStore()
@@ -50,7 +51,6 @@ const activePage = ref<WorkspacePage>('prepare')
 /** 笔录页的三种形态由步骤条驱动，不再由笔录页内部自建第二套导航 */
 const completionMode = ref<RecordMode>('interrogation')
 const flowStep = ref<FlowStepKey>('intake')
-const INTAKE_PAGES: WorkspacePage[] = ['prepare', 'profile', 'voiceprint']
 
 const flowProgress = computed<FlowProgress>(() => {
   const state = store.caseSummary.workflowState || ''
@@ -84,12 +84,8 @@ function goStep(key: FlowStepKey, force = false) {
   // 案件可能已有会话，但建档要素仍未补齐。
   if (!force && key !== flowStep.value && !flowProgress.value.reachable.includes(key)) return
   flowStep.value = key
-  if (key === 'intake') {
-    if (!INTAKE_PAGES.includes(activePage.value)) activePage.value = 'prepare'
-    return
-  }
-  activePage.value = 'interrogation'
-  completionMode.value = modeForStep(key)
+  activePage.value = pageForStep(key, activePage.value)
+  if (activePage.value === 'interrogation') completionMode.value = modeForStep(key)
 }
 
 function openIntakePage(page: WorkspacePage) {
@@ -363,7 +359,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
         <span class="step-hint">{{ currentStepMeta.hint }}</span>
         <template #actions>
           <SessionControls
-            v-if="flowStep !== 'intake' && activePage !== 'moss'"
+            v-if="flowStep !== 'intake' && flowStep !== 'template' && activePage !== 'moss'"
             :session="store.session"
             :start-disabled="preparationGuard.disabled || preparationBusy || questionDictationActive || questionDictationBusy"
             :start-disabled-reason="questionDictationActive || questionDictationBusy ? '请先停止准备阶段语音输入，再开始正式审讯。' : preparationBusy ? '正在处理，请稍候' : preparationGuard.reason"
@@ -389,8 +385,15 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
       </div>
 
       <section class="workspace-page-body" :class="{ 'interrogation-workspace-body': activePage === 'interrogation', 'preparation-workspace-body': activePage === 'prepare' || activePage === 'voiceprint' }">
+        <TemplatePickerPage
+          v-if="activePage === 'template'"
+          :template-key="templateStore.workspace.templateKey ?? null"
+          :facts="store.facts"
+          :questions="templateStore.workspace.questions"
+          @confirm="goStep('intake', true)"
+        />
         <CasePreparationPage
-          v-if="activePage === 'prepare'"
+          v-else-if="activePage === 'prepare'"
           :summary="store.caseSummary"
           :facts="store.facts"
           :readiness="store.voiceprintReadiness"

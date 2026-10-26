@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FLOW_STEPS, resolveFlowProgress, type FlowSnapshot } from './steps'
+import { FLOW_STEPS, pageForStep, resolveFlowProgress, type FlowSnapshot } from './steps'
 
 const empty: FlowSnapshot = {
   hasTemplate: false, identityReady: false, voiceprintReady: false, hasQuestions: false,
@@ -39,5 +39,21 @@ describe('resolveFlowProgress', () => {
 
   it('lands on the archive step when the case is archived', () => {
     expect(resolveFlowProgress({ ...prepared, frozen: true, signed: true, archived: true }).suggested).toBe('archive')
+  })
+})
+
+describe('pageForStep', () => {
+  it('opens the template picker for step ①', () => {
+    expect(pageForStep('template', 'prepare')).toBe('template')
+  })
+
+  it('keeps an intake sub-page when already inside intake and falls back to preparation otherwise', () => {
+    expect(pageForStep('intake', 'voiceprint')).toBe('voiceprint')
+    expect(pageForStep('intake', 'template')).toBe('prepare')
+    expect(pageForStep('intake', 'interrogation')).toBe('prepare')
+  })
+
+  it('shows the record page for steps ③–⑥', () => {
+    for (const key of ['dictation', 'review', 'signing', 'archive'] as const) expect(pageForStep(key, 'prepare')).toBe('interrogation')
   })
 })
