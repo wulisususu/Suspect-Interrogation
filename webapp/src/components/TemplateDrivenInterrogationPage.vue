@@ -29,6 +29,7 @@ import FormalTemplatePanel from './FormalTemplatePanel.vue'
 import LiveDialoguePanel from './LiveDialoguePanel.vue'
 import QuestionPreparationPanel from './QuestionPreparationPanel.vue'
 import DraftQuestionRail from './DraftQuestionRail.vue'
+import FactCoverageBar from './FactCoverageBar.vue'
 import RecordArchivePage from './RecordArchivePage.vue'
 import RecordReviewPanel from './RecordReviewPanel.vue'
 import ReviewChecklistPanel from './ReviewChecklistPanel.vue'
@@ -414,6 +415,7 @@ async function confirmSignature() {
     <div v-else class="template-interrogation-grid" :class="{ 'record-review-grid': mode === 'review', 'draft-first': mode === 'interrogation' }">
       <div class="formal-column">
         <header v-if="mode === 'review'" class="review-formal-heading record-no-print"><strong>询问笔录 · 复核中</strong><span>修改内容离开输入框后保存</span></header>
+        <FactCoverageBar v-if="mode === 'interrogation'" :facts="facts" @fill="mode = 'review'" />
 
         <FormalTemplatePanel
           :summary="summary"
@@ -486,6 +488,7 @@ async function confirmSignature() {
           :capture-running="capture.running"
           :capture-busy="captureBusy"
           :capture-available="nativeCaptureAvailable && canRecord"
+          :capture-elapsed-ms="captureElapsedMs"
           :locked="documentFrozen || completionBusy"
           @locate="locateQuestion"
           @update-answer="(questionId, text) => emit('updateAnswer', questionId, text)"

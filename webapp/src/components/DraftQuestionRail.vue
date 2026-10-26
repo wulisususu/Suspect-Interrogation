@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
-import { Mic, Square } from '@lucide/vue'
+import { computed, reactive, ref, watch } from 'vue'
+import { ArrowRight, FileText, Mic, RotateCcw, Square } from '@lucide/vue'
 import type { FormalQAUnit, FormalQuestion, PendingFormalQuestion } from '../types/templateInterrogation'
 
 /**
@@ -16,6 +16,7 @@ const props = defineProps<{
   captureRunning: boolean
   captureBusy?: boolean
   captureAvailable?: boolean
+  captureElapsedMs?: number
   locked?: boolean
 }>()
 
@@ -68,6 +69,31 @@ const cards = computed(() => {
         stateLabel: STATE_LABEL[state],
       }
     })
+})
+
+/**
+ * 逐题录音：录音通道是全局的，这里只记住是从哪张卡发起的，用于高亮「录音中」卡片。
+ * 录音停止后清除。
+ */
+const recordingCardId = ref<string | null>(null)
+watch(() => props.captureRunning, (running) => { if (!running) recordingCardId.value = null })
+
+function recordCard(cardId: string) {
+  if (props.locked) return
+  recordingCardId.value = props.captureRunning ? null : cardId
+  emit('captureToggle')
+}
+
+function insertBuffered(cardId: string) {
+  const card = cards.value.find((item) => item.id === cardId)
+  if (props.locked || !card?.bufferedText) return
+  drafts[cardId] = card.bufferedText
+  emit('updateAnswer', cardId, card.bufferedText)
+}
+
+const elapsedText = computed(() => {
+  const total = Math.floor((props.captureElapsedMs ?? 0) / 1000)
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 })
 
 /** 本地编辑草稿：只保存用户真正改过的题，避免服务端刷新把正在输入的内容冲掉 */
@@ -124,7 +150,7 @@ const counts = computed(() => {
 
     <ol v-if="cards.length" class="draft-list">
       <li v-for="card in cards" :key="card.id">
-        <article class="draft-card" :class="`is-${card.state}`">
+        <article class="draft-card" :class="[`is-${card.state}`, { 'is-recording': captureRunning && recordingCardId === card.id }]">
           <header class="draft-card-head">
             <span class="draft-ordinal">{{ card.ordinal }}</span>
             <button type="button" class="draft-question" :title="`在正本中定位第 ${card.ordinal} 题`" @click="emit('locate', card.id)">
@@ -143,6 +169,20 @@ const counts = computed(() => {
               @blur="saveAnswer(card.id)"
             ></textarea>
           </label>
+
+          <div v-if="captureRunning && recordingCardId === card.id" class="draft-recording" role="status">
+            <span>录音中 {{ elapsedText }}</span>
+            <button type="button" class="draft-action is-stop" :disabled="locked || captureBusy" @click="recordCard(card.id)"><Square :size="13" aria-hidden="true" />结束并转写</button>
+          </div>
+          <footer v-else-if="card.state === 'empty'" class="draft-card-actions is-empty">
+            <button type="button" class="draft-action is-answer" :disabled="locked || captureBusy || captureAvailable === false" @click="recordCard(card.id)"><Mic :size="15" aria-hidden="true" />点击此处回答</button>
+            <small>对着话筒说话 · 说完再点一下结束 · 自动转成文字，可再修改</small>
+          </footer>
+          <footer v-else class="draft-card-actions">
+            <button type="button" class="draft-action" :disabled="locked || captureBusy || captureAvailable === false" @click="recordCard(card.id)"><RotateCcw :size="14" aria-hidden="true" />重录这题</button>
+            <button v-if="card.state === 'recorded'" type="button" class="draft-action is-link" :disabled="locked" @click="emit('locate', card.id)"><FileText :size="14" aria-hidden="true" />在正本中查看 ›</button>
+            <button v-else type="button" class="draft-action is-primary" :disabled="locked || !card.bufferedText" @click="insertBuffered(card.id)">插入正本<ArrowRight :size="14" aria-hidden="true" /></button>
+          </footer>
         </article>
       </li>
     </ol>
@@ -152,6 +192,17 @@ const counts = computed(() => {
 </template>
 
 <style scoped>
+.draft-card.is-recording { border-color: var(--danger-600); box-shadow: 0 0 0 1px var(--danger-600); }
+.draft-card-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+.draft-card-actions.is-empty { justify-content: flex-start; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px dashed var(--primary-500); border-radius: var(--radius-md); }
+.draft-card-actions small { color: var(--ink-400); font-size: var(--text-xs); }
+.draft-action { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 36px; padding: 0 var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-sm); background: var(--surface-sunken); color: var(--primary-600); font-size: var(--text-xs); font-weight: 600; }
+.draft-action.is-primary { border-color: var(--primary-500); background: var(--surface); }
+.draft-action.is-link { border-color: transparent; background: transparent; }
+.draft-action.is-answer { min-height: 40px; padding: 0 var(--space-5); border: 0; border-radius: var(--radius-pill); background: var(--primary-600); color: var(--surface); font-size: var(--text-sm); }
+.draft-action.is-stop { border: 0; background: var(--danger-600); color: var(--surface); }
+.draft-recording { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--danger-100); color: var(--danger-700); font-size: var(--text-sm); font-weight: 600; }
+
 .draft-rail {
   display: flex;
   flex-direction: column;

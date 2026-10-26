@@ -33,6 +33,7 @@ import VoiceprintSetupPage from '../components/VoiceprintSetupPage.vue'
 import { useAutoVoiceprintEnrollment } from '../composables/useAutoVoiceprintEnrollment'
 import { useInterrogationStore } from '../stores/interrogation'
 import { useTemplateInterrogationStore } from '../stores/templateInterrogation'
+import { factCoverage } from '../utils/factCoverage'
 import type { CaseSummary, TemporaryAsrSpeaker } from '../types/interrogation'
 import type {
   CaseQuestionCreateInput,
@@ -68,6 +69,7 @@ const flowProgress = computed<FlowProgress>(() => {
   })
 })
 const currentStepMeta = computed(() => stepMeta(flowStep.value))
+const missingElements = computed(() => factCoverage(store.facts).missing.length)
 const caseTypeText = computed(() => (
   store.caseSummary.caseType === 'suspect_interrogation'
     ? '嫌疑人询问'
@@ -368,6 +370,12 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             @finish="store.finishSession"
             @next-stage="store.nextStage"
           />
+          <button
+            v-if="flowStep === 'dictation' && activePage === 'interrogation'"
+            type="button"
+            class="step-finalize"
+            @click="goStep('review')"
+          >{{ missingElements ? `定稿并校验 · 缺 ${missingElements} 项` : '定稿并校验' }}</button>
           <button v-if="activePage === 'moss'" type="button" class="step-back-tool" @click="goStep('dictation')">回到笔录</button>
         </template>
       </StepBar>
@@ -494,6 +502,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
 </template>
 
 <style scoped>
+.step-finalize { min-height: 36px; padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); background: var(--primary-600); color: var(--surface); font-size: var(--text-sm); font-weight: 600; white-space: nowrap; }
 .app-topbar {
   display: flex;
   align-items: center;
