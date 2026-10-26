@@ -3,6 +3,9 @@ import { computed } from 'vue'
 import { ArrowLeft, FileDown, Printer } from '@lucide/vue'
 import type { CaseSummary, DocumentSigningState, FactItem, SessionState } from '../types/interrogation'
 import type { FormalQuestion } from '../types/templateInterrogation'
+import { branding } from '../config/branding'
+import { factValue, formatRecordTime, recordWordCount, volumeNumber } from '../utils/recordPaper'
+import RecordPaper from './RecordPaper.vue'
 
 /**
  * ⑥ 归档导出
@@ -22,24 +25,16 @@ const props = defineProps<{
 const emit = defineEmits<{ print: []; back: [] }>()
 
 const questions = computed(() => [...props.questions].sort((a, b) => a.sortOrder - b.sortOrder))
-const wordCount = computed(() => questions.value.reduce((sum, item) => sum + (item.formalAnswerText?.trim().length || 0), 0))
-const volumeNo = computed(() => {
-  const digits = (props.summary.id || '').replace(/\D/g, '').slice(-8) || '0000'
-  return `2026-乙-${digits}-01`
-})
+const wordCount = computed(() => recordWordCount(props.questions))
+const volumeNo = computed(() => volumeNumber(branding.volumePrefix, props.summary.id || ''))
 const archivedText = computed(() => {
   const stamp = props.archivedAt || props.summary.updatedAt || props.summary.createdAt
   return stamp ? new Date(stamp).toLocaleString('zh-CN', { hour12: false }) : '—'
 })
 const signedCount = computed(() => props.signingState?.signatures.length ?? 0)
 
-function fact(key: string, fallback = '未填写') {
-  const value = props.facts.find((item) => item.key === key)?.value?.trim()
-  return value && value !== '未录入' ? value : fallback
-}
-function time(value?: number | null) {
-  return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '未记录'
-}
+const fact = (key: string) => factValue(props.facts, key)
+const time = formatRecordTime
 
 /** 纯文字版：给二次编辑用，保留问答结构，不带签章图片 */
 function exportWord() {
@@ -75,22 +70,8 @@ function escapeHtml(value: string) {
 <template>
   <section class="record-archive">
     <div class="archive-preview">
-      <article class="archive-paper">
-        <header><h2>询 问 笔 录</h2><p>归档正式件 · 卷号 {{ volumeNo }}</p></header>
-        <section class="archive-meta">
-          <p>询问时间：{{ time(session.startedAt || summary.createdAt) }} 至 {{ time(session.endedAt) }}</p>
-          <p>询问地点：{{ fact('interrogation_place') }}</p>
-          <p>询问人：{{ summary.officerName || '未填写' }}　记录人：{{ fact('recorder_name') }}</p>
-          <p>被询问人：{{ summary.suspectName || '未填写' }}　证件号码：{{ summary.idNumber || '未填写' }}</p>
-          <p>案件编号：{{ summary.id }}</p>
-        </section>
-        <section class="archive-body">
-          <div v-for="question in questions" :key="question.id" class="archive-qa">
-            <p><b>问：</b>{{ question.text }}</p>
-            <p><b>答：</b>{{ question.formalAnswerText || '（未获取）' }}</p>
-          </div>
-          <p v-if="!questions.length" class="archive-empty">该笔录暂无问答内容。</p>
-        </section>
+      <RecordPaper class="archive-paper" :summary="summary" :facts="facts" :session="session" :questions="questions" :subtitle="`归档正式件 · ${branding.volumePrefix ? `卷号 ${volumeNo}` : volumeNo}`">
+        <template #footer>
         <footer class="archive-signatures">
           <div v-for="role in (['SUSPECT', 'OFFICER'] as const)" :key="role" class="archive-signature">
             <span>{{ role === 'SUSPECT' ? '被询问人签名：' : '询问人签名：' }}</span>
@@ -103,7 +84,8 @@ function escapeHtml(value: string) {
           </div>
           <p>指纹捺印按纸质件办理 · 冻结版本 {{ signingState?.version ?? '—' }}</p>
         </footer>
-      </article>
+        </template>
+      </RecordPaper>
     </div>
 
     <aside class="archive-side">
@@ -138,14 +120,7 @@ function escapeHtml(value: string) {
 .record-archive { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; min-height: 0; height: 100%; color: var(--ink-700); font-size: var(--text-base); }
 
 .archive-preview { min-height: 0; overflow: auto; padding: var(--space-5); border-radius: var(--radius-lg); background: var(--surface-muted); }
-.archive-paper { width: 794px; margin: 0 auto; padding: 52px 48px 38px; background: var(--paper-bg); color: var(--paper-ink); font: var(--text-lg)/1.85 var(--font-serif); }
-.archive-paper > header { text-align: center; margin-bottom: 26px; }
-.archive-paper h2 { margin: 0; font-size: var(--text-3xl); font-weight: 600; letter-spacing: 4px; }
-.archive-paper header p { margin: 4px 0; color: var(--paper-muted); font-size: var(--text-base); }
-.archive-meta { padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--paper-rule); }
-.archive-meta p { margin: 0 0 6px; }
-.archive-qa p { margin: 0 0 12px; white-space: pre-wrap; }
-.archive-empty { color: var(--paper-muted); }
+.archive-paper { width: 794px; margin: 0 auto; }
 .archive-signatures { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--paper-rule); }
 .archive-signature { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; min-height: 40px; }
 .archive-signature img { max-width: 200px; max-height: 70px; object-fit: contain; }
@@ -172,5 +147,5 @@ function escapeHtml(value: string) {
 .archive-back { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; border: 1px solid var(--line-300); border-radius: var(--radius-md); background: var(--surface); color: var(--ink-500); font-size: var(--text-base); }
 
 @media (max-width: 1350px) { .record-archive { grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; } }
-@media print { .archive-side { display: none !important; } .record-archive { display: block; height: auto; } .archive-preview { padding: 0; background: var(--paper-bg); overflow: visible; } .archive-paper { width: auto; padding: 0; } }
+@media print { .archive-side { display: none !important; } .record-archive { display: block; height: auto; } .archive-preview { padding: 0; background: var(--paper-bg); overflow: visible; } }
 </style>

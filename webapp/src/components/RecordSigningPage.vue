@@ -3,6 +3,9 @@ import { computed, ref } from 'vue'
 import { Minus, Plus, Printer, ShieldCheck } from '@lucide/vue'
 import type { CaseSummary, DocumentSignerRole, DocumentSigningState, FactItem, SessionState } from '../types/interrogation'
 import type { FormalQuestion } from '../types/templateInterrogation'
+import { branding } from '../config/branding'
+import { formatRecordTime, recordWordCount, volumeNumber } from '../utils/recordPaper'
+import RecordPaper from './RecordPaper.vue'
 
 /**
  * ⑤ 签署归档
@@ -32,8 +35,7 @@ const copies = ref(2)
 const paper = ref('A4 · 单面黑白')
 const volumeNo = ref('')
 
-const questions = computed(() => [...props.questions].sort((a, b) => a.sortOrder - b.sortOrder))
-const wordCount = computed(() => questions.value.reduce((sum, item) => sum + (item.formalAnswerText?.trim().length || 0), 0))
+const wordCount = computed(() => recordWordCount(props.questions))
 
 function signature(role: DocumentSignerRole) {
   return props.signingState?.signatures.find((item) => item.signerRole === role)
@@ -42,18 +44,7 @@ const signedCount = computed(() => (['SUSPECT', 'OFFICER'] as DocumentSignerRole
 const signaturesReady = computed(() => signedCount.value === 2)
 const printAllowed = computed(() => Boolean(props.signingState?.integrityValid && !props.busy))
 
-const caseVolumeNo = computed(() => {
-  const digits = (props.summary.id || '').replace(/\D/g, '').slice(-8) || '0000'
-  return `2026-乙-${digits}-01`
-})
-
-function fact(key: string, fallback = '未填写') {
-  const value = props.facts.find((item) => item.key === key)?.value?.trim()
-  return value && value !== '未录入' ? value : fallback
-}
-function time(value?: number | null) {
-  return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '未记录'
-}
+const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.summary.id || ''))
 </script>
 
 <template>
@@ -61,26 +52,8 @@ function time(value?: number | null) {
     <div class="print-preview-column">
       <div class="print-preview-scroll" aria-label="询问笔录打印预览">
         <div class="print-preview-size" :style="{ width: `${794 * zoom / 100}px` }">
-          <article class="signing-paper" :style="{ zoom: zoom / 100 }">
-            <header><h2>询 问 笔 录</h2><p>询问次数：{{ fact('interrogation_round') }}</p></header>
-            <section class="signing-paper-meta">
-              <p>询问时间：{{ time(session.startedAt || summary.createdAt) }} 至 {{ time(session.endedAt) }}</p>
-              <p>询问地点：{{ fact('interrogation_place') }}</p>
-              <p>询问人：{{ summary.officerName || '未填写' }}　工作单位：{{ fact('officer_unit') }}</p>
-              <p>记录人：{{ fact('recorder_name') }}　工作单位：{{ fact('recorder_unit') }}</p>
-              <p>被询问人：{{ summary.suspectName || '未填写' }}　性别：{{ summary.gender || '未填写' }}　出生日期：{{ summary.birthDate || '未填写' }}</p>
-              <p>证件类型：{{ fact('id_document_type', '身份证') }}　证件号码：{{ summary.idNumber || '未填写' }}</p>
-              <p>联系方式：{{ fact('contact') }}　现住址：{{ summary.address || '未填写' }}</p>
-              <p>案件编号：{{ summary.id }}</p>
-            </section>
-            <section class="signing-paper-body">
-              <div v-for="question in questions" :key="question.id" class="print-qa">
-                <p><b>问：</b>{{ question.text }}</p>
-                <p><b>答：</b>{{ question.formalAnswerText || '（未获取）' }}</p>
-              </div>
-              <p v-if="!questions.length" class="print-empty">暂无正式问答内容，请返回定稿校验检查笔录。</p>
-            </section>
-
+          <RecordPaper class="signing-paper" :style="{ zoom: zoom / 100 }" :summary="summary" :facts="facts" :session="session" :questions="questions">
+            <template #footer>
             <footer class="paper-signatures">
               <div class="paper-hotspots record-no-print" aria-label="文末签章热区">
                 <button
@@ -113,7 +86,8 @@ function time(value?: number | null) {
               <p v-if="signingState">冻结版本 {{ signingState.version }} · {{ signingState.documentHash }}</p>
               <p v-else>当前为定稿前文稿，尚未冻结</p>
             </footer>
-          </article>
+            </template>
+          </RecordPaper>
         </div>
       </div>
       <footer class="print-preview-controls record-no-print">
@@ -131,7 +105,7 @@ function time(value?: number | null) {
         <header><ShieldCheck :size="18" /><h2>笔录状态</h2></header>
         <dl>
           <div><dt>文稿</dt><dd :class="{ ok: signingState }">{{ signingState ? '已定稿 · 已冻结' : '待定稿' }}</dd></div>
-          <div><dt>定稿时间</dt><dd>{{ signingState ? time(signingState.createdAt) : '未冻结' }}</dd></div>
+          <div><dt>定稿时间</dt><dd>{{ signingState ? formatRecordTime(signingState.createdAt) : '未冻结' }}</dd></div>
           <div><dt>签名进度</dt><dd :class="{ ok: signaturesReady }">{{ signedCount }} / 2 处</dd></div>
           <div><dt>指纹捺印</dt><dd>未接入采集器</dd></div>
           <div><dt>完整性校验</dt><dd :class="{ ok: signingState?.integrityValid }">{{ signingState ? (signingState.integrityValid ? '通过' : '异常') : '未校验' }}</dd></div>
@@ -175,16 +149,7 @@ function time(value?: number | null) {
 .print-preview-scroll { overflow: auto; min-width: 0; min-height: 0; padding: var(--space-5); }
 .print-preview-size { margin: 0 auto; }
 
-.signing-paper { width: 794px; min-height: 1123px; padding: 52px 48px 38px; box-sizing: border-box; background: var(--paper-bg); color: var(--paper-ink); font: var(--text-lg)/1.85 var(--font-serif); }
-.signing-paper > header { text-align: center; margin-bottom: 26px; }
-.signing-paper h2 { margin: 0; font-size: var(--text-3xl); font-weight: 600; letter-spacing: 4px; }
-.signing-paper header p { margin: 4px 0; color: var(--paper-muted); font-size: var(--text-base); }
-.signing-paper-meta { padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--paper-rule); }
-.signing-paper-meta p { margin: 0 0 6px; }
-.signing-paper p { overflow-wrap: anywhere; }
-.print-qa p { margin: 0 0 12px; white-space: pre-wrap; }
-.print-qa b { font-weight: 600; }
-.print-empty { color: var(--paper-muted); }
+.signing-paper { width: 794px; min-height: 1123px; }
 
 .paper-signatures { margin-top: 32px; }
 .paper-signatures > p { padding-top: 16px; border-top: 1px solid var(--paper-rule); font: var(--text-xs)/1.7 var(--font-sans); color: var(--paper-muted); }
@@ -250,5 +215,5 @@ function time(value?: number | null) {
 .signing-dialog .signing-primary { min-width: 120px; margin: 0; }
 
 @media (max-width: 1350px) { .record-signing-page { grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; } }
-@media print { .record-no-print { display: none !important; } .record-signing-page { display: block; height: auto; } .print-preview-scroll { padding: 0; overflow: visible; } .print-preview-size { width: auto !important; } .signing-paper { zoom: 1 !important; width: auto; min-height: 0; padding: 0; } }
+@media print { .record-no-print { display: none !important; } .record-signing-page { display: block; height: auto; } .print-preview-scroll { padding: 0; overflow: visible; } .print-preview-size { width: auto !important; } }
 </style>
