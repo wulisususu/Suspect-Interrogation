@@ -29,6 +29,7 @@ import LiveDialoguePanel from './LiveDialoguePanel.vue'
 import QuestionPreparationPanel from './QuestionPreparationPanel.vue'
 import RecordReviewPanel from './RecordReviewPanel.vue'
 import RecordSigningPage from './RecordSigningPage.vue'
+import type { RecordMode } from '../flow/steps'
 import { freezeBlockReason, orderedReviewFragments } from '../utils/recordCompletion'
 import './templateInterrogation.css'
 
@@ -54,6 +55,7 @@ const props = defineProps<{
   questionDictationDraft: string
   questionDictationError: string
   readiness: VoiceprintReadiness
+  completionMode: RecordMode
 }>()
 
 const emit = defineEmits<{
@@ -78,6 +80,7 @@ const emit = defineEmits<{
   saveLibrary: [questionId: string]
   correctFragment: [fragmentId: string, speaker: TemporaryAsrSpeaker, reason: string, text?: string]
   updateHeader: [target: 'case' | 'fact', key: string, value: string]
+  'update:completionMode': [mode: RecordMode]
 }>()
 
 type SignaturePoint = { x: number; y: number; t: number; p: number }
@@ -88,7 +91,10 @@ const signingError = ref('')
 const signingLoading = ref(true)
 const signingLoadError = ref('')
 const reviewBusy = ref(false)
-const completionMode = ref<'interrogation' | 'review' | 'sign'>('interrogation')
+const mode = computed<RecordMode>({
+  get: () => props.completionMode,
+  set: (value) => emit('update:completionMode', value),
+})
 const freezeChecks = ref([false, false, false, false, false])
 let signingRequest = 0
 const reviewFragments = computed(() => orderedReviewFragments(props.dialogueHistory, false))
@@ -119,13 +125,13 @@ watch(
     signatureRole.value = null
     signatureStrokes.value = []
     freezeChecks.value = [false, false, false, false, false]
-    completionMode.value = props.session.status === 'COMPLETED' ? 'review' : 'interrogation'
+    mode.value = props.session.status === 'COMPLETED' ? 'review' : 'interrogation'
     void loadSigningState()
   },
   { immediate: true },
 )
 watch(() => props.session.status, (status) => {
-  if (status === 'COMPLETED' && completionMode.value === 'interrogation') completionMode.value = 'review'
+  if (status === 'COMPLETED' && mode.value === 'interrogation') mode.value = 'review'
 })
 // A changed record must be inspected again before the operator freezes it.
 watch(() => JSON.stringify([props.summary, props.facts, props.workspace.questions, props.workspace.rounds, props.dialogueHistory, props.workspace.qaUnits]), () => {
@@ -147,7 +153,7 @@ async function loadSigningState() {
     const state = await fetchDocumentSigningState(caseId)
     if (request !== signingRequest || props.caseId !== caseId) return
     signingState.value = state
-    if (state) completionMode.value = 'sign'
+    if (state) mode.value = 'sign'
   } catch (err) {
     if (request !== signingRequest || props.caseId !== caseId) return
     signingLoadError.value = backendErrorMessage(err)
@@ -336,16 +342,15 @@ async function confirmSignature() {
 </script>
 
 <template>
-  <section class="template-driven-interrogation-page" :class="{ 'record-completion-mode': completionMode !== 'interrogation' }">
+  <section class="template-driven-interrogation-page" :class="{ 'record-completion-mode': mode !== 'interrogation' }">
     <p v-if="templateError || signingError || signingLoadError" class="template-page-error" role="alert">{{ templateError || signingError || signingLoadError }}<button v-if="signingLoadError" :disabled="signingLoading" @click="loadSigningState">重新读取签署状态</button></p>
-    <header v-if="completionMode !== 'interrogation'" class="record-completion-heading record-no-print"><h1>{{ completionMode === 'review' ? '复核笔录' : '冻结与打印' }} · {{ documentFrozen ? documentLocked ? '签署完成' : '已冻结' : session.status === 'COMPLETED' ? '审讯已结束' : '准备复核' }}</h1><p>{{ summary.id }} · {{ summary.suspectName || '姓名未填写' }} · 待确认转写 {{ unresolvedFragments }} 条 · 待处理问答 {{ unresolvedQa }} 组</p></header>
-    <nav class="record-mode-tabs record-no-print" aria-label="笔录处理阶段"><button :class="{ active: completionMode === 'interrogation' }" :aria-current="completionMode === 'interrogation' ? 'page' : undefined" @click="completionMode = 'interrogation'">2 审讯记录</button><button :class="{ active: completionMode === 'review' }" :aria-current="completionMode === 'review' ? 'page' : undefined" @click="completionMode = 'review'">3 笔录复核</button><button :class="{ active: completionMode === 'sign' }" :aria-current="completionMode === 'sign' ? 'page' : undefined" @click="completionMode = 'sign'">4 签署打印</button></nav>
+    <header v-if="mode !== 'interrogation'" class="record-completion-heading record-no-print"><h1>{{ mode === 'review' ? '复核笔录' : '冻结与打印' }} · {{ documentFrozen ? documentLocked ? '签署完成' : '已冻结' : session.status === 'COMPLETED' ? '审讯已结束' : '准备复核' }}</h1><p>{{ summary.id }} · {{ summary.suspectName || '姓名未填写' }} · 待确认转写 {{ unresolvedFragments }} 条 · 待处理问答 {{ unresolvedQa }} 组</p></header>
 
-    <RecordSigningPage v-if="completionMode === 'sign'" :summary="summary" :facts="facts" :session="session" :questions="workspace.questions" :signing-state="signingState" :busy="completionBusy || signingLoading" :checks="freezeChecks" :block-reason="freezeReason" @check="updateFreezeCheck" @freeze="finishAndFreeze" @print="emit('print')" @sign="openSignature" @review="completionMode = 'review'" />
+    <RecordSigningPage v-if="mode === 'sign'" :summary="summary" :facts="facts" :session="session" :questions="workspace.questions" :signing-state="signingState" :busy="completionBusy || signingLoading" :checks="freezeChecks" :block-reason="freezeReason" @check="updateFreezeCheck" @freeze="finishAndFreeze" @print="emit('print')" @sign="openSignature" @review="mode = 'review'" />
 
-    <div v-else class="template-interrogation-grid" :class="{ 'record-review-grid': completionMode === 'review' }">
+    <div v-else class="template-interrogation-grid" :class="{ 'record-review-grid': mode === 'review' }">
       <div class="formal-column">
-        <header v-if="completionMode === 'review'" class="review-formal-heading record-no-print"><strong>询问笔录 · 复核中</strong><span>修改内容离开输入框后保存</span></header>
+        <header v-if="mode === 'review'" class="review-formal-heading record-no-print"><strong>询问笔录 · 复核中</strong><span>修改内容离开输入框后保存</span></header>
         <details v-if="session.status === 'READY'" class="record-preparation-drawer record-no-print">
           <summary>问题准备 / 常用问题库</summary>
         <QuestionPreparationPanel
@@ -369,7 +374,7 @@ async function confirmSignature() {
           :questions="workspace.questions"
           :rounds="workspace.rounds"
           :busy="templateBusy || reviewBusy || signingLoading || !!signingLoadError"
-          :completion-mode="completionMode === 'review'"
+          :completion-mode="mode === 'review'"
           :document-frozen="documentFrozen"
           :document-locked="documentLocked"
           :signing-state="signingState"
@@ -385,13 +390,13 @@ async function confirmSignature() {
           @create-live-question-from-fragments="(fragmentIds, afterQuestionId) => emit('createLiveQuestionFromFragments', fragmentIds, afterQuestionId)"
           @print="emit('print')"
           @save-library="emit('saveLibrary', $event)"
-          @freeze="completionMode = 'sign'"
+          @freeze="mode = 'sign'"
           @sign="openSignature"
           @update-header="(target, key, value) => emit('updateHeader', target, key, value)"
         />
       </div>
 
-      <RecordReviewPanel v-if="completionMode === 'review'" :fragments="reviewFragments" :qa-units="workspace.qaUnits" :busy="completionBusy || signingLoading || !!signingLoadError" :frozen="documentFrozen" @confirm="reviewAction($event)" @discard="reviewAction([$event], true)" @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)" @correct="(id, speaker, reason, text) => emit('correctFragment', id, speaker, reason, text)" />
+      <RecordReviewPanel v-if="mode === 'review'" :fragments="reviewFragments" :qa-units="workspace.qaUnits" :busy="completionBusy || signingLoading || !!signingLoadError" :frozen="documentFrozen" @confirm="reviewAction($event)" @discard="reviewAction([$event], true)" @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)" @correct="(id, speaker, reason, text) => emit('correctFragment', id, speaker, reason, text)" />
       <div v-else class="dialogue-column">
         <LiveDialoguePanel
           v-if="readiness.suspectReady"

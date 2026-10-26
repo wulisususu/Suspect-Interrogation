@@ -53,8 +53,8 @@ describe('preparation start conditions', () => {
 
   it('never offers a second start for an existing session and shows its actual phase', async () => {
     const html = await screen({ sessionStatus: 'RUNNING' })
-    expect(html).toContain('2 审讯 · 当前')
     expect(html).toContain('进入审讯工作台')
+    expect(html).toContain('已有审讯会话')
     expect(html).not.toContain('>开始审讯')
   })
 

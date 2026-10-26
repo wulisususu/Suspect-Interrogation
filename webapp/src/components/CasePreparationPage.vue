@@ -19,7 +19,7 @@ export function preparationStartGuard(summary: CaseSummary, readiness: Voiceprin
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ArrowRight, Check, ChevronRight, ClipboardCheck, Mic, RefreshCw, ShieldCheck } from '@lucide/vue'
+import { ArrowRight, Check, ClipboardCheck, Mic, RefreshCw, ShieldCheck } from '@lucide/vue'
 import { voiceprintEnrollmentProgress, voiceprintDegradationNotice } from './VoiceprintPreparationPanel.vue'
 import type { FactItem, SessionStatus } from '../types/interrogation'
 
@@ -52,21 +52,12 @@ const voiceReady = computed(() => guard.value.voiceReady)
 const progress = computed(() => voiceprintEnrollmentProgress(props.enrollmentState))
 const startDisabled = computed(() => Boolean(props.busy || guard.value.disabled))
 const degradation = computed(() => voiceprintDegradationNotice(props.readiness))
-const steps = ['准备', '审讯', '复核', '签署']
-const currentStep = computed(() => {
-  const workflow = props.summary.workflowState
-  if (['FROZEN', 'SIGNED', 'REPORT_GENERATED'].includes(workflow || '')) return 3
-  if (workflow === 'SUMMARY' || props.sessionStatus === 'COMPLETED') return 2
-  if (['RUNNING', 'PAUSED'].includes(props.sessionStatus)) return 1
-  return 0
-})
 </script>
 
 <template>
   <div class="preparation-page">
     <section class="preparation-main">
-      <header class="preparation-heading"><h1>案件工作台</h1><p>{{ summary.id }} · {{ summary.suspectName || '待录入' }} · 主审民警 {{ summary.officerName || '未指定' }} · 记录员 {{ recorderName }}</p></header>
-      <nav class="preparation-steps" aria-label="询问流程阶段"><template v-for="(step, index) in steps" :key="step"><ChevronRight v-if="index" :size="18" aria-hidden="true" /><span :class="{ current: index === currentStep }" :aria-current="index === currentStep ? 'step' : undefined">{{ index + 1 }} {{ step }}{{ index === currentStep ? ' · 当前' : '' }}</span></template></nav>
+      <header class="preparation-heading"><h1>建档 · 核对身份与设备</h1><p>{{ summary.id }} · {{ summary.suspectName || '待录入' }} · 主审民警 {{ summary.officerName || '未指定' }} · 记录员 {{ recorderName }}</p></header>
       <section class="preparation-checklist" aria-label="开始前检查">
         <header><h2>开始前检查</h2><p>完成身份信息、声纹注册和设备检查后，即可开始审讯</p></header>
         <article class="check-row" :class="{ complete: identityRecorded }">
@@ -95,7 +86,6 @@ const currentStep = computed(() => {
     <aside class="preparation-sidebar">
       <section class="preparation-card"><h2>身份信息</h2><dl><div><dt>姓名</dt><dd>{{ summary.suspectName || '未填写' }}</dd></div><div><dt>证件号码</dt><dd>{{ maskedId }}</dd></div><div><dt>案件类型</dt><dd>{{ fact('case_type') }}</dd></div><div><dt>询问地点</dt><dd>{{ fact('interrogation_place') }}</dd></div><div><dt>询问人 · 记录人</dt><dd>{{ summary.officerName || '未指定' }} · {{ recorderName }}</dd></div><div><dt>是否人大代表</dt><dd>{{ fact('peoples_representative') }}</dd></div><div><dt>身份来源</dt><dd>{{ identitySource }}</dd></div><div><dt>询问次数</dt><dd>{{ fact('interrogation_round') === '未填写' ? '未填写' : '第 ' + fact('interrogation_round') + ' 次' }}</dd></div></dl><button class="check-link" @click="$emit('profile')">查看完整身份信息<ArrowRight :size="15" /></button></section>
       <section class="preparation-card"><h2>声纹采集与绑定</h2><ul><li>静音和长时间停顿不计入有效时长</li><li>避免多人同时说话，保持正常音量</li><li>声纹用于区分说话人</li></ul><div class="officer-binding"><strong>民警声纹绑定（可选）</strong><span :class="{ bound: readiness.interrogatorReady }">主审民警 · {{ readiness.interrogatorReady ? '已绑定' : '未绑定' }}</span><span :class="{ bound: readiness.recorderReady }">记录民警 · {{ readiness.recorderReady ? '已绑定' : '未绑定' }}</span><button class="check-link" @click="$emit('voiceprint')">管理绑定<ArrowRight :size="15" /></button></div></section>
-      <section class="preparation-card preparation-guide"><h2>询问流程指引</h2><ol><li>准备 — 身份信息与声纹采集</li><li>审讯 — 实时转写并预写笔录</li><li>复核 — 逐段确认转写内容</li><li>签署 — 冻结后打印与手写签名</li></ol><p>冻结签署后笔录锁定，不可再修改</p></section>
     </aside>
   </div>
 </template>
@@ -104,9 +94,6 @@ const currentStep = computed(() => {
 .preparation-page { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 26px; min-height: 100%; padding: 28px 32px 32px; max-width: 1920px; margin: 0 auto; color: #243550; font-size: 15px; }
 .preparation-main { display: flex; flex-direction: column; min-width: 0; }
 .preparation-heading h1 { margin: 0 0 12px; color: #1c2e49; font-size: 26px; } .preparation-heading p { margin: 0; color: #748196; }
-.preparation-steps { display: flex; align-items: center; gap: 12px; margin: 18px 0 24px; color: #a5afbd; }
-.preparation-steps span { padding: 12px 18px; border-radius: 9px; background: #fff; color: #748196; font-weight: 600; }
-.preparation-steps .current { color: #fff; background: #205293; }
 .preparation-checklist { display: flex; flex: 1; flex-direction: column; padding: 28px; background: #fff; border-radius: 13px; min-height: 580px; }
 h2 { margin: 0 0 8px; font-size: 18px; color: #26364c; } .preparation-checklist header p { margin: 0 0 22px; color: #91a0b5; font-size: 14px; }
 .check-row { display: flex; align-items: center; gap: 20px; padding: 24px 0; border-bottom: 1px solid #edf1f7; }
@@ -125,10 +112,9 @@ button { font: inherit; } .check-link { display: inline-flex; align-items: cente
 dl { margin: 0 0 10px; } dl > div { display: grid; grid-template-columns: 95px minmax(0,1fr); gap: 10px; padding: 7px 0; font-size: 13px; } dt { color: #91a0b5; } dd { margin: 0; text-align: right; overflow-wrap: anywhere; color: #34435b; }
 .preparation-card ul,.preparation-card ol { padding-left: 18px; margin: 0; color: #7a89a0; font-size: 13px; line-height: 2.2; }
 .officer-binding { display: flex; flex-wrap: wrap; gap: 9px; padding-top: 14px; border-top: 1px solid #edf1f7; margin-top: 12px; } .officer-binding strong { width: 100%; font-size: 13px; } .officer-binding > span { background: #f2f5f9; padding: 7px 9px; border-radius: 20px; color: #7a89a0; font-size: 12px; } .officer-binding > span.bound { background: #e8f6ed; color: #27824e; }
-.preparation-guide { flex: 1; display: flex; flex-direction: column; } .preparation-guide p { margin: auto 0 0; padding-top: 24px; color: #91a0b5; font-size: 12px; }
 .preparation-warning { padding: 12px; background: #fff5e5; color: #a16b20; border-radius: 8px; font-size: 14px; }
 @media(max-width: 1480px) { .preparation-page { padding: 22px 24px; grid-template-columns: minmax(0,1fr) 260px; gap: 18px; } .preparation-checklist { padding: 24px; } .check-row { gap: 14px; } .preparation-card { padding: 18px; } }
 @media(max-width: 1150px) { .preparation-page { grid-template-columns: 1fr; } .preparation-sidebar { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; } }
 @media(max-height: 800px) { .preparation-checklist { min-height: 500px; } .check-row { padding: 19px 0; } }
-@media(max-width: 720px) { .preparation-page { padding: 16px; } .preparation-sidebar { grid-template-columns: 1fr; } .preparation-steps { gap: 5px; } .preparation-steps span { padding: 10px; } .check-row { flex-wrap: wrap; } .check-row button { margin-left: 66px; } }
+@media(max-width: 720px) { .preparation-page { padding: 16px; } .preparation-sidebar { grid-template-columns: 1fr; } .check-row { flex-wrap: wrap; } .check-row button { margin-left: 66px; } }
 </style>

@@ -12,7 +12,19 @@ import CasePreparationPage, { preparationStartGuard } from '../components/CasePr
 import type { RuntimeCapabilities } from '../runtime/types'
 import MossTranscriptionPanel from '../components/MossTranscriptionPanel.vue'
 import SessionControls from '../components/SessionControls.vue'
+import StepBar from '../components/StepBar.vue'
 import TemplateDrivenInterrogationPage from '../components/TemplateDrivenInterrogationPage.vue'
+import {
+  FLOW_STEPS,
+  modeForStep,
+  resolveFlowProgress,
+  stepIndex,
+  stepKeyForMode,
+  stepMeta,
+  type FlowProgress,
+  type FlowStepKey,
+  type RecordMode,
+} from '../flow/steps'
 import VoiceprintAudioSourceBanner from '../components/VoiceprintAudioSourceBanner.vue'
 import VoiceprintSetupPage from '../components/VoiceprintSetupPage.vue'
 import { useAutoVoiceprintEnrollment } from '../composables/useAutoVoiceprintEnrollment'
@@ -35,6 +47,62 @@ const store = useInterrogationStore()
 const templateStore = useTemplateInterrogationStore()
 const autoVoiceprint = useAutoVoiceprintEnrollment()
 const activePage = ref<WorkspacePage>('prepare')
+/** 笔录页的三种形态由步骤条驱动，不再由笔录页内部自建第二套导航 */
+const completionMode = ref<RecordMode>('interrogation')
+const flowStep = ref<FlowStepKey>('intake')
+const INTAKE_PAGES: WorkspacePage[] = ['prepare', 'profile', 'voiceprint']
+
+const flowProgress = computed<FlowProgress>(() => {
+  const state = store.caseSummary.workflowState || ''
+  const frozen = ['FROZEN', 'SIGNED', 'REPORT_GENERATED'].includes(state)
+    || ['FROZEN', 'LOCKED'].includes(store.caseSummary.documentStatus || '')
+  return resolveFlowProgress({
+    workflowState: state,
+    hasTemplate: Boolean(templateStore.workspace.templateKey),
+    identityReady: Boolean(store.caseSummary.idNumber),
+    voiceprintReady: Boolean(store.voiceprintReadiness?.suspectReady),
+    hasQuestions: templateStore.workspace.questions.length > 0,
+    frozen,
+    signed: ['SIGNED', 'REPORT_GENERATED'].includes(state),
+    archived: state === 'REPORT_GENERATED',
+  })
+})
+const currentStepMeta = computed(() => stepMeta(flowStep.value))
+const caseTypeText = computed(() => (
+  store.caseSummary.caseType === 'suspect_interrogation'
+    ? '嫌疑人询问'
+    : store.caseSummary.caseType || ''
+))
+
+// 推进只向前：数据补齐后自动前进，用户手动回看不会被拽走。
+watch(() => flowProgress.value.suggested, (next) => {
+  if (stepIndex(next) > stepIndex(flowStep.value)) flowStep.value = next
+})
+
+function goStep(key: FlowStepKey, force = false) {
+  // 程序化入口（如「进入审讯工作台」）不受步骤门禁限制：
+  // 案件可能已有会话，但建档要素仍未补齐。
+  if (!force && key !== flowStep.value && !flowProgress.value.reachable.includes(key)) return
+  flowStep.value = key
+  if (key === 'intake') {
+    if (!INTAKE_PAGES.includes(activePage.value)) activePage.value = 'prepare'
+    return
+  }
+  activePage.value = 'interrogation'
+  completionMode.value = modeForStep(key)
+}
+
+function openIntakePage(page: WorkspacePage) {
+  flowStep.value = 'intake'
+  activePage.value = page
+}
+
+function onCompletionModeChange(mode: RecordMode) {
+  completionMode.value = mode
+  flowStep.value = stepKeyForMode(mode)
+  if (activePage.value !== 'interrogation') activePage.value = 'interrogation'
+}
+
 const recordSavingCount = ref(0)
 let recordSaveGeneration = 0
 const preparationDevices = ref<RuntimeCapabilities | null>(null)
@@ -263,48 +331,56 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
     </section>
 
     <template v-else>
-      <header class="topbar">
-        <button class="back-btn" @click="$emit('back')">‹ 返回</button>
-        <h1>案件审讯工作台</h1>
-        <span class="topbar-field">案件：{{ store.caseSummary.id || store.caseId }}</span>
-        <span class="topbar-field">嫌疑人：{{ store.caseSummary.suspectName || '待录入' }}</span>
-        <span class="topbar-field">主审：{{ store.caseSummary.officerName || '当前警官' }}</span>
-        <span class="topbar-field">记录员：{{ recorderName }}</span>
-        <AiSettingsPanel />
-        <VoiceprintAudioSourceBanner
-          class="topbar-audio-source"
-          compact
-          :source="autoVoiceprint.source.value"
-          :reason="autoVoiceprint.reason.value"
-          :secure-context="autoVoiceprint.secureContext.value"
-        />
-        <span class="recording" :class="{ muted: store.session.status !== 'RUNNING' }">● {{ store.session.status === 'RUNNING' ? '审讯中' : store.session.status === 'PAUSED' ? '已暂停' : '未录入' }}</span>
+      <header class="app-topbar">
+        <button type="button" class="topbar-back" @click="$emit('back')">‹ 返回</button>
+        <span class="app-brand">笔录智能工作台</span>
+        <span class="case-chip">案 {{ store.caseSummary.id || store.caseId }}<template v-if="caseTypeText"> · {{ caseTypeText }}</template></span>
+
+        <div class="app-topbar-meta">
+          <span class="topbar-field">询问人 {{ store.caseSummary.officerName || '未指定' }}</span>
+          <span class="topbar-divider" aria-hidden="true"></span>
+          <span class="topbar-field">记录人 {{ recorderName }}</span>
+          <VoiceprintAudioSourceBanner
+            class="topbar-audio-source"
+            compact
+            :source="autoVoiceprint.source.value"
+            :reason="autoVoiceprint.reason.value"
+            :secure-context="autoVoiceprint.secureContext.value"
+          />
+          <button type="button" class="topbar-tool" :class="{ active: activePage === 'moss' }" @click="activePage = 'moss'">MOSS 转写</button>
+          <AiSettingsPanel />
+          <span class="recording" :class="{ muted: store.session.status !== 'RUNNING' }">● {{ store.session.status === 'RUNNING' ? '录制中' : store.session.status === 'PAUSED' ? '已暂停' : '未开始' }}</span>
+        </div>
       </header>
 
-      <nav class="workspace-page-tabs" aria-label="案件工作区页面">
-        <button :class="{ active: activePage === 'prepare' }" @click="activePage = 'prepare'; checkPreparationDevices()"><b>1</b><span>询问准备</span></button>
-        <button :class="{ active: activePage === 'profile' }" @click="activePage = 'profile'">
-          <b>A</b><span>身份信息</span>
-        </button>
-        <button :class="{ active: activePage === 'voiceprint' }" @click="activePage = 'voiceprint'">
-          <b>B</b><span>声纹注册</span>
-        </button>
-        <button :class="{ active: activePage === 'interrogation' }" @click="openInterrogation">
-          <b>C</b><span>审讯记录</span>
-        </button>
-        <button :class="{ active: activePage === 'moss' }" @click="activePage = 'moss'">
-          <b>D</b><span>MOSS 转写</span>
-        </button>
-        <SessionControls
-          v-if="activePage !== 'prepare' && activePage !== 'voiceprint'"
-          :session="store.session"
-          :start-disabled="preparationGuard.disabled || preparationBusy || questionDictationActive || questionDictationBusy"
-          :start-disabled-reason="questionDictationActive || questionDictationBusy ? '请先停止准备阶段语音输入，再开始正式审讯。' : preparationBusy ? '正在处理，请稍候' : preparationGuard.reason"
-          @start="startPreparedSession"
-          @toggle-pause="store.togglePause"
-          @finish="store.finishSession"
-          @next-stage="store.nextStage"
-        />
+      <StepBar
+        :steps="FLOW_STEPS"
+        :current="flowStep"
+        :completed="flowProgress.completed"
+        :reachable="flowProgress.reachable"
+        @select="goStep"
+      >
+        <span class="step-hint">{{ currentStepMeta.hint }}</span>
+        <template #actions>
+          <SessionControls
+            v-if="flowStep !== 'intake' && activePage !== 'moss'"
+            :session="store.session"
+            :start-disabled="preparationGuard.disabled || preparationBusy || questionDictationActive || questionDictationBusy"
+            :start-disabled-reason="questionDictationActive || questionDictationBusy ? '请先停止准备阶段语音输入，再开始正式审讯。' : preparationBusy ? '正在处理，请稍候' : preparationGuard.reason"
+            @start="startPreparedSession"
+            @toggle-pause="store.togglePause"
+            @finish="store.finishSession"
+            @next-stage="store.nextStage"
+          />
+          <button v-if="activePage === 'moss'" type="button" class="step-back-tool" @click="goStep('dictation')">回到笔录</button>
+        </template>
+      </StepBar>
+
+      <nav v-if="flowStep === 'intake' && activePage !== 'moss'" class="intake-subnav" aria-label="建档子步骤">
+        <button type="button" :class="{ active: activePage === 'prepare' }" @click="openIntakePage('prepare'); checkPreparationDevices()">询问准备</button>
+        <button type="button" :class="{ active: activePage === 'profile' }" @click="openIntakePage('profile')">身份信息</button>
+        <button type="button" :class="{ active: activePage === 'voiceprint' }" @click="openIntakePage('voiceprint')">声纹注册</button>
+        <span class="intake-hint">核对身份 → 注册声纹 → 设备就绪后可开始正式询问</span>
       </nav>
 
       <div class="workspace-toast-region" aria-live="polite">
@@ -313,7 +389,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
       </div>
 
       <section class="workspace-page-body" :class="{ 'interrogation-workspace-body': activePage === 'interrogation', 'preparation-workspace-body': activePage === 'prepare' || activePage === 'voiceprint' }">
-        <CasePreparationPage v-if="activePage === 'prepare'" :summary="store.caseSummary" :facts="store.facts" :readiness="store.voiceprintReadiness" :enrollment-state="store.voiceprintEnrollmentState" :capabilities="preparationDevices" :session-status="store.session.status" :recorder-name="recorderName" :busy="preparationBusy || questionDictationActive || questionDictationBusy" :device-error="preparationDeviceError" @profile="activePage = 'profile'" @voiceprint="activePage = 'voiceprint'" @refresh="refreshPreparation" @start="startPreparedSession" @interrogation="openInterrogation" />
+        <CasePreparationPage v-if="activePage === 'prepare'" :summary="store.caseSummary" :facts="store.facts" :readiness="store.voiceprintReadiness" :enrollment-state="store.voiceprintEnrollmentState" :capabilities="preparationDevices" :session-status="store.session.status" :recorder-name="recorderName" :busy="preparationBusy || questionDictationActive || questionDictationBusy" :device-error="preparationDeviceError" @profile="openIntakePage('profile')" @voiceprint="openIntakePage('voiceprint')" @refresh="refreshPreparation" @start="startPreparedSession" @interrogation="goStep('dictation', true)" />
         <CaseProfilePage v-else-if="activePage === 'profile'" :summary="store.caseSummary" :facts="store.facts" @saved="refreshCaseWorkspace" />
 
         <MossTranscriptionPanel v-else-if="activePage === 'moss'" :case-id="store.caseId || props.caseId" />
@@ -335,7 +411,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
           @select-interrogator="store.selectInterrogatorOfficer($event)"
           @select-recorder="store.selectRecorderOfficer($event)"
           @bind-roles="store.bindVoiceprintRoles()"
-          @back="activePage = 'prepare'; checkPreparationDevices()"
+          @back="openIntakePage('prepare')"
         />
 
         <div v-else class="interrogation-workspace-stack">
@@ -361,6 +437,8 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             :question-dictation-draft="questionDictationDraft"
             :question-dictation-error="questionDictationError"
             :readiness="store.voiceprintReadiness"
+            :completion-mode="completionMode"
+            @update:completion-mode="onCompletionModeChange"
             @saved="refreshCaseWorkspace"
             @capture-start="store.startCapture"
             @capture-stop="store.stopCapture($event)"
@@ -389,15 +467,111 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
 </template>
 
 <style scoped>
-.preparation-workspace-body { padding: 0; overflow: auto; background: #f4f6fb; }
-.topbar { min-height: 60px; padding: 12px 24px; gap: 16px; background: #19345e; flex-wrap: wrap; }
-.topbar h1 { font-size: 18px; }
-.topbar-field { font-size: 13px; }
-.workspace-page-tabs { padding: 0 24px; min-height: 46px; }
-.workspace-page-tabs > button { min-width: 130px; font-size: 14px; }
+.app-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 0 0 auto;
+  min-height: var(--height-topbar);
+  padding: 0 var(--space-6);
+  background: var(--navy-900);
+  color: #fff;
+}
+.topbar-back {
+  min-height: 32px;
+  padding: 0 12px 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: #dbe6f4;
+  font-size: var(--text-sm);
+}
+.topbar-back:hover { background: rgba(255, 255, 255, 0.1); }
+.app-brand { font-size: var(--text-lg); font-weight: 600; letter-spacing: 0.5px; }
+.case-chip {
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.1);
+  color: #dbe6f4;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 360px;
+}
+.app-topbar-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+  min-width: 0;
+}
+.topbar-field { color: #c9d6e6; font-size: var(--text-sm); white-space: nowrap; }
+.topbar-divider { width: 1px; height: 16px; background: rgba(255, 255, 255, 0.18); }
+.topbar-audio-source { border-color: rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.06); }
+.topbar-tool {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: #dbe6f4;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.topbar-tool:hover { background: rgba(255, 255, 255, 0.12); }
+.topbar-tool.active { border-color: var(--primary-600); background: var(--primary-600); color: #fff; }
+.recording { font-size: var(--text-sm); color: #8fd6a8; white-space: nowrap; }
+.recording.muted { color: #9fb0bf; }
+
+.step-hint { color: var(--ink-400); font-size: var(--text-sm); }
+.step-back-tool {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line-300);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--primary-600);
+  font-size: var(--text-base);
+}
+
+.intake-subnav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  padding: var(--space-2) var(--space-6);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-200);
+}
+.intake-subnav button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line-200);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink-500);
+  font-size: var(--text-base);
+}
+.intake-subnav button:hover { border-color: var(--primary-200); color: var(--primary-600); }
+.intake-subnav button.active {
+  border-color: var(--primary-200);
+  background: var(--primary-100);
+  color: var(--primary-700);
+  font-weight: 600;
+}
+.intake-hint { margin-left: auto; color: var(--ink-300); font-size: var(--text-xs); }
+
+.preparation-workspace-body { padding: 0; overflow: auto; background: var(--surface-sunken); }
 .interrogation-workspace-body { padding: 0; overflow: hidden; }
-.interrogation-workspace-stack {
-  min-height: 0;
-  height: 100%;
+.interrogation-workspace-stack { min-height: 0; height: 100%; }
+
+@media (max-width: 1440px) {
+  .topbar-field { display: none; }
+  .topbar-divider { display: none; }
+}
+@media (max-width: 1180px) {
+  .case-chip { max-width: 220px; }
+  .intake-hint { display: none; }
 }
 </style>
