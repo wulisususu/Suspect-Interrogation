@@ -1,72 +1,56 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AdminShell from './components/AdminShell.vue'
+import EmptyState from './components/EmptyState.vue'
 import MaintenanceGate from './components/MaintenanceGate.vue'
 import OnScreenKeyboard from './components/OnScreenKeyboard.vue'
+import AdminPanelView from './views/AdminPanelView.vue'
 import CaseDashboardView from './views/CaseDashboardView.vue'
 import KioskHomeView from './views/KioskHomeView.vue'
 import LoginView from './views/LoginView.vue'
 import InterrogationWorkspace from './views/InterrogationWorkspace.vue'
 import SystemSettingsView from './views/SystemSettingsView.vue'
+import { parseRootRoute, rootRouteUrl, type AdminPanel, type RootRoute } from './utils/rootRoute'
 
-type RootPage = 'home' | 'cases' | 'settings' | 'login'
+const route = ref<RootRoute>(parseRootRoute(location.search))
 
-const params = new URLSearchParams(location.search)
-const caseId = ref(params.get('caseId') || '')
-const rootPage = ref<RootPage>(
-  params.get('view') === 'settings' ? 'settings'
-    : params.get('view') === 'login' ? 'login'
-      : params.get('view') === 'cases' ? 'cases'
-        : 'home',
-)
+function go(next: RootRoute) {
+  route.value = next
+  history.replaceState(null, '', rootRouteUrl(location.href, next))
+}
 
-function writeLocation() {
-  const next = new URL(location.href)
-  if (caseId.value) next.searchParams.set('caseId', caseId.value)
-  else next.searchParams.delete('caseId')
-  if (!caseId.value && rootPage.value === 'settings') next.searchParams.set('view', 'settings')
-  else if (!caseId.value && rootPage.value === 'login') next.searchParams.set('view', 'login')
-  else if (!caseId.value && rootPage.value === 'cases') next.searchParams.set('view', 'cases')
-  else next.searchParams.delete('view')
-  history.replaceState(null, '', next)
-}
-function openCase(id: string) {
-  rootPage.value = 'cases'
-  caseId.value = id
-  writeLocation()
-}
-function backToList() {
-  caseId.value = ''
-  rootPage.value = 'cases'
-  writeLocation()
-}
-function openSettings() {
-  caseId.value = ''
-  rootPage.value = 'settings'
-  writeLocation()
-}
-function openLogin() {
-  caseId.value = ''
-  rootPage.value = 'login'
-  writeLocation()
-}
-function openHome() {
-  caseId.value = ''
-  rootPage.value = 'home'
-  writeLocation()
-}
-function openCases() {
-  caseId.value = ''
-  rootPage.value = 'cases'
-  writeLocation()
+const openCase = (caseId: string) => go({ page: 'case', caseId })
+const openCases = () => go({ page: 'cases' })
+const openSettings = () => go({ page: 'settings' })
+const openLogin = () => go({ page: 'login' })
+const openHome = () => go({ page: 'home' })
+const openAdmin = () => go({ page: 'admin' })
+const openPlaceholder = (panel: AdminPanel) => go({ page: 'admin-placeholder', panel })
+
+const ADMIN_TITLES: Record<string, string> = {
+  'admin-pending': '未完成办理',
+  'admin-audit': '操作日志',
 }
 </script>
 
 <template>
   <MaintenanceGate>
-    <InterrogationWorkspace v-if="caseId" :key="caseId" :case-id="caseId" @back="backToList" />
-    <SystemSettingsView v-else-if="rootPage === 'settings'" @back="backToList" />
-    <LoginView v-else-if="rootPage === 'login'" @back="openCases" />
-    <KioskHomeView v-else-if="rootPage === 'home'" @start="openCases" @police-entry="openLogin" />
+    <InterrogationWorkspace v-if="route.page === 'case'" :key="route.caseId" :case-id="route.caseId" @back="openCases" />
+    <SystemSettingsView v-else-if="route.page === 'settings'" @back="openCases" />
+    <LoginView v-else-if="route.page === 'login'" @back="openHome" @admin="openAdmin" />
+    <KioskHomeView v-else-if="route.page === 'home'" @start="openCases" @police-entry="openLogin" />
+    <AdminShell v-else-if="route.page === 'admin'" title="管理面板" back-label="返回大厅" @back="openHome" @lock="openHome">
+      <AdminPanelView
+        @cases="openCases"
+        @pending="go({ page: 'admin-pending' })"
+        @audit="go({ page: 'admin-audit' })"
+        @voiceprints="openSettings"
+        @placeholder="openPlaceholder"
+      />
+    </AdminShell>
+    <AdminShell v-else-if="route.page !== 'cases'" :title="ADMIN_TITLES[route.page] ?? '后台管理'" @back="openAdmin" @lock="openHome">
+      <EmptyState kind="pending" :title="ADMIN_TITLES[route.page] ?? '后台管理'" />
+    </AdminShell>
     <div v-else class="case-root-shell">
       <nav class="root-navigation" aria-label="系统一级导航">
         <div class="brand-area">
