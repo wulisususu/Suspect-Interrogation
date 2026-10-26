@@ -34,6 +34,7 @@ import RecordReviewPanel from './RecordReviewPanel.vue'
 import ReviewChecklistPanel from './ReviewChecklistPanel.vue'
 import RecordSigningPage from './RecordSigningPage.vue'
 import type { RecordMode } from '../flow/steps'
+import { cssToken } from '../utils/cssToken'
 import { freezeBlockReason, orderedReviewFragments } from '../utils/recordCompletion'
 import './templateInterrogation.css'
 
@@ -294,7 +295,7 @@ function prepareCanvas() {
   ctx.clearRect(0, 0, rect.width, rect.height)
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  ctx.strokeStyle = '#111827'
+  ctx.strokeStyle = cssToken('--paper-ink', '#242b35')
 }
 
 function pointFromEvent(event: PointerEvent): SignaturePoint {

@@ -108,7 +108,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onEscape); previousF
 </template>
 
 <style scoped>
-.identity-mask { position: fixed; inset: 0; z-index: 1400; display: grid; place-items: center; padding: 24px; background: rgba(10,22,40,.78); color: var(--primary-700); }
+.identity-mask { position: fixed; inset: 0; z-index: 1400; display: grid; place-items: center; padding: 24px; background: rgba(10,22,40,.78); color: var(--ink-700); }
 .identity-modal { width: min(660px,96vw); max-height: 94vh; overflow: auto; padding: 28px; border-radius: 16px; background: var(--surface); box-shadow: 0 24px 76px rgba(6,20,33,.25); font-size: 15px; }
 .manual-entry-mode { padding-top: 16px; padding-bottom: calc(16px + var(--osk-height,0px)); }
 .manual-entry-mode .identity-modal { width: min(1180px,calc(100vw - 48px)); max-height: calc(100dvh - var(--osk-height,0px) - 32px); padding: 30px 32px; scroll-padding-block: 24px; }
@@ -117,7 +117,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onEscape); previousF
 .intake-subtitle { margin: 14px 0 0; color: var(--ink-400); font-size: 14px; }
 .intake-header-actions { display: flex; align-items: center; gap: 12px; }
 .review-reminder { border-radius: 99px; background: var(--warning-100); color: var(--warning-600); padding: 7px 12px; font-size: 13px; white-space: nowrap; }
-.back-to-card { background: transparent; padding: 5px 0; font-size: 13px; color: var(--primary-600); }
+.back-to-card { background: transparent; padding: 5px 0; font-size: 13px; color: var(--ink-500); }
 .manual-entry-mode footer { grid-template-columns: minmax(150px,1fr) 4fr; margin-top: 18px; }
 .manual-entry-mode footer button { min-height: 52px; }
 .manual-entry-mode .cancel-button { background: var(--surface); border: 1px solid var(--primary-100); }
@@ -137,8 +137,8 @@ button { display: inline-flex; align-items: center; justify-content: center; gap
 dt { color: var(--ink-400); font-size: 14px; } dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 .identity-summary input { text-align: right; min-height: 30px; border: 0; padding: 3px 6px; width: 100%; background: var(--primary-100); }
 .manual-notice { margin: 0 0 20px; padding: 15px 17px; background: var(--warning-100); color: var(--warning-600); border-radius: 9px; font-size: 14px; line-height: 1.6; }
-input,select,textarea { width: 100%; min-width: 0; min-height: 42px; border: 1px solid var(--primary-100); padding: 10px 12px; border-radius: 8px; background: var(--surface-sunken); color: var(--primary-700); font: inherit; }
-input:focus,select:focus,textarea:focus { outline: 2px solid var(--primary-500); outline-offset: 1px; }
+input,select,textarea { width: 100%; min-width: 0; min-height: 42px; border: 1px solid var(--primary-100); padding: 10px 12px; border-radius: 8px; background: var(--surface-sunken); color: var(--ink-700); font: inherit; }
+input:focus,select:focus,textarea:focus { outline: 2px solid var(--ink-400); outline-offset: 1px; }
 .error { margin: 12px 0; padding: 10px; border-radius: 7px; background: var(--danger-100); color: var(--danger-600); }
 footer { display: grid; grid-template-columns: 1fr 2fr; gap: 14px; margin-top: 18px; } footer button { min-height: 50px; }
 .spinning { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }

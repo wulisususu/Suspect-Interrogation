@@ -189,19 +189,19 @@ function normalizedSelect(event: Event) {
 .voiceprint-preparation-header,.voiceprint-preparation-footer { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .voiceprint-preparation-header h2 { margin:3px 0 0; font-size:22px; }
 .section-kicker { color:var(--ink-500); font-size:12px; letter-spacing:.08em; }
-.voiceprint-mode-chip,.voiceprint-status { border:1px solid var(--primary-500); border-radius:999px; padding:5px 10px; background:var(--surface); color:var(--ink-500); font-size:12px; font-weight:700; }
-.voiceprint-mode-chip.ready,.voiceprint-status.ok { border-color:var(--success-600); background:var(--success-100); color:var(--success-700); }
-.voiceprint-mode-degradation { display:flex; align-items:flex-start; gap:8px; margin:10px 0 0; padding:8px 10px; border:1px solid var(--warning-700); border-left:4px solid var(--warning-700); border-radius:7px; background:var(--warning-100); color:var(--warning-600); font-size:12px; font-weight:700; }
-.voiceprint-mode-degradation-icon { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; width:16px; height:16px; border-radius:50%; background:var(--warning-700); color:var(--surface); font-size:11px; }
-.voiceprint-warning { margin-top:10px; padding:9px 12px; border:1px solid var(--warning-700); border-radius:7px; background:var(--warning-100); color:var(--warning-600); font-weight:700; }
+.voiceprint-mode-chip,.voiceprint-status { border:1px solid var(--primary-200); border-radius:999px; padding:5px 10px; background:var(--surface); color:var(--ink-500); font-size:12px; font-weight:700; }
+.voiceprint-mode-chip.ready,.voiceprint-status.ok { border-color:var(--success-100); background:var(--success-100); color:var(--success-700); }
+.voiceprint-mode-degradation { display:flex; align-items:flex-start; gap:8px; margin:10px 0 0; padding:8px 10px; border:1px solid var(--warning-600); border-left:4px solid var(--warning-600); border-radius:7px; background:var(--warning-100); color:var(--warning-700); font-size:12px; font-weight:700; }
+.voiceprint-mode-degradation-icon { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; width:16px; height:16px; border-radius:50%; background:var(--warning-600); color:var(--surface); font-size:11px; }
+.voiceprint-warning { margin-top:10px; padding:9px 12px; border:1px solid var(--warning-600); border-radius:7px; background:var(--warning-100); color:var(--warning-700); font-weight:700; }
 .eres-backend-hint { margin:10px 0 0; padding:9px 12px; border:1px solid var(--line-300); border-radius:7px; background:var(--surface); color:var(--ink-500); font-size:12px; }
 .voiceprint-preparation-grid { display:grid; gap:8px; margin-top:12px; }
 .voiceprint-person-row { display:grid; grid-template-columns:minmax(190px,1fr) minmax(220px,1.4fr) auto; align-items:center; gap:12px; min-height:50px; padding:9px 12px; border:1px solid var(--line-300); border-radius:8px; background:rgba(255,255,255,.9); }
 .voiceprint-person-row.required { border-left:4px solid var(--primary-600); }
 .voiceprint-person-main { display:flex; align-items:center; gap:8px; }
 .voiceprint-person-main > span { color:var(--ink-400); font-size:12px; }
-.voiceprint-person-row select { min-height:38px; border:1px solid var(--primary-500); border-radius:6px; padding:0 10px; background:var(--surface); color:var(--primary-700); }
-.voiceprint-action,.voiceprint-preparation-footer button { min-height:38px; border:1px solid var(--primary-500); border-radius:6px; padding:0 13px; background:var(--surface); color:var(--primary-700); font-weight:700; }
+.voiceprint-person-row select { min-height:38px; border:1px solid var(--primary-200); border-radius:6px; padding:0 10px; background:var(--surface); color:var(--ink-700); }
+.voiceprint-action,.voiceprint-preparation-footer button { min-height:38px; border:1px solid var(--ink-300); border-radius:6px; padding:0 13px; background:var(--surface); color:var(--ink-700); font-weight:700; }
 .voiceprint-action.primary,.voiceprint-preparation-footer > button { border-color:var(--primary-600); background:var(--primary-600); color:var(--surface); }
 .voiceprint-action.danger { border-color:var(--danger-700); color:var(--danger-600); }
 button:disabled,select:disabled { opacity:.5; }

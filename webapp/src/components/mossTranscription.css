@@ -13,7 +13,7 @@
   flex: 0 0 auto;
   margin: 0;
   padding: 11px 16px;
-  border: 1px solid var(--warning-700);
+  border: 1px solid var(--warning-100);
   border-radius: 10px;
   background: var(--warning-100);
   color: var(--warning-600);
@@ -57,7 +57,7 @@
   border-bottom: 1px solid var(--primary-100);
 }
 
-.moss-panel > header h2 { margin: 0; font-size: 17px; color: var(--primary-700); }
+.moss-panel > header h2 { margin: 0; font-size: 17px; color: var(--ink-700); }
 .moss-panel > header p { margin: 4px 0 0; color: var(--ink-400); font-size: 12px; }
 .moss-panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 14px 18px 20px; }
 
@@ -76,7 +76,7 @@
 .moss-chip[data-tone="active"] { color: var(--warning-600); background: var(--warning-100); }
 .moss-chip[data-tone="done"] { color: var(--success-700); background: var(--success-100); }
 .moss-chip[data-tone="failed"] { color: var(--danger-600); background: var(--danger-100); }
-.moss-chip[data-tone="recover"] { color: var(--warning-600); background: var(--warning-100); }
+.moss-chip[data-tone="recover"] { color: var(--warning-700); background: var(--warning-100); }
 
 .moss-window-chip {
   display: inline-block;
@@ -117,7 +117,7 @@
 .moss-primary-button:disabled { opacity: .55; cursor: not-allowed; }
 
 .moss-secondary-button {
-  border: 1px solid var(--primary-500);
+  border: 1px solid var(--ink-300);
   border-radius: 9px;
   background: var(--surface-sunken);
   color: var(--primary-600);
@@ -131,8 +131,8 @@
 
 .moss-message { margin: 12px 0 0; padding: 9px 12px; border-radius: 8px; font-size: 13px; }
 .moss-message.error { color: var(--danger-600); background: var(--danger-100); border: 1px solid var(--danger-100); }
-.moss-message.success { color: var(--success-700); background: var(--success-100); border: 1px solid var(--success-600); }
-.moss-message.recover { color: var(--warning-600); background: var(--warning-100); border: 1px solid var(--warning-700); }
+.moss-message.success { color: var(--success-700); background: var(--success-100); border: 1px solid var(--success-100); }
+.moss-message.recover { color: var(--warning-700); background: var(--warning-100); border: 1px solid var(--warning-100); }
 
 .moss-meta {
   margin-top: 14px;
@@ -141,11 +141,11 @@
   gap: 8px 16px;
 }
 .moss-meta dt { margin: 0; color: var(--ink-400); font-size: 11px; font-weight: 700; }
-.moss-meta dd { margin: 2px 0 0; color: var(--primary-700); font-size: 12px; word-break: break-all; }
+.moss-meta dd { margin: 2px 0 0; color: var(--ink-700); font-size: 12px; word-break: break-all; }
 
 .moss-section-title {
   margin: 18px 0 8px;
-  color: var(--primary-600);
+  color: var(--ink-500);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: .08em;
@@ -169,7 +169,7 @@
 .moss-empty {
   margin: 4px 0;
   padding: 16px 12px;
-  border: 1px dashed var(--primary-500);
+  border: 1px dashed var(--line-300);
   border-radius: 10px;
   color: var(--ink-400);
   font-size: 13px;
@@ -180,7 +180,7 @@
 .moss-segment { padding: 9px 4px; border-bottom: 1px solid var(--primary-100); }
 .moss-segment-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .moss-segment-time { color: var(--primary-600); font-size: 12px; font-weight: 700; font-family: Consolas, monospace; }
-.moss-segment-head strong { color: var(--primary-700); font-size: 13px; }
+.moss-segment-head strong { color: var(--ink-700); font-size: 13px; }
 .moss-segment p { margin: 4px 0 0; color: var(--navy-900); line-height: 1.7; font-size: 14px; white-space: pre-wrap; }
 
 .moss-transcript-toolbar { display: flex; align-items: center; gap: 10px; }
@@ -188,7 +188,7 @@
   border-radius: 999px;
   padding: 4px 9px;
   background: var(--surface-sunken);
-  color: var(--primary-600);
+  color: var(--primary-500);
   font-size: 11px;
   font-weight: 700;
 }

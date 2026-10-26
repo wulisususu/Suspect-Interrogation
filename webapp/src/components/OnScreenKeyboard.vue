@@ -387,7 +387,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 8px 8px calc(10px + env(safe-area-inset-bottom, 0px));
   background: var(--primary-100);
-  border-top: 1px solid var(--primary-500);
+  border-top: 1px solid var(--primary-200);
   box-shadow: 0 -4px 16px rgba(32, 56, 77, 0.18);
   user-select: none;
   -webkit-user-select: none;
@@ -397,7 +397,7 @@ onBeforeUnmount(() => {
   flex: 1 1 0;
   min-width: 0;
   min-height: 54px;
-  border: 1px solid var(--primary-500);
+  border: 1px solid var(--primary-200);
   border-radius: 8px;
   background: var(--surface);
   color: var(--navy-900);
@@ -421,7 +421,7 @@ onBeforeUnmount(() => {
   font-weight: 700;
   color: var(--primary-600);
   background: var(--surface);
-  border: 1px dashed var(--primary-500);
+  border: 1px dashed var(--ink-300);
   border-radius: 8px;
   padding: 10px 12px;
 }
@@ -436,7 +436,7 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
   min-width: 56px;
   min-height: 46px;
-  border: 1px solid var(--primary-500);
+  border: 1px solid var(--primary-200);
   border-radius: 8px;
   background: var(--surface);
   color: var(--navy-900);

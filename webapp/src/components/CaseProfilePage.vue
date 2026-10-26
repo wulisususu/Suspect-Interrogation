@@ -107,7 +107,7 @@ onMounted(syncFromProps)
 .manual-profile-page .page-card-header { align-items: flex-start; padding: 26px 30px 0; border: 0; }
 .manual-profile-page h2 { font-size: 24px; color: var(--primary-700); }
 .manual-profile-page .page-card-header p { margin: 14px 0 0; color: var(--ink-400); font-size: 14px; }
-.identity-source { padding: 7px 12px; border-radius: 99px; background: var(--primary-100); color: var(--primary-600); font-size: 13px; white-space: nowrap; }
+.identity-source { padding: 7px 12px; border-radius: 99px; background: var(--primary-100); color: var(--ink-500); font-size: 13px; white-space: nowrap; }
 .profile-content.profile-content-single { display: block; overflow: auto; padding: 20px 30px 26px; scroll-padding-block: 24px; }
 .profile-content-single .profile-main { width: min(1180px,100%); margin: 0 auto; }
 .manual-profile-notice { margin: 0 0 20px; padding: 15px 17px; background: var(--warning-100); color: var(--warning-600); border-radius: 9px; font-size: 14px; line-height: 1.6; }

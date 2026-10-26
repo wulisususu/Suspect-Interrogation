@@ -814,12 +814,12 @@ onMounted(() => {
   justify-content: space-between;
   gap: 10px;
   padding: 9px 12px 7px;
-  color: var(--primary-700);
+  color: var(--ink-700);
   font: 12px/1.45 system-ui, sans-serif;
 }
 
 .region-heading strong {
-  color: var(--primary-700);
+  color: var(--navy-700);
   font-size: 13px;
 }
 
@@ -887,7 +887,7 @@ onMounted(() => {
 }
 
 .transcript-live-partial {
-  color: var(--primary-600);
+  color: var(--primary-500);
 }
 
 .transcript-live-partial.idle {
@@ -896,7 +896,7 @@ onMounted(() => {
 
 .latest-inline-button {
   flex: 0 0 auto;
-  border: 1px solid var(--primary-500);
+  border: 1px solid var(--ink-300);
   border-radius: 999px;
   padding: 3px 8px;
   color: var(--primary-700);
@@ -917,7 +917,7 @@ onMounted(() => {
 
 .recognition-entry {
   padding: 5px 0;
-  border-top: 1px solid var(--line-200);
+  border-top: 1px solid var(--canvas);
 }
 
 .recognition-row {
@@ -935,7 +935,7 @@ onMounted(() => {
 }
 
 .recognition-transfer-button {
-  border: 1px solid var(--primary-500);
+  border: 1px solid var(--ink-300);
   border-radius: 999px;
   padding: 3px 9px;
   color: var(--primary-600);
@@ -945,9 +945,9 @@ onMounted(() => {
 }
 
 .recognition-transfer-button.selected {
-  border-color: var(--primary-600);
+  border-color: var(--primary-500);
   color: var(--surface);
-  background: var(--primary-600);
+  background: var(--primary-500);
 }
 
 .recognition-time {
@@ -960,7 +960,7 @@ onMounted(() => {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  color: var(--primary-700);
+  color: var(--ink-700);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1084,20 +1084,20 @@ onMounted(() => {
 .qa-review-rail { margin-bottom: 10px; color: var(--ink-500); font-size: 12px; }
 .qa-review-rail summary { cursor: pointer; padding: 4px 2px; }
 .qa-review-rail[open] { display: grid; gap: 8px; }
-.qa-review-card { border: 1px solid var(--warning-700); background: var(--warning-100); border-radius: 10px; padding: 10px; }
+.qa-review-card { border: 1px solid var(--warning-600); background: var(--warning-100); border-radius: 10px; padding: 10px; }
 .qa-review-card header { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .qa-review-card p { margin: 6px 0; line-height: 1.45; }
-.qa-status-chip { display: inline-flex; padding: 2px 8px; border-radius: 999px; background: var(--warning-700); color: var(--warning-600); font-weight: 800; }
+.qa-status-chip { display: inline-flex; padding: 2px 8px; border-radius: 999px; background: var(--warning-600); color: var(--warning-700); font-weight: 800; }
 .qa-suggestion { color: var(--ink-500); }
 .qa-review-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .qa-review-actions button { cursor: grab; }
 .qa-review-actions .qa-ignore { cursor: pointer; }
 .qa-routing-status { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--success-100); color: var(--success-700); font-size: 12px; }
 .qa-routing-status small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qa-rollback { margin-left: auto; border: 1px solid var(--warning-700); border-radius: 6px; padding: 3px 7px; background: var(--surface); color: var(--warning-600); cursor: pointer; }
+.qa-rollback { margin-left: auto; border: 1px solid var(--warning-600); border-radius: 6px; padding: 3px 7px; background: var(--surface); color: var(--warning-700); cursor: pointer; }
 .qa-status-muted { background: var(--surface-sunken); color: var(--ink-500); opacity: .78; }
 .raw-fragment-list { display: grid; gap: 6px; padding: 9px 10px; border-top: 1px solid rgba(76, 112, 156, .16); }
 .raw-fragment-list div { display: grid; gap: 2px; }
-.raw-fragment-list strong { color: var(--primary-700); }
+.raw-fragment-list strong { color: var(--ink-700); }
 .raw-fragment-list small { color: var(--ink-500); }
 </style>

@@ -138,18 +138,18 @@ function escapeHtml(value: string) {
 .record-archive { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; min-height: 0; height: 100%; color: var(--ink-700); font-size: var(--text-base); }
 
 .archive-preview { min-height: 0; overflow: auto; padding: var(--space-5); border-radius: var(--radius-lg); background: var(--surface-muted); }
-.archive-paper { width: 794px; margin: 0 auto; padding: 52px 48px 38px; background: #fff; color: #242b35; font: 17px/1.85 var(--font-serif); }
+.archive-paper { width: 794px; margin: 0 auto; padding: 52px 48px 38px; background: var(--paper-bg); color: var(--paper-ink); font: 17px/1.85 var(--font-serif); }
 .archive-paper > header { text-align: center; margin-bottom: 26px; }
 .archive-paper h2 { margin: 0; font-size: 30px; font-weight: 600; letter-spacing: 4px; }
-.archive-paper header p { margin: 4px 0; color: #8c97a6; font-size: 14px; }
-.archive-meta { padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid #dce2eb; }
+.archive-paper header p { margin: 4px 0; color: var(--paper-muted); font-size: 14px; }
+.archive-meta { padding-bottom: 14px; margin-bottom: 16px; border-bottom: 1px solid var(--paper-rule); }
 .archive-meta p { margin: 0 0 6px; }
 .archive-qa p { margin: 0 0 12px; white-space: pre-wrap; }
-.archive-empty { color: #8c97a6; }
-.archive-signatures { margin-top: 30px; padding-top: 16px; border-top: 1px solid #dce2eb; }
+.archive-empty { color: var(--paper-muted); }
+.archive-signatures { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--paper-rule); }
 .archive-signature { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; min-height: 40px; }
 .archive-signature img { max-width: 200px; max-height: 70px; object-fit: contain; }
-.archive-signatures > p { margin: 0; color: #95a0af; font: 12px/1.7 var(--font-sans); }
+.archive-signatures > p { margin: 0; color: var(--paper-muted); font: 12px/1.7 var(--font-sans); }
 
 .archive-side { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; overflow: auto; }
 .archive-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-5); border: 1px solid var(--line-200); border-radius: var(--radius-lg); background: var(--surface); }
@@ -165,12 +165,12 @@ function escapeHtml(value: string) {
 
 .archive-note { margin: 0; color: var(--ink-400); font-size: var(--text-xs); line-height: 1.7; }
 
-.archive-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; border: 0; border-radius: var(--radius-md); background: var(--primary-600); color: #fff; font-size: var(--text-base); font-weight: 600; }
+.archive-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; border: 0; border-radius: var(--radius-md); background: var(--primary-600); color: var(--surface); font-size: var(--text-base); font-weight: 600; }
 .archive-primary:hover { background: var(--primary-700); }
 .archive-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border: 1px solid var(--line-300); border-radius: var(--radius-md); background: var(--surface); color: var(--primary-600); font-size: var(--text-base); }
 
 .archive-back { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; border: 1px solid var(--line-300); border-radius: var(--radius-md); background: var(--surface); color: var(--ink-500); font-size: var(--text-base); }
 
 @media (max-width: 1350px) { .record-archive { grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; } }
-@media print { .archive-side { display: none !important; } .record-archive { display: block; height: auto; } .archive-preview { padding: 0; background: #fff; overflow: visible; } .archive-paper { width: auto; padding: 0; } }
+@media print { .archive-side { display: none !important; } .record-archive { display: block; height: auto; } .archive-preview { padding: 0; background: var(--paper-bg); overflow: visible; } .archive-paper { width: auto; padding: 0; } }
 </style>

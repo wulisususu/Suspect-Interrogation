@@ -26,7 +26,7 @@
   border-radius: 7px;
   display: grid;
   place-items: center;
-  background: var(--primary-100);
+  background: var(--canvas);
   color: var(--ink-500);
   font-size: 12px;
 }
@@ -73,7 +73,7 @@
   gap: 18px;
   background: var(--surface);
 }
-.page-card-header h2 { margin: 0; font-size: 18px; color: var(--primary-700); }
+.page-card-header h2 { margin: 0; font-size: 18px; color: var(--ink-700); }
 .page-card-header p { margin: 5px 0 0; color: var(--ink-400); font-size: 12px; }
 .primary-action {
   border: 0;
@@ -85,14 +85,14 @@
 }
 .page-message { margin: 12px 0 0; padding: 9px 12px; border-radius: 8px; font-size: 13px; }
 .page-message.error, .interrogation-error { color: var(--danger-600); background: var(--danger-100); border: 1px solid var(--danger-100); }
-.page-message.success { color: var(--success-700); background: var(--success-100); border: 1px solid var(--success-600); }
+.page-message.success { color: var(--success-700); background: var(--success-100); border: 1px solid var(--success-100); }
 
 /* A：身份信息 */
 .profile-page { display: flex; flex-direction: column; }
 .profile-header-actions { display: flex; align-items: center; gap: 12px; }
 .identity-source { color: var(--ink-500); font-size: 12px; }
 .scanner-button {
-  border: 1px solid var(--primary-500);
+  border: 1px solid var(--ink-300);
   border-radius: 9px;
   background: var(--surface-sunken);
   color: var(--primary-600);
@@ -148,7 +148,7 @@
 .identity-preview { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .identity-preview-box {
   min-height: 220px;
-  border: 1px dashed var(--primary-500);
+  border: 1px dashed var(--ink-300);
   border-radius: 12px;
   background: var(--surface-sunken);
   overflow: hidden;
@@ -163,7 +163,7 @@
 .interrogation-page { display: flex; flex-direction: column; }
 .interrogation-header { flex: 0 0 auto; }
 .ai-generate-button {
-  border: 1px solid var(--primary-500);
+  border: 1px solid var(--ink-300);
   border-radius: 9px;
   background: var(--surface-sunken);
   color: var(--primary-600);
@@ -217,14 +217,14 @@
 .record-button {
   width: 94px;
   flex: 0 0 94px;
-  border: 1px solid var(--primary-500);
+  border: 1px solid var(--line-300);
   border-radius: 10px;
   background: var(--surface);
-  color: var(--primary-700);
+  color: var(--ink-500);
   font-weight: 700;
 }
 .record-button .record-dot { color: var(--danger-700); margin-right: 4px; }
-.record-button.active { border-color: var(--danger-700); background: var(--danger-100); color: var(--danger-600); }
+.record-button.active { border-color: var(--danger-600); background: var(--danger-100); color: var(--danger-600); }
 .interrogation-composer textarea {
   flex: 1 1 auto;
   min-width: 0;

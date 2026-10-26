@@ -60,14 +60,14 @@ function submitLogin() {
 .login-card { width: min(408px, 100%); padding: 35px; text-align: center; background: var(--surface); border-radius: 13px; box-shadow: 0 8px 25px rgba(16,34,65,.025); }
 .login-mark { display: grid; place-items: center; width: 52px; height: 52px; margin: 0 auto 12px; border-radius: 13px; background: var(--primary-700); color: var(--surface); font-size: 26px; font-weight: 700; }
 .login-card h1 { margin: 0 0 6px; font-size: 21px; letter-spacing: .025em; font-weight: 750; }
-.login-subtitle { margin: 0 0 30px; color: var(--primary-500); font-size: 11px; }
+.login-subtitle { margin: 0 0 30px; color: var(--ink-300); font-size: 11px; }
 .login-form { display: flex; flex-direction: column; text-align: left; gap: 7px; }
 .login-form label { margin-top: 2px; color: var(--ink-500); font-size: 12px; font-weight: 650; }
 .login-form input { width: 100%; height: 43px; padding: 0 13px; margin-bottom: 12px; background: var(--surface-sunken); border: 1px solid transparent; border-radius: 7px; outline: none; color: var(--navy-900); font-size: 14px; }
 .login-form input:focus { border-color: var(--primary-600); box-shadow: 0 0 0 3px rgba(34,82,143,.09); }
 .login-primary { height: 43px; margin-top: 1px; border: none; border-radius: 7px; background: var(--primary-600); color: white; font-weight: 700; }
 .login-primary:hover { background: var(--primary-700); }
-.login-feedback { margin: 14px 0 0; padding: 10px; background: var(--warning-100); border: 1px solid var(--warning-700); border-radius: 7px; color: var(--warning-600); text-align: left; font-size: 12px; line-height: 1.7; }
+.login-feedback { margin: 14px 0 0; padding: 10px; background: var(--warning-100); border: 1px solid var(--warning-100); border-radius: 7px; color: var(--warning-700); text-align: left; font-size: 12px; line-height: 1.7; }
 .login-note { margin: 20px 0 0; color: var(--ink-400); font-size: 10px; }
 .preview-warning { display: grid; gap: 7px; margin-top: 23px; padding: 12px; border: 1px dashed var(--line-300); border-radius: 8px; background: var(--surface-sunken); color: var(--ink-500); text-align: left; font-size: 11px; line-height: 1.55; }
 .preview-warning strong { color: var(--primary-600); }

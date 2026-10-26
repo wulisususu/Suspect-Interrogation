@@ -45,6 +45,14 @@
   --danger-600: #c0463c;
   --danger-100: #fbeceb;
 
+  /* 纸质笔录 · 打印件为白纸黑字，不随界面主题变化 */
+  --paper-bg: #ffffff;
+  --paper-ink: #242b35;
+  --paper-rule: #dce2eb;
+  --paper-muted: #8c97a6;
+  --paper-hotspot-border: #8aa9c9;
+  --paper-hotspot-bg: #f7fbff;
+
   /* 字体 */
   --font-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
   --font-serif: "FangSong", "STFangsong", "SimSun", serif;
