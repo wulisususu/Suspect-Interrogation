@@ -13,14 +13,21 @@ import SystemSettingsView from './views/SystemSettingsView.vue'
 import { parseRootRoute, rootRouteUrl, type AdminPanel, type RootRoute } from './utils/rootRoute'
 
 const route = ref<RootRoute>(parseRootRoute(location.search))
+/** 大厅「开始新建笔录」进入台账时直接打开身份录入；仅本次导航有效，不写入地址栏。 */
+const startNew = ref(false)
 
 function go(next: RootRoute) {
+  startNew.value = false
   route.value = next
   history.replaceState(null, '', rootRouteUrl(location.href, next))
 }
 
 const openCase = (caseId: string) => go({ page: 'case', caseId })
 const openCases = () => go({ page: 'cases' })
+function startNewRecord() {
+  go({ page: 'cases' })
+  startNew.value = true
+}
 const openSettings = () => go({ page: 'settings' })
 const openLogin = () => go({ page: 'login' })
 const openHome = () => go({ page: 'home' })
@@ -36,9 +43,9 @@ const ADMIN_TITLES: Record<string, string> = {
 <template>
   <MaintenanceGate>
     <InterrogationWorkspace v-if="route.page === 'case'" :key="route.caseId" :case-id="route.caseId" @back="openCases" />
-    <SystemSettingsView v-else-if="route.page === 'settings'" @back="openCases" />
+    <SystemSettingsView v-else-if="route.page === 'settings'" @back="openAdmin" />
     <LoginView v-else-if="route.page === 'login'" @back="openHome" @admin="openAdmin" />
-    <KioskHomeView v-else-if="route.page === 'home'" @start="openCases" @police-entry="openLogin" />
+    <KioskHomeView v-else-if="route.page === 'home'" @start="startNewRecord" @police-entry="openLogin" />
     <AdminShell v-else-if="route.page === 'admin'" title="管理面板" back-label="返回大厅" @back="openHome" @lock="openHome">
       <AdminPanelView
         @cases="openCases"
@@ -51,42 +58,14 @@ const ADMIN_TITLES: Record<string, string> = {
     <AdminShell v-else-if="route.page !== 'cases'" :title="ADMIN_TITLES[route.page] ?? '后台管理'" @back="openAdmin" @lock="openHome">
       <EmptyState kind="pending" :title="ADMIN_TITLES[route.page] ?? '后台管理'" />
     </AdminShell>
-    <div v-else class="case-root-shell">
-      <nav class="root-navigation" aria-label="系统一级导航">
-        <div class="brand-area">
-          <span class="shield-mark" aria-hidden="true">★</span>
-          <strong>嫌疑人询问系统</strong>
-          <span class="nav-divider"></span>
-          <span class="nav-department">江北分局 · 刑侦大队</span>
-          <span class="internal-pill">● 内网专用终端</span>
-        </div>
-        <div class="root-navigation-actions">
-          <button type="button" class="voice-entry" @click="openHome">← 返回大厅</button>
-          <button type="button" class="voice-entry" @click="openSettings">系统设置 · 民警声纹库</button>
-          <button type="button" class="login-entry" @click="openLogin">登录页预览</button>
-          <span class="nav-avatar" aria-hidden="true">警</span>
-        </div>
-      </nav>
-      <CaseDashboardView @open="openCase" @settings="openSettings" @login="openLogin" />
-    </div>
+    <AdminShell v-else title="全部案件记录" @back="openAdmin" @lock="openHome">
+      <CaseDashboardView
+        :auto-new="startNew"
+        @open="openCase"
+        @detail="(caseId) => go({ page: 'admin-case', adminCaseId: caseId })"
+        @new-cancelled="openHome"
+      />
+    </AdminShell>
   </MaintenanceGate>
   <OnScreenKeyboard />
 </template>
-
-<style scoped>
-.case-root-shell { display: flex; flex-direction: column; height: 100vh; width: 100%; min-width: 0; background: var(--surface-sunken); }
-.root-navigation { height: 54px; flex: 0 0 54px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 0 23px; background: var(--primary-700); color: var(--surface); }
-.brand-area, .root-navigation-actions { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.brand-area strong { font-weight: 750; font-size: var(--text-md); white-space: nowrap; }
-.shield-mark { width: 24px; height: 27px; display: grid; place-items: center; clip-path: polygon(50% 0, 95% 20%, 90% 72%, 50% 100%, 10% 72%, 5% 20%); background: var(--surface); color: var(--primary-700); font-size: var(--text-md); }
-.nav-divider { width: 1px; height: 19px; background: var(--primary-600); }
-.nav-department { color: var(--line-300); font-size: var(--text-xs); white-space: nowrap; }
-.internal-pill { background: var(--danger-600); color: var(--danger-100); padding: 7px 12px; border-radius: 99px; font-size: var(--text-xs); white-space: nowrap; }
-.root-navigation-actions { margin-left: auto; }
-.root-navigation-actions button { padding: 7px 11px; background: var(--primary-700); border: 1px solid transparent; border-radius: 8px; color: var(--primary-100); font-size: var(--text-xs); white-space: nowrap; }
-.root-navigation-actions button:hover { background: var(--primary-600); }
-.root-navigation-actions .login-entry { background: transparent; border-color: var(--primary-600); color: var(--line-300); }
-.nav-avatar { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--primary-600); color: var(--surface); font-size: var(--text-xs); }
-@media (max-width: 1150px) { .root-navigation { padding: 0 14px; } .nav-department, .internal-pill { display: none; } }
-@media (max-width: 720px) { .voice-entry { display: none; } .brand-area strong { font-size: var(--text-sm); } }
-</style>

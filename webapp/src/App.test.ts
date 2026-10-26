@@ -10,6 +10,6 @@ describe('root navigation query handling', () => {
 
   it('exposes the global officer voiceprint library outside a case', () => {
     expect(source).toContain('SystemSettingsView')
-    expect(source).toContain('系统设置 · 民警声纹库')
+    expect(source).toContain('@voiceprints="openSettings"')
   })
 })

@@ -10,13 +10,11 @@ describe('PDF phase-one frontend redesign', () => {
     expect(appSource).toContain('CaseDashboardView')
   })
 
-  it('builds case counts and workflow labels from actual loaded API rows', () => {
+  it('builds the ledger from actual loaded API rows', () => {
     expect(dashboardSource).toContain('fetchCases(query ? 100 : 50, query)')
-    expect(dashboardSource).toContain('workflowState')
-    expect(dashboardSource).toContain("workflow === 'REPORT_GENERATED'")
+    expect(dashboardSource).toContain('ledgerActions(')
     expect(dashboardSource).toContain('filteredCases.value.slice(')
-    expect(dashboardSource).toContain('fetchRuntimeCapabilities(true)')
-    expect(dashboardSource).toContain('fetchOfficerVoiceProfiles(true)')
+    expect(dashboardSource).not.toContain('fetchRuntimeCapabilities')
   })
 
   it('does not pretend a frontend-only credential form is an authentication boundary', () => {
