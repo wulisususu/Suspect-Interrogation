@@ -36,6 +36,7 @@ import ReviewChecklistPanel from './ReviewChecklistPanel.vue'
 import RecordSigningPage from './RecordSigningPage.vue'
 import type { RecordMode } from '../flow/steps'
 import { cssToken } from '../utils/cssToken'
+import { reviewAutoChecks } from '../utils/reviewChecks'
 import { freezeBlockReason, orderedReviewFragments } from '../utils/recordCompletion'
 import './templateInterrogation.css'
 
@@ -120,6 +121,7 @@ const signatureCanvas = ref<HTMLCanvasElement | null>(null)
 const signatureStrokes = ref<SignaturePoint[][]>([])
 let activeStroke: SignaturePoint[] | null = null
 
+const autoChecks = computed(() => reviewAutoChecks(props.facts, props.readiness))
 const documentFrozen = computed(() => !!signingState.value || ['FROZEN', 'SIGNED', 'REPORT_GENERATED'].includes(props.summary.workflowState || ''))
 const documentLocked = computed(() => signingState.value?.status === 'LOCKED')
 
@@ -456,6 +458,7 @@ async function confirmSignature() {
           :frozen="documentFrozen"
           :unresolved-fragments="unresolvedFragments"
           :unresolved-qa="unresolvedQa"
+          :auto-checks="autoChecks"
           @check="updateFreezeCheck"
           @freeze="finishAndFreeze"
         />
