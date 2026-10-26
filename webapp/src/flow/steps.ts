@@ -15,7 +15,7 @@ export type RecordMode = 'interrogation' | 'review' | 'sign' | 'archive'
 
 export interface FlowStepMeta {
   key: FlowStepKey
-  /** ①–⑤，与样板一致 */
+  /** ①–⑥，与样板一致 */
   ordinal: string
   title: string
   /** 步骤条悬停与只读态的说明 */
@@ -78,7 +78,8 @@ export function resolveFlowProgress(snapshot: FlowSnapshot): FlowProgress {
 
   const intakeDone = hasTemplate && identityReady && voiceprintReady
   const dictationDone = intakeDone && hasQuestions && frozen
-  const reviewDone = dictationDone && frozen
+  // 问答以冻结收尾，冻结即视为定稿校验完成。
+  const reviewDone = dictationDone
   const archiveDone = reviewDone && archived
 
   const doneByKey: Record<FlowStepKey, boolean> = {
