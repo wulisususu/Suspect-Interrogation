@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import AdminShell from './components/AdminShell.vue'
+import LockScreen from './components/LockScreen.vue'
 import MaintenanceGate from './components/MaintenanceGate.vue'
 import OnScreenKeyboard from './components/OnScreenKeyboard.vue'
 import AdminAuditView from './views/AdminAuditView.vue'
@@ -18,6 +19,8 @@ import { parseRootRoute, rootRouteUrl, type AdminPanel, type RootRoute } from '.
 const route = ref<RootRoute>(parseRootRoute(location.search))
 /** 大厅「开始新建笔录」进入台账时直接打开身份录入；仅本次导航有效，不写入地址栏。 */
 const startNew = ref(false)
+/** 手动锁屏：锁定期间业务页面整体卸载，只留锁屏遮罩。 */
+const locked = ref(false)
 
 function go(next: RootRoute) {
   startNew.value = false
@@ -34,6 +37,11 @@ function startNewRecord() {
 const openSettings = () => go({ page: 'settings' })
 const openLogin = () => go({ page: 'login' })
 const openHome = () => go({ page: 'home' })
+const lock = () => { locked.value = true }
+function unlock() {
+  locked.value = false
+  openLogin()
+}
 const openAdmin = () => go({ page: 'admin' })
 const openPlaceholder = (panel: AdminPanel) => go({ page: 'admin-placeholder', panel })
 
@@ -47,12 +55,13 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
 </script>
 
 <template>
-  <MaintenanceGate>
+  <LockScreen v-if="locked" @unlock="unlock" />
+  <MaintenanceGate v-else>
     <InterrogationWorkspace v-if="route.page === 'case'" :key="route.caseId" :case-id="route.caseId" @back="openCases" />
     <SystemSettingsView v-else-if="route.page === 'settings'" @back="openAdmin" />
     <LoginView v-else-if="route.page === 'login'" @back="openHome" @admin="openAdmin" />
     <KioskHomeView v-else-if="route.page === 'home'" @start="startNewRecord" @police-entry="openLogin" />
-    <AdminShell v-else-if="route.page === 'admin'" title="管理面板" back-label="返回大厅" @back="openHome" @lock="openHome">
+    <AdminShell v-else-if="route.page === 'admin'" title="管理面板" back-label="返回大厅" @back="openHome" @lock="lock">
       <AdminPanelView
         @cases="openCases"
         @pending="go({ page: 'admin-pending' })"
@@ -61,19 +70,19 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
         @placeholder="openPlaceholder"
       />
     </AdminShell>
-    <AdminShell v-else-if="route.page === 'admin-case'" title="案件详情" back-label="返回案件记录" @back="openCases" @lock="openHome">
+    <AdminShell v-else-if="route.page === 'admin-case'" title="案件详情" back-label="返回案件记录" @back="openCases" @lock="lock">
       <AdminCaseDetailView :key="route.adminCaseId" :case-id="route.adminCaseId" @open="openCase" />
     </AdminShell>
-    <AdminShell v-else-if="route.page === 'admin-pending'" title="未完成办理" @back="openAdmin" @lock="openHome">
+    <AdminShell v-else-if="route.page === 'admin-pending'" title="未完成办理" @back="openAdmin" @lock="lock">
       <AdminPendingView @open="openCase" @detail="(caseId) => go({ page: 'admin-case', adminCaseId: caseId })" />
     </AdminShell>
-    <AdminShell v-else-if="route.page === 'admin-audit'" title="操作日志" @back="openAdmin" @lock="openHome">
+    <AdminShell v-else-if="route.page === 'admin-audit'" title="操作日志" @back="openAdmin" @lock="lock">
       <AdminAuditView />
     </AdminShell>
-    <AdminShell v-else-if="route.page === 'admin-placeholder'" :title="PANEL_TITLES[route.panel]" @back="openAdmin" @lock="openHome">
+    <AdminShell v-else-if="route.page === 'admin-placeholder'" :title="PANEL_TITLES[route.panel]" @back="openAdmin" @lock="lock">
       <AdminPlaceholderView :key="route.panel" :kind="route.panel" @open="openPlaceholder" />
     </AdminShell>
-    <AdminShell v-else title="全部案件记录" @back="openAdmin" @lock="openHome">
+    <AdminShell v-else title="全部案件记录" @back="openAdmin" @lock="lock">
       <CaseDashboardView
         :auto-new="startNew"
         @open="openCase"
