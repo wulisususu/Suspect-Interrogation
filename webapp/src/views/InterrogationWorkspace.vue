@@ -459,6 +459,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             @save-library="saveFormalQuestionToLibrary"
             @correct-fragment="correctRecognitionFragment"
             @update-header="saveRecordHeader"
+            @back="$emit('back')"
           />
         </div>
       </section>
@@ -475,7 +476,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
   min-height: var(--height-topbar);
   padding: 0 var(--space-6);
   background: var(--navy-900);
-  color: #fff;
+  color: var(--surface);
 }
 .topbar-back {
   min-height: 32px;
@@ -483,7 +484,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-pill);
   background: transparent;
-  color: #dbe6f4;
+  color: var(--primary-100);
   font-size: var(--text-sm);
 }
 .topbar-back:hover { background: rgba(255, 255, 255, 0.1); }
@@ -492,7 +493,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
   padding: 3px 10px;
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.1);
-  color: #dbe6f4;
+  color: var(--primary-100);
   font-size: var(--text-sm);
   white-space: nowrap;
   overflow: hidden;
@@ -506,7 +507,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
   margin-left: auto;
   min-width: 0;
 }
-.topbar-field { color: #c9d6e6; font-size: var(--text-sm); white-space: nowrap; }
+.topbar-field { color: var(--line-300); font-size: var(--text-sm); white-space: nowrap; }
 .topbar-divider { width: 1px; height: 16px; background: rgba(255, 255, 255, 0.18); }
 .topbar-audio-source { border-color: rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.06); }
 .topbar-tool {
@@ -515,14 +516,14 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: var(--radius-pill);
   background: transparent;
-  color: #dbe6f4;
+  color: var(--primary-100);
   font-size: var(--text-sm);
   white-space: nowrap;
 }
 .topbar-tool:hover { background: rgba(255, 255, 255, 0.12); }
-.topbar-tool.active { border-color: var(--primary-600); background: var(--primary-600); color: #fff; }
-.recording { font-size: var(--text-sm); color: #8fd6a8; white-space: nowrap; }
-.recording.muted { color: #9fb0bf; }
+.topbar-tool.active { border-color: var(--primary-600); background: var(--primary-600); color: var(--surface); }
+.recording { font-size: var(--text-sm); color: var(--success-600); white-space: nowrap; }
+.recording.muted { color: var(--ink-400); }
 
 .step-hint { color: var(--ink-400); font-size: var(--text-sm); }
 .step-back-tool {

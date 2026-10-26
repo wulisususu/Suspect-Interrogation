@@ -8,10 +8,10 @@
  * 这里只做「状态 → 步骤」的投影，不复制状态机，避免两套真相。
  */
 
-export type FlowStepKey = 'template' | 'intake' | 'dictation' | 'review' | 'signing'
+export type FlowStepKey = 'template' | 'intake' | 'dictation' | 'review' | 'signing' | 'archive'
 
 /** 笔录页内部的三种呈现形态，与步骤 3/4/5 一一对应。 */
-export type RecordMode = 'interrogation' | 'review' | 'sign'
+export type RecordMode = 'interrogation' | 'review' | 'sign' | 'archive'
 
 export interface FlowStepMeta {
   key: FlowStepKey
@@ -28,6 +28,7 @@ export const FLOW_STEPS: readonly FlowStepMeta[] = [
   { key: 'dictation', ordinal: '③', title: '问答录入', hint: '左侧逐题成卡，右侧实时成文' },
   { key: 'review', ordinal: '④', title: '定稿校验', hint: '核对核心要素，补齐缺项后冻结笔录' },
   { key: 'signing', ordinal: '⑤', title: '签署归档', hint: '签名、捺印、民警签章后打印装卷' },
+  { key: 'archive', ordinal: '⑥', title: '归档导出', hint: '生成归档正式件，按需导出 Word 或 PDF' },
 ] as const
 
 export interface FlowSnapshot {
@@ -63,7 +64,7 @@ const WORKFLOW_TO_STEP: Record<string, FlowStepKey> = {
   SUMMARY: 'review',
   FROZEN: 'signing',
   SIGNED: 'signing',
-  REPORT_GENERATED: 'signing',
+  REPORT_GENERATED: 'archive',
 }
 
 /** 后端状态下，该案例所处的最远步骤（用于覆盖前端推导结果）。 */
@@ -78,24 +79,27 @@ export function resolveFlowProgress(snapshot: FlowSnapshot): FlowProgress {
   const intakeDone = hasTemplate && identityReady && voiceprintReady
   const dictationDone = intakeDone && hasQuestions && frozen
   const reviewDone = dictationDone && frozen
-  const signingDone = reviewDone && (signed || archived)
+  const archiveDone = reviewDone && archived
 
   const doneByKey: Record<FlowStepKey, boolean> = {
     template: hasTemplate,
     intake: intakeDone,
     dictation: dictationDone,
     review: reviewDone,
-    signing: signingDone,
+    signing: signed || archived,
+    archive: archiveDone,
   }
   const completed = ORDER.filter((key) => doneByKey[key])
 
-  // 进入条件：前一步的完成是后一步可进入的必要条件；建档本身始终可进入。
+  // 进入条件：只要案件已经出题，问答与定稿就该走得进去——建档要素缺失
+  // 不拦办理，由④定稿校验页自己把缺项标出来。
   const reachable: FlowStepKey[] = ['template', 'intake']
-  if (intakeDone) reachable.push('dictation')
-  if (dictationDone || (intakeDone && hasQuestions)) reachable.push('review')
-  if (reviewDone) reachable.push('signing')
+  if (intakeDone || hasQuestions) reachable.push('dictation')
+  if (hasQuestions || frozen) reachable.push('review')
+  if (frozen) reachable.push('signing')
+  if (signed || archived) reachable.push('archive')
 
-  const suggested = ORDER.find((key) => !doneByKey[key]) ?? 'signing'
+  const suggested = ORDER.find((key) => !doneByKey[key]) ?? 'archive'
 
   return { completed, reachable, suggested }
 }
@@ -103,12 +107,14 @@ export function resolveFlowProgress(snapshot: FlowSnapshot): FlowProgress {
 export function stepKeyForMode(mode: RecordMode): FlowStepKey {
   if (mode === 'review') return 'review'
   if (mode === 'sign') return 'signing'
+  if (mode === 'archive') return 'archive'
   return 'dictation'
 }
 
 export function modeForStep(key: FlowStepKey): RecordMode {
   if (key === 'review') return 'review'
   if (key === 'signing') return 'sign'
+  if (key === 'archive') return 'archive'
   return 'interrogation'
 }
 

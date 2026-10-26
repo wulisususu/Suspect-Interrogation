@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 
 import { backendErrorMessage, confirmAsrFragmentBatch, discardAsrFragment } from '../api/interrogation'
+import { markReportGenerated } from '../api/archive'
 import { fetchDocumentSigningState, finalizeDocument, signDocument } from '../api/documentSigning'
 import type {
   AsrCaptureStatus,
@@ -27,7 +28,10 @@ import type {
 import FormalTemplatePanel from './FormalTemplatePanel.vue'
 import LiveDialoguePanel from './LiveDialoguePanel.vue'
 import QuestionPreparationPanel from './QuestionPreparationPanel.vue'
+import DraftQuestionRail from './DraftQuestionRail.vue'
+import RecordArchivePage from './RecordArchivePage.vue'
 import RecordReviewPanel from './RecordReviewPanel.vue'
+import ReviewChecklistPanel from './ReviewChecklistPanel.vue'
 import RecordSigningPage from './RecordSigningPage.vue'
 import type { RecordMode } from '../flow/steps'
 import { freezeBlockReason, orderedReviewFragments } from '../utils/recordCompletion'
@@ -81,6 +85,7 @@ const emit = defineEmits<{
   correctFragment: [fragmentId: string, speaker: TemporaryAsrSpeaker, reason: string, text?: string]
   updateHeader: [target: 'case' | 'fact', key: string, value: string]
   'update:completionMode': [mode: RecordMode]
+  back: []
 }>()
 
 type SignaturePoint = { x: number; y: number; t: number; p: number }
@@ -153,7 +158,8 @@ async function loadSigningState() {
     const state = await fetchDocumentSigningState(caseId)
     if (request !== signingRequest || props.caseId !== caseId) return
     signingState.value = state
-    if (state) mode.value = 'sign'
+    // 已归档案件直接落到导出页，别再让人以为还要签名
+    if (state) mode.value = props.summary.workflowState === 'REPORT_GENERATED' ? 'archive' : 'sign'
   } catch (err) {
     if (request !== signingRequest || props.caseId !== caseId) return
     signingLoadError.value = backendErrorMessage(err)
@@ -177,6 +183,14 @@ async function reviewAction(ids: string[], discard = false) {
   } finally {
     if (caseId === props.caseId && request === signingRequest) reviewBusy.value = false
   }
+}
+
+function locateQuestion(questionId: string) {
+  const target = document.querySelector<HTMLElement>(`[data-question-id="${questionId}"]`)
+  if (!target) return
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  target.classList.add('record-qa-located')
+  window.setTimeout(() => target.classList.remove('record-qa-located'), 1600)
 }
 
 function updateFreezeCheck(index: number, checked: boolean) {
@@ -203,11 +217,35 @@ async function finishAndFreeze() {
     const state = await finalizeDocument(caseId)
     if (caseId !== props.caseId || request !== signingRequest) return
     signingState.value = state
+    mode.value = 'sign'
     emit('saved')
   } catch (err) {
     if (caseId === props.caseId && request === signingRequest) signingError.value = backendErrorMessage(err)
   } finally {
     if (caseId === props.caseId && request === signingRequest) signingBusy.value = ''
+  }
+}
+
+const archiving = ref(false)
+
+/** 签名齐备后确认归档：后端 SIGNED → REPORT_GENERATED，前端随后给出导出页 */
+async function archiveCase() {
+  if (archiving.value) return
+  const caseId = props.caseId
+  archiving.value = true
+  signingError.value = ''
+  try {
+    await markReportGenerated(caseId)
+    if (caseId !== props.caseId) return
+    const state = await fetchDocumentSigningState(caseId)
+    if (caseId !== props.caseId) return
+    signingState.value = state ?? signingState.value
+    mode.value = 'archive'
+    emit('saved')
+  } catch (err) {
+    if (caseId === props.caseId) signingError.value = backendErrorMessage(err)
+  } finally {
+    if (caseId === props.caseId) archiving.value = false
   }
 }
 
@@ -344,28 +382,37 @@ async function confirmSignature() {
 <template>
   <section class="template-driven-interrogation-page" :class="{ 'record-completion-mode': mode !== 'interrogation' }">
     <p v-if="templateError || signingError || signingLoadError" class="template-page-error" role="alert">{{ templateError || signingError || signingLoadError }}<button v-if="signingLoadError" :disabled="signingLoading" @click="loadSigningState">重新读取签署状态</button></p>
-    <header v-if="mode !== 'interrogation'" class="record-completion-heading record-no-print"><h1>{{ mode === 'review' ? '复核笔录' : '冻结与打印' }} · {{ documentFrozen ? documentLocked ? '签署完成' : '已冻结' : session.status === 'COMPLETED' ? '审讯已结束' : '准备复核' }}</h1><p>{{ summary.id }} · {{ summary.suspectName || '姓名未填写' }} · 待确认转写 {{ unresolvedFragments }} 条 · 待处理问答 {{ unresolvedQa }} 组</p></header>
+    <header v-if="mode !== 'interrogation'" class="record-completion-heading record-no-print"><h1>{{ mode === 'review' ? '定稿校验' : '签署归档' }} · {{ documentFrozen ? documentLocked ? '签署完成' : '已冻结' : session.status === 'COMPLETED' ? '审讯已结束' : '待冻结' }}</h1><p>{{ summary.id }} · {{ summary.suspectName || '姓名未填写' }} · 待确认转写 {{ unresolvedFragments }} 条 · 待处理问答 {{ unresolvedQa }} 组</p></header>
 
-    <RecordSigningPage v-if="mode === 'sign'" :summary="summary" :facts="facts" :session="session" :questions="workspace.questions" :signing-state="signingState" :busy="completionBusy || signingLoading" :checks="freezeChecks" :block-reason="freezeReason" @check="updateFreezeCheck" @freeze="finishAndFreeze" @print="emit('print')" @sign="openSignature" @review="mode = 'review'" />
+    <RecordSigningPage
+      v-if="mode === 'sign'"
+      :summary="summary"
+      :facts="facts"
+      :session="session"
+      :questions="workspace.questions"
+      :signing-state="signingState"
+      :busy="completionBusy || signingLoading"
+      :archiving="archiving"
+      @print="emit('print')"
+      @sign="openSignature"
+      @archive="archiveCase"
+    />
 
-    <div v-else class="template-interrogation-grid" :class="{ 'record-review-grid': mode === 'review' }">
+    <RecordArchivePage
+      v-else-if="mode === 'archive'"
+      :summary="summary"
+      :facts="facts"
+      :session="session"
+      :questions="workspace.questions"
+      :signing-state="signingState"
+      :archived-at="signingState?.createdAt"
+      @print="emit('print')"
+      @back="emit('back')"
+    />
+
+    <div v-else class="template-interrogation-grid" :class="{ 'record-review-grid': mode === 'review', 'draft-first': mode === 'interrogation' }">
       <div class="formal-column">
         <header v-if="mode === 'review'" class="review-formal-heading record-no-print"><strong>询问笔录 · 复核中</strong><span>修改内容离开输入框后保存</span></header>
-        <details v-if="session.status === 'READY'" class="record-preparation-drawer record-no-print">
-          <summary>问题准备 / 常用问题库</summary>
-        <QuestionPreparationPanel
-          :library="questionLibrary"
-          :busy="templateBusy || reviewBusy || signingLoading || !!signingLoadError"
-          :voice-available="questionDictationAvailable"
-          :voice-busy="questionDictationActive || questionDictationBusy"
-          :voice-draft="questionDictationDraft"
-          :voice-error="questionDictationError"
-          @load-library="emit('loadLibrary', $event)"
-          @add-question="emit('createQuestion', $event)"
-          @voice-start="emit('questionDictationStart')"
-          @voice-stop="emit('questionDictationStop')"
-        />
-        </details>
 
         <FormalTemplatePanel
           :summary="summary"
@@ -396,8 +443,57 @@ async function confirmSignature() {
         />
       </div>
 
-      <RecordReviewPanel v-if="mode === 'review'" :fragments="reviewFragments" :qa-units="workspace.qaUnits" :busy="completionBusy || signingLoading || !!signingLoadError" :frozen="documentFrozen" @confirm="reviewAction($event)" @discard="reviewAction([$event], true)" @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)" @correct="(id, speaker, reason, text) => emit('correctFragment', id, speaker, reason, text)" />
-      <div v-else class="dialogue-column">
+      <div v-if="mode === 'review'" class="review-side">
+        <ReviewChecklistPanel
+          :facts="facts"
+          :questions="workspace.questions"
+          :checks="freezeChecks"
+          :block-reason="freezeReason"
+          :busy="completionBusy || signingLoading"
+          :frozen="documentFrozen"
+          :unresolved-fragments="unresolvedFragments"
+          :unresolved-qa="unresolvedQa"
+          @check="updateFreezeCheck"
+          @freeze="finishAndFreeze"
+        />
+        <details class="raw-transcript review-fragments">
+          <summary>待确认转写 {{ unresolvedFragments }} 条 · 待处理问答 {{ unresolvedQa }} 组</summary>
+          <RecordReviewPanel :fragments="reviewFragments" :qa-units="workspace.qaUnits" :busy="completionBusy || signingLoading || !!signingLoadError" :frozen="documentFrozen" @confirm="reviewAction($event)" @discard="reviewAction([$event], true)" @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)" @correct="(id, speaker, reason, text) => emit('correctFragment', id, speaker, reason, text)" />
+        </details>
+      </div>
+      <div v-else class="dialogue-column draft-column">
+        <details v-if="session.status === 'READY'" class="record-preparation-drawer draft-preparation record-no-print">
+          <summary>问题准备 / 常用问题库</summary>
+        <QuestionPreparationPanel
+          :library="questionLibrary"
+          :busy="templateBusy || reviewBusy || signingLoading || !!signingLoadError"
+          :voice-available="questionDictationAvailable"
+          :voice-busy="questionDictationActive || questionDictationBusy"
+          :voice-draft="questionDictationDraft"
+          :voice-error="questionDictationError"
+          @load-library="emit('loadLibrary', $event)"
+          @add-question="emit('createQuestion', $event)"
+          @voice-start="emit('questionDictationStart')"
+          @voice-stop="emit('questionDictationStop')"
+        />
+        </details>
+
+        <DraftQuestionRail
+          :questions="workspace.questions"
+          :qa-units="workspace.qaUnits"
+          :pending-questions="workspace.pendingQuestions"
+          :capture-running="capture.running"
+          :capture-busy="captureBusy"
+          :capture-available="nativeCaptureAvailable && canRecord"
+          :locked="documentFrozen || completionBusy"
+          @locate="locateQuestion"
+          @update-answer="(questionId, text) => emit('updateAnswer', questionId, text)"
+          @capture-toggle="toggleCapture"
+        />
+
+        <details class="raw-transcript" :open="capture.running">
+          <summary>原始转写与说话人识别<small>波形 · 转写 · 说话人 · QA 归档</small></summary>
+
         <LiveDialoguePanel
           v-if="readiness.suspectReady"
           :case-id="caseId"
@@ -421,8 +517,9 @@ async function confirmSignature() {
         />
         <div v-else class="dialogue-voiceprint-hint">
           <p>嫌疑人声纹尚未注册。</p>
-          <p>请先切换到顶部「B 声纹注册」页完成注册，注册后此处才会开始实时语音对话。</p>
+          <p>请先到「建档 · 声纹注册」完成注册，之后这里才会开始实时语音对话。</p>
         </div>
+        </details>
       </div>
     </div>
 

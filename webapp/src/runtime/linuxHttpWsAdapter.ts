@@ -191,6 +191,7 @@ function endpoint(operation: RuntimeOperation, payload: Record<string, unknown>)
     case 'document.freeze': return { method: 'POST', url: `/api/v1/cases/${caseId}/document/freeze`, data: {} }
     case 'document.finalize': return { method: 'POST', url: `/api/v1/cases/${caseId}/document/finalize`, data: {} }
     case 'document.sign': return { method: 'POST', url: `/api/v1/cases/${caseId}/document/sign`, data: payload }
+    case 'case.report.generated': return { method: 'POST', url: `/api/v1/cases/${caseId}/report/generated`, data: {} }
     default: throw new RuntimeAdapterError('UNSUPPORTED_OPERATION', `Linux Runtime 不支持操作：${operation}`, 'NOT_CONFIGURED')
   }
 }

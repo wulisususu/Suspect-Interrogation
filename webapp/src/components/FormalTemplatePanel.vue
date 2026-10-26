@@ -280,7 +280,7 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
       </section>
 
       <section class="record-qa-section fixed-opening">
-        <div v-for="q in openingQuestions" :key="q.id" class="record-qa fixed-question">
+        <div v-for="q in openingQuestions" :key="q.id" :data-question-id="q.id" class="record-qa fixed-question">
           <p class="record-question"><b>问：</b><span>{{ q.text }}</span></p>
           <label class="record-answer qa-answer-drop" :class="{ 'record-answer-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `answer-${q.id}`)" @dragleave="dragOverKey = ''" @drop.stop="dropAnswerOnQuestion($event, q.id)" @click="tapAnswerOnQuestion(q.id)"><b>答：</b><textarea v-model="canonicalAnswerDrafts[q.id]" :disabled="busy || documentFrozen" rows="1" @input="autoGrow($event)" @blur="saveCanonicalAnswer(q)"></textarea><small class="record-no-print">聊天记录或答案可拖到这里</small></label>
           <small v-if="latestRound(q.id)?.actualQuestionText && latestRound(q.id)?.actualQuestionText !== q.text" class="actual-question record-no-print">现场原问法：{{ latestRound(q.id)?.actualQuestionText }}</small>
@@ -291,7 +291,7 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
       <div class="record-drop-zone record-no-print" :class="{ active: dragOverKey === 'body-start' }" @dragover="allowPendingDrop($event, 'body-start')" @dragleave="dragOverKey = ''" @drop="dropGap($event, lastOpeningId)">拖到这里插入为第一条案件问题 / 民警提问 / 整组问答</div>
 
       <section class="record-qa-section body-section">
-        <article v-for="q in bodyQuestions" :key="q.id" class="record-qa body-question" draggable="true" @dragstart="startBodyDrag($event, q.id)" @dragover.prevent @drop="dropBody($event, q.id)">
+        <article v-for="q in bodyQuestions" :key="q.id" :data-question-id="q.id" class="record-qa body-question" draggable="true" @dragstart="startBodyDrag($event, q.id)" @dragover.prevent @drop="dropBody($event, q.id)">
           <div class="body-question-tools record-no-print"><span class="drag-handle" title="拖动排序">⋮⋮</span><span>{{ q.source === 'LIVE' ? '实时对话' : q.source === 'STANDARD' ? '问题库' : '本案问题' }}</span><button :disabled="busy || documentFrozen" @click="emit('saveLibrary', q.id)">存入题库</button><button class="danger-link" :disabled="busy || documentFrozen" @click="emit('removeQuestion', q.id)">移出笔录</button></div>
           <label class="record-question editable-question qa-question-drop" :class="{ 'record-question-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `qa-${q.id}`)" @drop.stop="dropQaOnQuestion($event, q.id)" @click="tapQaOnQuestionField(q.id, $event)"><b>问：</b><textarea v-model="questionDrafts[q.id]" :disabled="busy || documentFrozen" rows="1" @input="autoGrow($event)" @blur="saveQuestion(q)"></textarea><small class="record-no-print">整组 QA 可拖到本题</small></label>
           <label class="record-answer qa-answer-drop" :class="{ 'record-answer-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `answer-${q.id}`)" @dragleave="dragOverKey = ''" @drop.stop="dropAnswerOnQuestion($event, q.id)" @click="tapAnswerOnQuestion(q.id)"><b>答：</b><textarea v-model="canonicalAnswerDrafts[q.id]" :disabled="busy || documentFrozen" rows="2" placeholder="等待现场回答" @input="autoGrow($event)" @blur="saveCanonicalAnswer(q)"></textarea><small class="record-no-print">聊天记录或答案可拖到这里</small></label>
@@ -302,7 +302,7 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
       </section>
 
       <section class="record-qa-section fixed-closing">
-        <div v-for="q in closingQuestions" :key="q.id" class="record-qa fixed-question">
+        <div v-for="q in closingQuestions" :key="q.id" :data-question-id="q.id" class="record-qa fixed-question">
           <p class="record-question"><b>问：</b><span>{{ q.text }}</span></p>
           <label class="record-answer qa-answer-drop" :class="{ 'record-answer-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `answer-${q.id}`)" @dragleave="dragOverKey = ''" @drop.stop="dropAnswerOnQuestion($event, q.id)" @click="tapAnswerOnQuestion(q.id)"><b>答：</b><textarea v-model="canonicalAnswerDrafts[q.id]" :disabled="busy || documentFrozen" rows="1" @input="autoGrow($event)" @blur="saveCanonicalAnswer(q)"></textarea><small class="record-no-print">聊天记录或答案可拖到这里</small></label>
           <small v-if="latestRound(q.id)?.actualQuestionText && latestRound(q.id)?.actualQuestionText !== q.text" class="actual-question record-no-print">现场原问法：{{ latestRound(q.id)?.actualQuestionText }}</small>

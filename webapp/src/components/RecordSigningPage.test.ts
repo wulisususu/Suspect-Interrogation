@@ -5,31 +5,59 @@ import RecordSigningPage from './RecordSigningPage.vue'
 
 const base = {
   summary: { id: 'UI-ONLY', suspectName: '测试人员', officerName: '测试民警', stage: 'SIGNING', state: 'DRAFT' },
-  facts: [], session: { id: 's', caseId: 'UI-ONLY', status: 'COMPLETED', stage: 'SIGNING', startedAt: 1, endedAt: 1000, pausedAt: null, updatedAt: 1000 },
+  facts: [],
+  session: { id: 's', caseId: 'UI-ONLY', status: 'COMPLETED', stage: 'SIGNING', startedAt: 1, endedAt: 1000, pausedAt: null, updatedAt: 1000 },
   questions: [{ id: 'q', text: '测试问题', formalAnswerText: '完整回答第一行\n完整回答第二行', sortOrder: 1 }],
-  signingState: null, busy: false, checks: [false, false, false, false, false], blockReason: '请逐项完成打印前核对',
+  signingState: null,
+  busy: false,
 }
 async function screen(overrides = {}) { return renderToString(createSSRApp(RecordSigningPage, { ...base, ...overrides } as any)) }
 
-describe('signing and print UI state', () => {
-  it('renders actual canonical text and requires all manual checks without claiming print success', async () => {
-    const html = await screen()
+const frozen = {
+  caseId: 'UI-ONLY', version: 2, documentId: 'doc', documentHash: 'real-hash',
+  status: 'FROZEN', createdAt: 1000, integrityValid: true, signatures: [],
+}
+
+describe('signing and archive UI state', () => {
+  it('renders the document with the three inline signature hotspots', async () => {
+    const html = await screen({ signingState: frozen })
     expect(html).toContain('完整回答第一行\n完整回答第二行')
-    expect(html).toContain('还有 5 项未核对')
-    expect(html).toMatch(/class="primary freeze-button" disabled/)
-    expect(html).toContain('需在打印机确认')
+    expect(html).toContain('被询问人签名')
+    expect(html).toContain('指纹捺印')
+    expect(html).toContain('民警签名')
+    expect(html).toContain('未接入采集器')
     expect(html).not.toContain('打印成功')
   })
-  it('enables freeze only when the parent guard permits it', async () => {
-    const html = await screen({ checks: [true, true, true, true, true], blockReason: '' })
-    const freezeTag = html.match(/<button class="primary freeze-button"[^>]*>/)?.[0]
-    expect(freezeTag).toBeDefined()
-    expect(freezeTag).not.toContain('disabled')
+
+  it('keeps archiving blocked until both signatures are collected', async () => {
+    const html = await screen({ signingState: frozen })
+    const archiveTag = html.match(/<button[^>]*class="signing-primary"[^>]*>/)?.[0]
+    expect(archiveTag).toBeDefined()
+    expect(archiveTag).toContain('disabled')
+    expect(html).toContain('签名齐备后可归档')
   })
-  it('disables official print and signatures when a frozen document fails integrity validation', async () => {
-    const html = await screen({ signingState: { version: 2, status: 'FROZEN', integrityValid: false, signatures: [], documentHash: 'real-hash' }, blockReason: '已冻结' })
-    expect(html).toContain('完整性校验异常')
-    expect(html).toMatch(/class="primary print-button" disabled/)
-    expect(html).not.toContain('已签名')
+
+  it('enables archiving once suspect and officer signatures both exist', async () => {
+    const signed = {
+      ...frozen,
+      signatures: [
+        { signerRole: 'SUSPECT', signerName: '测试人员', signedAt: 2, imageDataUrl: 'data:,' },
+        { signerRole: 'OFFICER', signerName: '测试民警', signedAt: 3, imageDataUrl: 'data:,' },
+      ],
+    }
+    const html = await screen({ signingState: signed })
+    const archiveTag = html.match(/<button[^>]*class="signing-primary"[^>]*>/)?.[0]
+    expect(archiveTag).not.toContain('disabled')
+    expect(html).toContain('确认归档并结案')
+    expect(html).toContain('2 / 2 处')
+  })
+
+  it('blocks official print when the frozen document fails integrity validation', async () => {
+    const broken = { ...frozen, integrityValid: false }
+    const html = await screen({ signingState: broken })
+    expect(html).toContain('异常')
+    const printTag = html.match(/<button[^>]*class="signing-secondary"[^>]*>/)?.[0]
+    expect(printTag).toContain('disabled')
+    expect(html).toContain('签名完成后可打印')
   })
 })

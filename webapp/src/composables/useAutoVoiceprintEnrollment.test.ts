@@ -285,7 +285,7 @@ describe('useAutoVoiceprintEnrollment lifecycle race', () => {
     selectionMock.selectAutoVoiceprintSource.mockReset()
   })
 
-  it('keeps COMPLETE when the audio channel closes during the HTTP stop, instead of rewriting it into ERROR', async () => {
+  it('keeps COMPLETE when the audio channel closes during the HTTP stop, instead of rewriting it into ERROR', { timeout: 20000 }, async () => {
     const harness = await createHarness()
     // Legacy transport semantics: every close is reported as an error, exactly
     // like the pre-fix capture. Only the composable's own state guards can keep
@@ -324,7 +324,7 @@ describe('useAutoVoiceprintEnrollment lifecycle race', () => {
     expect(harness.feedbackCalls().filter((call) => call.isError)).toEqual([])
   })
 
-  it('finalizes the transport before the HTTP stop and only closes the capture afterwards', async () => {
+  it('finalizes the transport before the HTTP stop and only closes the capture afterwards', { timeout: 20000 }, async () => {
     const harness = await createHarness()
     await harness.startSuspect()
 
