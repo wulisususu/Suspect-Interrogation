@@ -4,7 +4,9 @@ import AdminShell from './components/AdminShell.vue'
 import EmptyState from './components/EmptyState.vue'
 import MaintenanceGate from './components/MaintenanceGate.vue'
 import OnScreenKeyboard from './components/OnScreenKeyboard.vue'
+import AdminAuditView from './views/AdminAuditView.vue'
 import AdminCaseDetailView from './views/AdminCaseDetailView.vue'
+import AdminPendingView from './views/AdminPendingView.vue'
 import AdminPanelView from './views/AdminPanelView.vue'
 import CaseDashboardView from './views/CaseDashboardView.vue'
 import KioskHomeView from './views/KioskHomeView.vue'
@@ -58,6 +60,12 @@ const ADMIN_TITLES: Record<string, string> = {
     </AdminShell>
     <AdminShell v-else-if="route.page === 'admin-case'" title="案件详情" back-label="返回案件记录" @back="openCases" @lock="openHome">
       <AdminCaseDetailView :key="route.adminCaseId" :case-id="route.adminCaseId" @open="openCase" />
+    </AdminShell>
+    <AdminShell v-else-if="route.page === 'admin-pending'" title="未完成办理" @back="openAdmin" @lock="openHome">
+      <AdminPendingView @open="openCase" @detail="(caseId) => go({ page: 'admin-case', adminCaseId: caseId })" />
+    </AdminShell>
+    <AdminShell v-else-if="route.page === 'admin-audit'" title="操作日志" @back="openAdmin" @lock="openHome">
+      <AdminAuditView />
     </AdminShell>
     <AdminShell v-else-if="route.page !== 'cases'" :title="ADMIN_TITLES[route.page] ?? '后台管理'" @back="openAdmin" @lock="openHome">
       <EmptyState kind="pending" :title="ADMIN_TITLES[route.page] ?? '后台管理'" />
