@@ -6,6 +6,7 @@ import type { FormalQuestion } from '../types/templateInterrogation'
 import { branding } from '../config/branding'
 import { formatRecordTime, recordWordCount, volumeNumber } from '../utils/recordPaper'
 import RecordPaper from './RecordPaper.vue'
+import SignatureHotspotDialog from './SignatureHotspotDialog.vue'
 
 /**
  * ⑤ 签署归档
@@ -21,6 +22,7 @@ const props = defineProps<{
   signingState: DocumentSigningState | null
   busy: boolean
   archiving?: boolean
+  officers?: Array<{ officerId: string; officerName: string }>
 }>()
 
 const emit = defineEmits<{
@@ -30,10 +32,12 @@ const emit = defineEmits<{
 }>()
 
 const zoom = ref(70)
-const fingerprintNotice = ref(false)
-const copies = ref(2)
-const paper = ref('A4 · 单面黑白')
-const volumeNo = ref('')
+const hotspotDialog = ref<'FINGERPRINT' | 'OFFICER' | null>(null)
+
+function handwriteOfficer() {
+  hotspotDialog.value = null
+  emit('sign', 'OFFICER')
+}
 
 const wordCount = computed(() => recordWordCount(props.questions))
 
@@ -55,33 +59,30 @@ const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.su
           <RecordPaper class="signing-paper" :style="{ zoom: zoom / 100 }" :summary="summary" :facts="facts" :session="session" :questions="questions">
             <template #footer>
             <footer class="paper-signatures">
-              <div class="paper-hotspots record-no-print" aria-label="文末签章热区">
-                <button
-                  type="button"
-                  class="hotspot"
-                  :class="{ signed: signature('SUSPECT') }"
-                  :disabled="!signingState || !!signature('SUSPECT') || busy"
-                  @click="emit('sign', 'SUSPECT')"
-                >
-                  <span class="hotspot-title">被询问人签名</span>
+              <div class="paper-sign-row" aria-label="文末签章">
+                <div class="paper-sign-cell">
+                  <span class="paper-sign-label">被询问人签名：</span>
                   <img v-if="signature('SUSPECT')" :src="signature('SUSPECT')!.imageDataUrl" alt="被询问人签名" />
-                  <span v-else class="hotspot-hint">点击现场手写</span>
-                </button>
-                <button type="button" class="hotspot is-unavailable" title="本机未接入指纹采集器，捺印按纸质流程办理" @click="fingerprintNotice = true">
-                  <span class="hotspot-title">指纹捺印</span>
-                  <span class="hotspot-hint">未接入采集器</span>
-                </button>
-                <button
-                  type="button"
-                  class="hotspot"
-                  :class="{ signed: signature('OFFICER') }"
-                  :disabled="!signingState || !!signature('OFFICER') || busy"
-                  @click="emit('sign', 'OFFICER')"
-                >
-                  <span class="hotspot-title">民警签名</span>
+                  <button v-else type="button" class="hotspot record-no-print" :disabled="!signingState || busy" @click="emit('sign', 'SUSPECT')">
+                    <span class="hotspot-title">被询问人签名 · 点击签名</span>
+                    <span class="hotspot-hint">点击后弹出手写签名板（现场采集）</span>
+                  </button>
+                </div>
+                <div class="paper-sign-cell">
+                  <span class="paper-sign-label">指纹捺印：</span>
+                  <button type="button" class="hotspot is-unavailable record-no-print" :disabled="!signingState" @click="hotspotDialog = 'FINGERPRINT'">
+                    <span class="hotspot-title">指纹捺印 · 点击按压</span>
+                    <span class="hotspot-hint">未接入采集器 · 按纸质流程捺印</span>
+                  </button>
+                </div>
+                <div class="paper-sign-cell">
+                  <span class="paper-sign-label">民警签名：</span>
                   <img v-if="signature('OFFICER')" :src="signature('OFFICER')!.imageDataUrl" alt="民警签名" />
-                  <span v-else class="hotspot-hint">点击调用预录入</span>
-                </button>
+                  <button v-else type="button" class="hotspot is-officer record-no-print" :disabled="!signingState || busy" @click="hotspotDialog = 'OFFICER'">
+                    <span class="hotspot-title">民警签名 · 点击调用</span>
+                    <span class="hotspot-hint">民警签名按警号预录入 · 一键调用</span>
+                  </button>
+                </div>
               </div>
               <p v-if="signingState">冻结版本 {{ signingState.version }} · {{ signingState.documentHash }}</p>
               <p v-else>当前为定稿前文稿，尚未冻结</p>
@@ -106,21 +107,28 @@ const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.su
         <dl>
           <div><dt>文稿</dt><dd :class="{ ok: signingState }">{{ signingState ? '已定稿 · 已冻结' : '待定稿' }}</dd></div>
           <div><dt>定稿时间</dt><dd>{{ signingState ? formatRecordTime(signingState.createdAt) : '未冻结' }}</dd></div>
-          <div><dt>签名进度</dt><dd :class="{ ok: signaturesReady }">{{ signedCount }} / 2 处</dd></div>
+          <div><dt>签名进度</dt><dd :class="{ ok: signaturesReady }">{{ signedCount }} / 3 处（文末热区完成）</dd></div>
           <div><dt>指纹捺印</dt><dd>未接入采集器</dd></div>
           <div><dt>完整性校验</dt><dd :class="{ ok: signingState?.integrityValid }">{{ signingState ? (signingState.integrityValid ? '通过' : '异常') : '未校验' }}</dd></div>
           <div><dt>文书字数</dt><dd>{{ wordCount }} 字 · {{ questions.length }} 题</dd></div>
         </dl>
-        <p class="signing-note">签名完成后才能确认归档；归档后笔录转为只读。</p>
+        <div class="signing-row-actions">
+          <button type="button" class="signing-secondary" disabled title="功能待接入">撤回定稿</button>
+          <button type="button" class="signing-danger" disabled title="功能待接入">作废笔录</button>
+        </div>
+        <p class="signing-note">未签署前可撤回定稿（填原因留痕）· 作废须二次确认</p>
       </section>
 
       <section class="signing-card">
         <header><Printer :size="18" /><h2>打印与装卷</h2></header>
-        <label class="signing-field"><span>打印机</span><input value="系统默认打印机" readonly /></label>
-        <label class="signing-field"><span>份数</span><input v-model.number="copies" type="number" min="1" max="5" /><em>份</em></label>
-        <label class="signing-field"><span>纸张</span><input v-model="paper" readonly /></label>
-        <label class="signing-field"><span>卷号</span><input v-model="volumeNo" :placeholder="caseVolumeNo" /></label>
-        <label class="signing-field"><span>归档人</span><input :value="summary.officerName || '未指定'" readonly /></label>
+        <dl>
+          <div><dt>打印机</dt><dd>系统默认打印机</dd></div>
+          <div><dt>份数</dt><dd>2 份（1 份装卷 · 1 份交当事人）</dd></div>
+          <div><dt>纸张</dt><dd>A4 · 单面黑白</dd></div>
+          <div><dt>卷号</dt><dd>{{ caseVolumeNo }}</dd></div>
+          <div><dt>归档人</dt><dd>{{ summary.officerName || '未指定' }}</dd></div>
+          <div><dt>归档时间</dt><dd>签名捺印完成后自动登记</dd></div>
+        </dl>
 
         <button type="button" class="signing-primary" :disabled="busy || archiving || !signaturesReady" @click="emit('archive')">
           {{ archiving ? '正在归档…' : signaturesReady ? '确认归档并结案' : '签名齐备后可归档' }}
@@ -128,17 +136,18 @@ const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.su
         <button type="button" class="signing-secondary" :disabled="!printAllowed" @click="emit('print')">
           <Printer :size="16" />{{ printAllowed ? '打印笔录' : '签名完成后可打印' }}
         </button>
-        <p class="signing-note">{{ copies }} 份：1 份装卷、1 份交当事人。签章内嵌 PDF，打印后直接装卷。</p>
+        <p class="signing-note">打印件含已完成的签名；指纹按纸质流程在打印件上捺印后装卷。</p>
       </section>
     </aside>
 
-    <div v-if="fingerprintNotice" class="signing-modal" role="dialog" aria-modal="true" aria-label="指纹捺印说明">
-      <section class="signing-dialog">
-        <header><h2>指纹捺印</h2><button type="button" @click="fingerprintNotice = false">关闭</button></header>
-        <p>本机未接入指纹采集器，无法在屏幕上完成捺印采集。请按纸质流程在打印件上捺印后装卷。</p>
-        <footer><button type="button" class="signing-primary" @click="fingerprintNotice = false">知道了</button></footer>
-      </section>
-    </div>
+    <SignatureHotspotDialog
+      v-if="hotspotDialog"
+      :role="hotspotDialog"
+      :officers="officers ?? []"
+      :busy="busy"
+      @cancel="hotspotDialog = null"
+      @handwrite="handwriteOfficer"
+    />
   </section>
 </template>
 
@@ -154,7 +163,14 @@ const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.su
 .paper-signatures { margin-top: 32px; }
 .paper-signatures > p { padding-top: 16px; border-top: 1px solid var(--paper-rule); font: var(--text-xs)/1.7 var(--font-sans); color: var(--paper-muted); }
 
-.paper-hotspots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.paper-sign-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.paper-sign-cell { display: flex; flex-direction: column; gap: 6px; min-height: 92px; }
+.paper-sign-label { font: var(--text-sm)/1.5 var(--font-serif); }
+.paper-sign-cell img { max-width: 100%; max-height: 72px; object-fit: contain; align-self: flex-start; }
+.hotspot.is-officer { border-color: var(--success-600); background: var(--success-100); }
+.signing-row-actions { display: flex; gap: var(--space-2); }
+.signing-danger { flex: 1; min-height: 40px; border: 1px solid var(--danger-600); border-radius: var(--radius-md); background: var(--surface); color: var(--danger-700); font-size: var(--text-sm); font-weight: 600; }
+.signing-row-actions .signing-secondary { flex: 1; }
 .hotspot {
   display: flex;
   flex-direction: column;

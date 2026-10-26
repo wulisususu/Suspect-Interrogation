@@ -49,7 +49,7 @@ describe('signing and archive UI state', () => {
     const archiveTag = html.match(/<button[^>]*class="signing-primary"[^>]*>/)?.[0]
     expect(archiveTag).not.toContain('disabled')
     expect(html).toContain('确认归档并结案')
-    expect(html).toContain('2 / 2 处')
+    expect(html).toContain('2 / 3 处')
   })
 
   it('blocks official print when the frozen document fails integrity validation', async () => {
@@ -59,5 +59,41 @@ describe('signing and archive UI state', () => {
     const printTag = html.match(/<button[^>]*class="signing-secondary"[^>]*>/)?.[0]
     expect(printTag).toContain('disabled')
     expect(html).toContain('签名完成后可打印')
+  })
+
+  it('counts the fingerprint as the third signing slot', async () => {
+    expect(await screen({ signingState: frozen })).toContain('0 / 3 处')
+  })
+
+  it('offers withdraw and void actions as visibly unavailable', async () => {
+    const html = await screen({ signingState: frozen })
+    for (const label of ['撤回定稿', '作废笔录']) {
+      expect(html).toMatch(new RegExp(`<button[^>]*disabled[^>]*title="功能待接入"[^>]*>${label}`))
+    }
+  })
+
+  it('prints collected signatures on the paper itself', async () => {
+    const signed = { ...frozen, signatures: [{ signerRole: 'SUSPECT', signerName: '测试人员', signedAt: 2, imageDataUrl: 'data:image/png;base64,AAAA' }] }
+    const html = await screen({ signingState: signed })
+    const img = html.indexOf('alt="被询问人签名"')
+    expect(img).toBeGreaterThan(0)
+    const cellStart = html.lastIndexOf('<div class="paper-sign-cell', img)
+    expect(cellStart).toBeGreaterThan(0)
+    expect(html.slice(cellStart, img)).not.toContain('record-no-print')
+    const rowStart = html.lastIndexOf('<div class="paper-sign-row', img)
+    expect(html.slice(rowStart, html.indexOf('>', rowStart))).not.toContain('record-no-print')
+  })
+
+  it('renders the frozen paper without editable controls', async () => {
+    const html = await screen({ signingState: frozen })
+    const paper = html.slice(html.indexOf('<article'), html.indexOf('</article>'))
+    expect(paper).not.toMatch(/<(input|textarea|select)\b/)
+  })
+
+  it('shows print settings as read-only facts instead of inputs', async () => {
+    const html = await screen({ signingState: frozen })
+    const sidebar = html.slice(html.indexOf('打印与装卷'))
+    expect(sidebar).not.toMatch(/<input\b/)
+    expect(sidebar).toContain('卷号待分配')
   })
 })

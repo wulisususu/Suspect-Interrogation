@@ -63,6 +63,7 @@ const props = defineProps<{
   questionDictationError: string
   readiness: VoiceprintReadiness
   completionMode: RecordMode
+  officers?: Array<{ officerId: string; officerName: string }>
 }>()
 
 const emit = defineEmits<{
@@ -397,6 +398,7 @@ async function confirmSignature() {
       :signing-state="signingState"
       :busy="completionBusy || signingLoading"
       :archiving="archiving"
+      :officers="officers ?? []"
       @print="emit('print')"
       @sign="openSignature"
       @archive="archiveCase"
