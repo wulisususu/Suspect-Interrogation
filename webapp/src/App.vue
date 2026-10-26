@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import AdminShell from './components/AdminShell.vue'
-import EmptyState from './components/EmptyState.vue'
 import MaintenanceGate from './components/MaintenanceGate.vue'
 import OnScreenKeyboard from './components/OnScreenKeyboard.vue'
 import AdminAuditView from './views/AdminAuditView.vue'
 import AdminCaseDetailView from './views/AdminCaseDetailView.vue'
 import AdminPendingView from './views/AdminPendingView.vue'
+import AdminPlaceholderView from './views/AdminPlaceholderView.vue'
 import AdminPanelView from './views/AdminPanelView.vue'
 import CaseDashboardView from './views/CaseDashboardView.vue'
 import KioskHomeView from './views/KioskHomeView.vue'
@@ -37,9 +37,12 @@ const openHome = () => go({ page: 'home' })
 const openAdmin = () => go({ page: 'admin' })
 const openPlaceholder = (panel: AdminPanel) => go({ page: 'admin-placeholder', panel })
 
-const ADMIN_TITLES: Record<string, string> = {
-  'admin-pending': '未完成办理',
-  'admin-audit': '操作日志',
+const PANEL_TITLES: Record<AdminPanel, string> = {
+  knowledge: '知识库管理',
+  templates: '模板管理',
+  'template-edit': '模板编辑',
+  signatures: '民警签名管理',
+  recordings: '录音查看',
 }
 </script>
 
@@ -67,8 +70,8 @@ const ADMIN_TITLES: Record<string, string> = {
     <AdminShell v-else-if="route.page === 'admin-audit'" title="操作日志" @back="openAdmin" @lock="openHome">
       <AdminAuditView />
     </AdminShell>
-    <AdminShell v-else-if="route.page !== 'cases'" :title="ADMIN_TITLES[route.page] ?? '后台管理'" @back="openAdmin" @lock="openHome">
-      <EmptyState kind="pending" :title="ADMIN_TITLES[route.page] ?? '后台管理'" />
+    <AdminShell v-else-if="route.page === 'admin-placeholder'" :title="PANEL_TITLES[route.panel]" @back="openAdmin" @lock="openHome">
+      <AdminPlaceholderView :key="route.panel" :kind="route.panel" @open="openPlaceholder" />
     </AdminShell>
     <AdminShell v-else title="全部案件记录" @back="openAdmin" @lock="openHome">
       <CaseDashboardView
