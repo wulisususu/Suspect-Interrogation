@@ -389,7 +389,23 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
       </div>
 
       <section class="workspace-page-body" :class="{ 'interrogation-workspace-body': activePage === 'interrogation', 'preparation-workspace-body': activePage === 'prepare' || activePage === 'voiceprint' }">
-        <CasePreparationPage v-if="activePage === 'prepare'" :summary="store.caseSummary" :facts="store.facts" :readiness="store.voiceprintReadiness" :enrollment-state="store.voiceprintEnrollmentState" :capabilities="preparationDevices" :session-status="store.session.status" :recorder-name="recorderName" :busy="preparationBusy || questionDictationActive || questionDictationBusy" :device-error="preparationDeviceError" @profile="openIntakePage('profile')" @voiceprint="openIntakePage('voiceprint')" @refresh="refreshPreparation" @start="startPreparedSession" @interrogation="goStep('dictation', true)" />
+        <CasePreparationPage
+          v-if="activePage === 'prepare'"
+          :summary="store.caseSummary"
+          :facts="store.facts"
+          :readiness="store.voiceprintReadiness"
+          :enrollment-state="store.voiceprintEnrollmentState"
+          :capabilities="preparationDevices"
+          :session-status="store.session.status"
+          :recorder-name="recorderName"
+          :busy="preparationBusy || questionDictationActive || questionDictationBusy"
+          :device-error="preparationDeviceError"
+          @profile="openIntakePage('profile')"
+          @voiceprint="openIntakePage('voiceprint')"
+          @refresh="refreshPreparation"
+          @start="startPreparedSession"
+          @interrogation="goStep('dictation', true)"
+        />
         <CaseProfilePage v-else-if="activePage === 'profile'" :summary="store.caseSummary" :facts="store.facts" @saved="refreshCaseWorkspace" />
 
         <MossTranscriptionPanel v-else-if="activePage === 'moss'" :case-id="store.caseId || props.caseId" />
@@ -509,7 +525,8 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
 }
 .topbar-field { color: var(--line-300); font-size: var(--text-sm); white-space: nowrap; }
 .topbar-divider { width: 1px; height: 16px; background: rgba(255, 255, 255, 0.18); }
-.topbar-audio-source { border-color: rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.06); }
+.topbar-audio-source.voiceprint-source-banner { border-color: rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.06); }
+.topbar-audio-source :deep(strong) { color: var(--primary-100); }
 .topbar-tool {
   min-height: 32px;
   padding: 0 12px;

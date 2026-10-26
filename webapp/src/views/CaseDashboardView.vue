@@ -338,7 +338,7 @@ onMounted(() => { void load(); void refreshDevices(); void loadVoiceprints() })
 .filter-footnote { flex-basis: 100%; margin: 0; color: var(--ink-400); font-size: var(--text-sm); }
 .case-table-shell { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; background: var(--surface); border-radius: 12px; overflow: hidden; }
 .case-table-scroll { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; width: 100%; overflow-x: auto; }
-.case-dashboard-table { width: 100%; height: 100%; border-collapse: collapse; text-align: left; font-size: var(--text-base); }
+.case-dashboard-table { width: 100%; border-collapse: collapse; text-align: left; font-size: var(--text-base); }
 .case-dashboard-table th { padding: 17px 12px; background: var(--surface-sunken); color: var(--ink-400); font-size: var(--text-base); font-weight: 650; white-space: nowrap; }
 .case-dashboard-table td { height: 71px; padding: 11px 12px; border-bottom: 1px solid var(--primary-100); vertical-align: middle; color: var(--primary-700); white-space: nowrap; }
 .case-dashboard-table tbody tr:hover { background: var(--surface-sunken); }

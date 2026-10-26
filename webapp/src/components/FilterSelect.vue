@@ -88,13 +88,13 @@ onBeforeUnmount(() => {
     </button>
 
     <ul v-if="open" class="filter-panel" role="listbox" :aria-multiselectable="multiple || undefined">
-      <li v-if="!multiple">
+      <li v-if="!multiple" role="none">
         <button type="button" role="option" class="filter-option" :class="{ selected: !isActive }" :aria-selected="!isActive" @click="emit('update:modelValue', '')">
           <span>{{ allLabel }}</span>
           <Check v-if="!isActive" :size="15" aria-hidden="true" />
         </button>
       </li>
-      <li v-for="option in options" :key="option.key">
+      <li v-for="option in options" :key="option.key" role="none">
         <button
           type="button"
           role="option"
@@ -107,7 +107,7 @@ onBeforeUnmount(() => {
           <Check v-if="selected.includes(option.key)" :size="15" aria-hidden="true" />
         </button>
       </li>
-      <li v-if="!options.length" class="filter-empty">暂无可选项</li>
+      <li v-if="!options.length" class="filter-empty" role="none">暂无可选项</li>
     </ul>
   </div>
 </template>
