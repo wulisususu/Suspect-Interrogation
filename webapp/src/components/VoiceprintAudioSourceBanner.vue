@@ -45,19 +45,19 @@ const secureContextValue = computed(() => unref(props.secureContext))
 </template>
 
 <style scoped>
-.voiceprint-source-banner { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:10px 18px; border-bottom:1px solid #c9d7e2; background:#f7fbff; color:#29465f; }
+.voiceprint-source-banner { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:10px 18px; border-bottom:1px solid var(--line-300); background:var(--surface-sunken); color:var(--primary-700); }
 .voiceprint-source-banner > div { display:flex; flex-direction:column; gap:3px; min-width:0; }
 .voiceprint-source-banner strong { font-size:14px; }
-.voiceprint-source-banner span { font-size:12px; color:#62788c; }
-.voiceprint-source-banner.browser { background:#eef9f2; border-bottom-color:#add1ba; }
-.voiceprint-source-banner.alsa { background:#fff8e8; border-bottom-color:#e5c77e; }
-.security-chip { flex:none; border:1px solid #d7b36b; border-radius:999px; padding:5px 9px; background:#fff; color:#895c0b !important; font-weight:700; }
-.security-chip.secure { border-color:#8fc6a6; color:#267647 !important; }
+.voiceprint-source-banner span { font-size:12px; color:var(--ink-500); }
+.voiceprint-source-banner.browser { background:var(--success-100); border-bottom-color:var(--success-600); }
+.voiceprint-source-banner.alsa { background:var(--warning-100); border-bottom-color:var(--warning-700); }
+.security-chip { flex:none; border:1px solid var(--warning-700); border-radius:999px; padding:5px 9px; background:var(--surface); color:var(--warning-600) !important; font-weight:700; }
+.security-chip.secure { border-color:var(--success-600); color:var(--success-700) !important; }
 .compact-source-details { min-width:0; }
 .compact-source-details summary { display:flex; align-items:center; justify-content:flex-end; gap:6px; cursor:pointer; list-style:none; white-space:nowrap; }
 .compact-source-details summary::-webkit-details-marker { display:none; }
 .compact-source-details strong { font-size:11px; }
 .compact-source-details .security-chip { padding:2px 6px; font-size:10px; }
-.compact-source-details p { max-width:300px; margin:5px 0 0; color:#62788c; font-size:11px; line-height:1.4; white-space:normal; }
-.voiceprint-source-banner.compact { justify-content:flex-end; padding:3px 6px; border:1px solid #c9d7e2; border-radius:6px; }
+.compact-source-details p { max-width:300px; margin:5px 0 0; color:var(--ink-500); font-size:11px; line-height:1.4; white-space:normal; }
+.voiceprint-source-banner.compact { justify-content:flex-end; padding:3px 6px; border:1px solid var(--line-300); border-radius:6px; }
 </style>

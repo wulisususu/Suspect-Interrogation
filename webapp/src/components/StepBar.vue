@@ -136,7 +136,7 @@ function select(key: FlowStepKey) {
 .step-button.is-active .step-index {
   border-color: var(--primary-600);
   background: var(--primary-600);
-  color: #fff;
+  color: var(--surface);
 }
 
 .step-button.is-done {

@@ -386,8 +386,8 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 6px;
   padding: 8px 8px calc(10px + env(safe-area-inset-bottom, 0px));
-  background: #e9f0f6;
-  border-top: 1px solid #b7c8d6;
+  background: var(--primary-100);
+  border-top: 1px solid var(--primary-500);
   box-shadow: 0 -4px 16px rgba(32, 56, 77, 0.18);
   user-select: none;
   -webkit-user-select: none;
@@ -397,19 +397,19 @@ onBeforeUnmount(() => {
   flex: 1 1 0;
   min-width: 0;
   min-height: 54px;
-  border: 1px solid #b9c9d6;
+  border: 1px solid var(--primary-500);
   border-radius: 8px;
-  background: #ffffff;
-  color: #20384d;
+  background: var(--surface);
+  color: var(--navy-900);
   font-size: 20px;
   font-weight: 600;
   box-shadow: 0 1px 0 rgba(120, 145, 165, 0.8);
   touch-action: manipulation;
   padding: 0;
 }
-.osk-key:active { background: #d7e8f6; }
-.osk-key-fn { flex: 1.3 1 0; background: #dce6ef; font-size: 17px; }
-.osk-key-active { background: #2476c9; color: #fff; border-color: #1c5ea3; }
+.osk-key:active { background: var(--primary-100); }
+.osk-key-fn { flex: 1.3 1 0; background: var(--primary-100); font-size: 17px; }
+.osk-key-active { background: var(--primary-600); color: var(--surface); border-color: var(--primary-600); }
 .osk-key-space { flex: 4 1 0; }
 .osk-key-enter { flex: 1.6 1 0; }
 .osk-candidate-bar { display: flex; align-items: center; gap: 8px; min-height: 52px; }
@@ -419,9 +419,9 @@ onBeforeUnmount(() => {
   text-align: center;
   font-size: 18px;
   font-weight: 700;
-  color: #1c5ea3;
-  background: #ffffff;
-  border: 1px dashed #9db8cc;
+  color: var(--primary-600);
+  background: var(--surface);
+  border: 1px dashed var(--primary-500);
   border-radius: 8px;
   padding: 10px 12px;
 }
@@ -436,16 +436,16 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
   min-width: 56px;
   min-height: 46px;
-  border: 1px solid #b9c9d6;
+  border: 1px solid var(--primary-500);
   border-radius: 8px;
-  background: #ffffff;
-  color: #20384d;
+  background: var(--surface);
+  color: var(--navy-900);
   font-size: 19px;
   padding: 4px 10px;
   touch-action: manipulation;
 }
-.osk-candidate-first { background: #2476c9; color: #fff; border-color: #1c5ea3; }
-.osk-dict-hint { color: #687e90; font-size: 13px; white-space: nowrap; }
+.osk-candidate-first { background: var(--primary-600); color: var(--surface); border-color: var(--primary-600); }
+.osk-dict-hint { color: var(--ink-500); font-size: 13px; white-space: nowrap; }
 @media (max-height: 560px) {
   .osk-key { min-height: 44px; font-size: 17px; }
   .osk-candidate-bar { min-height: 44px; }

@@ -80,14 +80,14 @@ onUnmounted(() => {
   display: grid;
   place-items: center;
   padding: 32px;
-  background: #f4f6f8;
-  color: #1f2937;
+  background: var(--surface-sunken);
+  color: var(--navy-900);
 }
 .maintenance-card {
   width: min(620px, 100%);
   padding: 40px;
   border-radius: 18px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
 }
 .maintenance-kicker {
@@ -96,18 +96,18 @@ onUnmounted(() => {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--ink-500);
 }
 h1 { margin: 0 0 16px; font-size: 30px; }
 p { line-height: 1.7; }
-.maintenance-details { color: #b45309; line-height: 1.6; }
+.maintenance-details { color: var(--warning-600); line-height: 1.6; }
 button {
   margin-top: 12px;
   border: 0;
   border-radius: 10px;
   padding: 11px 18px;
-  background: #111827;
-  color: #fff;
+  background: var(--navy-900);
+  color: var(--surface);
   cursor: pointer;
 }
 </style>

@@ -154,9 +154,9 @@ async function recoverLocalAudio() {
   display: grid;
   gap: 8px;
   padding: 8px 12px;
-  color: #35516d;
-  background: #eff5fa;
-  border-bottom: 1px solid #dbe6ef;
+  color: var(--primary-700);
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--line-300);
   font: 12px/1.45 system-ui, sans-serif;
 }
 
@@ -181,16 +181,16 @@ async function recoverLocalAudio() {
   align-items: start;
   gap: 9px;
   padding: 8px 10px;
-  border: 1px solid #d6e3ed;
+  border: 1px solid var(--line-300);
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .workflow-stage-number {
   padding: 2px 6px;
   border-radius: 4px;
-  color: #fff;
-  background: #355c82;
+  color: var(--surface);
+  background: var(--primary-600);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -201,29 +201,29 @@ async function recoverLocalAudio() {
 }
 
 .workflow-stage-copy strong {
-  color: #203d58;
+  color: var(--primary-700);
 }
 
 .live-transcript-warning {
-  color: #8d4a08;
+  color: var(--warning-600);
 }
 
 .speaker-stage {
-  border-color: #d8dfef;
+  border-color: var(--line-300);
 }
 
 .speaker-stage .workflow-stage-number {
-  background: #5b5b91;
+  background: var(--primary-600);
 }
 
 .asr-workflow-status.incomplete {
-  color: #8d4a08;
-  background: #fff5e8;
-  border-bottom-color: #f1d6b4;
+  color: var(--warning-600);
+  background: var(--warning-100);
+  border-bottom-color: var(--warning-700);
 }
 
 .asr-workflow-status.incomplete .workflow-stage {
-  border-color: #f1d6b4;
+  border-color: var(--warning-700);
 }
 
 .workflow-error {
@@ -239,11 +239,11 @@ async function recoverLocalAudio() {
 }
 
 .local-recovery button {
-  border: 1px solid #b36b20;
+  border: 1px solid var(--warning-600);
   border-radius: 5px;
   padding: 4px 9px;
-  color: #77430c;
-  background: #fff;
+  color: var(--warning-600);
+  background: var(--surface);
   cursor: pointer;
 }
 

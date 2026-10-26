@@ -87,14 +87,14 @@ onMounted(() => {
 <style scoped>
 .device-status-wrap { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .capability-strip { display: flex; gap: 4px; max-width: 520px; overflow-x: auto; scrollbar-width: thin; }
-.capability-chip { flex: 0 0 auto; border-radius: 999px; padding: 3px 6px; background: #eef2f6; color: #536779; font-size: 9px; white-space: nowrap; }
-.capability-chip.available { background: #e9f7ef; color: #17734b; }
-.capability-chip.not_connected, .capability-chip.not_configured, .capability-chip.model_not_installed { background: #fff7e8; color: #895700; }
-.capability-chip.busy { background: #eef6fd; color: #365d7c; }
-.capability-chip.error { background: #fff0f0; color: #a32626; }
+.capability-chip { flex: 0 0 auto; border-radius: 999px; padding: 3px 6px; background: var(--primary-100); color: var(--ink-500); font-size: 9px; white-space: nowrap; }
+.capability-chip.available { background: var(--success-100); color: var(--success-700); }
+.capability-chip.not_connected, .capability-chip.not_configured, .capability-chip.model_not_installed { background: var(--warning-100); color: var(--warning-600); }
+.capability-chip.busy { background: var(--surface-sunken); color: var(--primary-600); }
+.capability-chip.error { background: var(--danger-100); color: var(--danger-600); }
 .device-actions { display: flex; align-items: center; gap: 5px; }
-.device-button { border: 1px solid #557087; border-radius: 7px; background: #17364f; color: #e7f0f8; padding: 6px 9px; font-size: 11px; }
+.device-button { border: 1px solid var(--primary-600); border-radius: 7px; background: var(--navy-900); color: var(--primary-100); padding: 6px 9px; font-size: 11px; }
 .device-button.compact { padding-inline: 7px; }
 .device-button:disabled { opacity: .45; cursor: not-allowed; }
-.device-message { max-width: 180px; overflow: hidden; color: #dbe7f0; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.device-message { max-width: 180px; overflow: hidden; color: var(--line-300); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 </style>
