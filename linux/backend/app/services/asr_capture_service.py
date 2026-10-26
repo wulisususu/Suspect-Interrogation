@@ -413,52 +413,6 @@ class AsrCaptureService:
             runtime.local_inference_done.wait(timeout=max(1.0, self.read_timeout * 5.0))
         return self.status(case_id)
 
-    def inject_officer_text(self, case_id: str, text: str, role: str = "INTERROGATOR") -> dict[str, Any]:
-        """DEV-ONLY BOT hook.
-
-        Persists a question (INTERROGATOR) or a reply (SUSPECT) as a REAL ASR
-        fragment and feeds it to the normal QA-unit builder / formal-record
-        routing, so a solo tester can exercise the exact pipeline spoken turns
-        would take. Not part of the production interrogation flow.
-        """
-        text = str(text or "").strip()
-        role = str(role or "INTERROGATOR").strip().upper()
-        if role not in {"INTERROGATOR", "SUSPECT"}:
-            raise DomainError("DEV_BOT_ROLE_INVALID", "BOT 注入角色只支持 INTERROGATOR/SUSPECT", 400)
-        if not text:
-            raise DomainError("DEV_BOT_TEXT_REQUIRED", "BOT 问题文本不能为空", 400)
-        with self._lock:
-            runtime = self._active.get(case_id)
-        if runtime is None:
-            raise DomainError("ASR_CAPTURE_NOT_ACTIVE", "当前没有进行中的正式录音，请先开始审讯并开启录音", 409)
-
-        started_ms = runtime.ordinal * 5000
-        with self.session_factory() as db:
-            fragment = asr_repo.create_fragment(
-                db,
-                capture_session_id=runtime.capture_session_id,
-                case_id=case_id,
-                ordinal=runtime.ordinal,
-                started_at_ms=started_ms,
-                ended_at_ms=started_ms + 1000,
-                raw_text=text,
-                speaker=role,
-                speaker_source="MANUAL",
-                voiceprint_verified=False,
-                low_confidence=False,
-                model_id="dev-bot",
-                speaker_name=("BOT 民警" if role == "INTERROGATOR" else "BOT 嫌疑人"),
-            )
-            db.commit()
-        payload = self._fragment_payload(fragment)
-        payload["captureStartedAt"] = runtime.capture_started_at
-        with self._lock:
-            runtime.ordinal += 1
-        self.publish_event(runtime.interrogation_session_id, "ASR_FRAGMENT", payload)
-        if self.fragment_sink is not None:
-            self.fragment_sink(case_id, fragment.id)
-        return payload
-
     def status(self, case_id: str) -> dict[str, Any]:
         case_id = str(case_id).strip()
         with self._lock:

@@ -529,17 +529,6 @@ button:disabled {
 }
 
 .live-dialogue-actions { display: flex; align-items: center; gap: 8px; }
-.bot-toggle {
-  border: 1px solid var(--ink-300);
-  border-radius: 7px;
-  background: var(--surface);
-  color: var(--primary-700);
-  font: 700 12px/1 system-ui, sans-serif;
-  padding: 9px 10px;
-  cursor: pointer;
-}
-.bot-toggle.active { border-color: var(--primary-500); background: var(--surface-sunken); color: var(--primary-700); }
-.bot-toggle.judging { opacity: .65; cursor: progress; }
 
 .capture-toggle {
   display: flex;

@@ -20,7 +20,6 @@ from app.api.asr import router as asr_router
 from app.api.cases import router as cases_router
 from app.api.client_context import router as client_context_router
 from app.api.compat import router as compat_router
-from app.api.dev_bot import router as dev_bot_router
 from app.api.device_events import router as device_router
 from app.api.errors import install_error_handlers
 from app.api.identity import router as identity_router
@@ -340,7 +339,6 @@ def create_app(
     app.include_router(speaker_calibration_router, prefix="/api/v1")
     app.include_router(moss_transcription_router, prefix="/api/v1")
     app.include_router(client_context_router, prefix="/api/v1")
-    app.include_router(dev_bot_router, prefix="/api/v1")
     app.include_router(compat_router)
     app.include_router(websocket_router)
     app.include_router(browser_asr_websocket_router)

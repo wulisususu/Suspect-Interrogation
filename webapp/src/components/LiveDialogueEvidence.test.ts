@@ -7,7 +7,7 @@ import apiSource from '../api/templateInterrogation.ts?raw'
 
 describe('recognition evidence workbench contract', () => {
   it('renders chronological raw transcript fragments before formal-record grouping', () => {
-    expect(dialogueSource).toContain('groupLiveDialogueFragments([...props.dialogue, ...botTurns.value])')
+    expect(dialogueSource).toContain('groupLiveDialogueFragments(props.dialogue)')
     const transcriptStart = dialogueSource.indexOf('class="dialogue-region transcript-region"')
     const recognitionStart = dialogueSource.indexOf('class="dialogue-region recognition-region"')
     expect(transcriptStart).toBeGreaterThanOrEqual(0)
@@ -76,7 +76,7 @@ describe('recognition evidence workbench contract', () => {
 
   it('makes persisted raw dialogue turns draggable into formal answers', () => {
     expect(dialogueSource).toContain('startDialogueDrag')
-    expect(dialogueSource).toContain(':draggable="turn.fragments.some((item) => !isBotFragment(item))"')
+    expect(dialogueSource).toContain(':draggable="true"')
     expect(dialogueSource).toContain('@dragstart="startDialogueDrag($event, turn.fragments)"')
     expect(dialogueSource).toContain("const FORMAL_ANSWER_FRAGMENT_MIME = 'application/x-formal-answer-fragments'")
     expect(pageSource).toContain('attachFragmentAnswer')
