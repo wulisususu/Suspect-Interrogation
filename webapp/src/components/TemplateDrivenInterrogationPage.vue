@@ -411,9 +411,10 @@ async function confirmSignature() {
       :session="session"
       :questions="workspace.questions"
       :signing-state="signingState"
-      :archived-at="signingState?.createdAt"
+      :archived="summary.workflowState === 'REPORT_GENERATED'"
       @print="emit('print')"
       @back="emit('back')"
+      @sign="mode = 'sign'"
     />
 
     <div v-else class="template-interrogation-grid" :class="{ 'record-review-grid': mode === 'review', 'draft-first': mode === 'interrogation' }">

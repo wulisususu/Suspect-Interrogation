@@ -26,7 +26,7 @@ function submitLogin() {
 
       <form class="login-form" autocomplete="off" @submit.prevent="submitLogin">
         <label class="sr-only" for="login-officer">民警警号</label>
-        <input id="login-officer" v-model.trim="officerId" inputmode="numeric" name="username" autocomplete="username" placeholder="警号（如 038291）" required />
+        <input id="login-officer" v-model.trim="officerId" inputmode="numeric" name="username" autocomplete="username" placeholder="民警警号" required />
         <label class="sr-only" for="login-password">登录密码</label>
         <input id="login-password" v-model="password" type="password" name="password" autocomplete="current-password" placeholder="密码" required />
         <div class="login-actions">

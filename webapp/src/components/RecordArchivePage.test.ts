@@ -10,7 +10,8 @@ const signingState = {
     { signerRole: 'OFFICER', signerName: '张伟', signedAt: 3, imageDataUrl: 'data:,' },
   ],
 }
-const render = () => renderToString(createSSRApp(RecordArchivePage, {
+const render = (archived = true) => renderToString(createSSRApp(RecordArchivePage, {
+  archived,
   summary: { id: 'CASE-UI', suspectName: '王某某', officerName: '张伟', state: 'COMPLETED', stage: 'SIGNING', updatedAt: 5 },
   facts: [{ key: 'time', label: '时间', value: '上午', status: 'confirmed' }, { key: 'place', label: '地点', value: '', status: 'missing' }],
   session: { id: 's', caseId: 'CASE-UI', status: 'COMPLETED', stage: 'SIGNING', startedAt: 1, endedAt: 2, pausedAt: null, updatedAt: 2 },
@@ -39,5 +40,12 @@ describe('RecordArchivePage (design P16)', () => {
 
   it('says the volume number is pending when no prefix is configured', async () => {
     expect(await render()).toContain('卷号待分配')
+  })
+
+  it('does not announce success before the case is archived', async () => {
+    const html = await render(false)
+    expect(html).not.toContain('归档成功')
+    expect(html).toContain('尚未归档')
+    expect(html).toContain('返回签署归档')
   })
 })

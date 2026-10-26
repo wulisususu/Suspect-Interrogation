@@ -33,7 +33,7 @@ const fact = (key: string, fallback?: string) => factValue(props.facts, key, fal
       <p>记录人：{{ fact('recorder_name') }}　工作单位：{{ fact('recorder_unit') }}</p>
       <p>被询问人：{{ summary.suspectName || '未填写' }}　性别：{{ summary.gender || '未填写' }}　出生日期：{{ summary.birthDate || '未填写' }}</p>
       <p>证件类型：{{ fact('id_document_type', '身份证') }}　证件号码：{{ summary.idNumber || '未填写' }}</p>
-      <p>联系方式：{{ fact('contact') }}　现住址：{{ summary.address || '未填写' }}</p>
+      <p>联系方式：{{ fact('contact') }}　现住址：{{ fact('current_address') }}</p>
       <p>案件编号：{{ summary.id }}</p>
     </section>
     <section class="record-paper-body">

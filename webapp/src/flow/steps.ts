@@ -98,7 +98,8 @@ export function resolveFlowProgress(snapshot: FlowSnapshot): FlowProgress {
   if (intakeDone || hasQuestions) reachable.push('dictation')
   if (hasQuestions || frozen) reachable.push('review')
   if (frozen) reachable.push('signing')
-  if (signed || archived) reachable.push('archive')
+  // 归档导出只在真正归档后开放；签名齐备后在⑤页确认归档。
+  if (archived) reachable.push('archive')
 
   const suggested = ORDER.find((key) => !doneByKey[key]) ?? 'archive'
 

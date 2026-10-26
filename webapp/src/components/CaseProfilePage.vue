@@ -7,7 +7,7 @@ import { calculateAge } from '../utils/identityOcr'
 import { createIdentityForm, identityCompleteness, identityFactValues, identityFormError } from '../utils/identityForm'
 import IdentityFieldRow from './IdentityFieldRow.vue'
 
-const props = defineProps<{ summary: CaseSummary; facts: FactItem[]; readerAvailable?: boolean }>()
+const props = defineProps<{ summary: CaseSummary; facts: FactItem[]; readerAvailable?: boolean; locked?: boolean }>()
 const emit = defineEmits<{ saved: []; next: [] }>()
 
 const busy = ref('')
@@ -53,6 +53,7 @@ function syncFromProps() {
 watch(() => [props.summary, props.facts], syncFromProps, { deep: true, immediate: true })
 
 async function save(next = false) {
+  if (props.locked) { if (next) emit('next'); return }
   if (busy.value) return
   const validation = identityFormError(form)
   if (validation) { error.value = validation; return }
@@ -94,10 +95,11 @@ onMounted(syncFromProps)
     <header class="profile-head">
       <div>
         <h1>② 建档 · 被询问人身份信息</h1>
-        <p>先读身份证，再补填身份证上没有的信息 · 所有信息后续均可修改</p>
+        <p v-if="locked">笔录已冻结，身份信息只读</p>
+        <p v-else>先读身份证，再补填身份证上没有的信息 · 所有信息后续均可修改</p>
       </div>
       <div class="profile-actions">
-        <button type="button" class="profile-secondary" :disabled="!!busy" @click="save()">{{ busy === 'save' ? '保存中…' : '暂存草稿' }}</button>
+        <button type="button" class="profile-secondary" :disabled="!!busy || locked" @click="save()">{{ busy === 'save' ? '保存中…' : '暂存草稿' }}</button>
         <button type="button" class="profile-primary" :disabled="!!busy" @click="save(true)">下一步 · 问答录入 →</button>
       </div>
     </header>
@@ -123,35 +125,35 @@ onMounted(syncFromProps)
         <section class="profile-card">
           <h2>被询问人身份信息</h2>
           <div class="identity-rows">
-            <IdentityFieldRow label="姓名" :source="cardSource" required><input v-model="form.suspectName" autocomplete="off" :disabled="!!busy" /></IdentityFieldRow>
-            <IdentityFieldRow label="身份证号" :source="cardSource" required><input v-model="form.idNumber" maxlength="18" autocomplete="off" :disabled="!!busy" /></IdentityFieldRow>
+            <IdentityFieldRow label="姓名" :source="cardSource" required><input v-model="form.suspectName" autocomplete="off" :disabled="!!busy || locked" /></IdentityFieldRow>
+            <IdentityFieldRow label="身份证号" :source="cardSource" required><input v-model="form.idNumber" maxlength="18" autocomplete="off" :disabled="!!busy || locked" /></IdentityFieldRow>
             <IdentityFieldRow label="性别 / 民族" :source="cardSource">
-              <select v-model="form.gender" :disabled="!!busy"><option value="">未填写</option><option>男</option><option>女</option></select>
-              <input v-model="form.nation" placeholder="民族" :disabled="!!busy" />
+              <select v-model="form.gender" :disabled="!!busy || locked"><option value="">未填写</option><option>男</option><option>女</option></select>
+              <input v-model="form.nation" placeholder="民族" :disabled="!!busy || locked" />
             </IdentityFieldRow>
-            <IdentityFieldRow label="出生日期" :source="cardSource"><input v-model="form.birthDate" type="date" :disabled="!!busy" @change="form.age = calculateAge(form.birthDate)" /></IdentityFieldRow>
-            <IdentityFieldRow label="年龄" source="AUTO"><input v-model="form.age" inputmode="numeric" :disabled="!!busy" /></IdentityFieldRow>
-            <IdentityFieldRow label="身份证住址" :source="cardSource"><input v-model="form.idCardAddress" :disabled="!!busy" /></IdentityFieldRow>
-            <IdentityFieldRow label="现住址" source="MANUAL" required><input v-model="form.currentAddress" :disabled="!!busy" /></IdentityFieldRow>
-            <IdentityFieldRow label="户籍所在地" source="MANUAL"><input v-model="form.householdRegistration" :disabled="!!busy" /></IdentityFieldRow>
-            <IdentityFieldRow label="联系方式" source="MANUAL" required><input v-model="form.contact" inputmode="tel" autocomplete="off" :disabled="!!busy" /></IdentityFieldRow>
+            <IdentityFieldRow label="出生日期" :source="cardSource"><input v-model="form.birthDate" type="date" :disabled="!!busy || locked" @change="form.age = calculateAge(form.birthDate)" /></IdentityFieldRow>
+            <IdentityFieldRow label="年龄" source="AUTO"><input v-model="form.age" inputmode="numeric" :disabled="!!busy || locked" /></IdentityFieldRow>
+            <IdentityFieldRow label="身份证住址" :source="cardSource"><input v-model="form.idCardAddress" :disabled="!!busy || locked" /></IdentityFieldRow>
+            <IdentityFieldRow label="现住址" source="MANUAL" required><input v-model="form.currentAddress" :disabled="!!busy || locked" /></IdentityFieldRow>
+            <IdentityFieldRow label="户籍所在地" source="MANUAL"><input v-model="form.householdRegistration" :disabled="!!busy || locked" /></IdentityFieldRow>
+            <IdentityFieldRow label="联系方式" source="MANUAL" required><input v-model="form.contact" inputmode="tel" autocomplete="off" :disabled="!!busy || locked" /></IdentityFieldRow>
           </div>
         </section>
 
         <section class="profile-card">
           <h2>询问信息</h2>
           <div class="inquiry-grid">
-            <IdentityFieldRow label="案件类型" source="MANUAL"><input v-model="form.caseType" placeholder="选择或填写案件类型" :disabled="!!busy" /></IdentityFieldRow>
-            <IdentityFieldRow label="询问地点" source="MANUAL" required><input v-model="form.interrogationPlace" placeholder="如：2 号询问室" :disabled="!!busy" /></IdentityFieldRow>
-            <IdentityFieldRow label="询问人" source="MANUAL"><input v-model="form.officerName" :disabled="!!busy" /></IdentityFieldRow>
-            <IdentityFieldRow label="询问时间" source="AUTO"><input value="开始询问后由系统自动记录" readonly /></IdentityFieldRow>
-            <IdentityFieldRow label="记录员" source="MANUAL" required><input v-model="form.recorderName" :disabled="!!busy" /></IdentityFieldRow>
+            <IdentityFieldRow label="案件类型" source="MANUAL"><input v-model="form.caseType" placeholder="选择或填写案件类型" :disabled="!!busy || locked" /></IdentityFieldRow>
+            <IdentityFieldRow label="询问地点" source="MANUAL" required><input v-model="form.interrogationPlace" placeholder="如：2 号询问室" :disabled="!!busy || locked" /></IdentityFieldRow>
+            <IdentityFieldRow label="询问人" source="MANUAL"><input v-model="form.officerName" :disabled="!!busy || locked" /></IdentityFieldRow>
+            <IdentityFieldRow label="询问时间" source="AUTO"><input value="开始询问后由系统自动记录" readonly disabled /></IdentityFieldRow>
+            <IdentityFieldRow label="记录员" source="MANUAL" required><input v-model="form.recorderName" :disabled="!!busy || locked" /></IdentityFieldRow>
             <IdentityFieldRow label="询问次数 / 人大代表" source="MANUAL">
-              <input v-model="form.interrogationRound" inputmode="numeric" :disabled="!!busy" />
-              <select v-model="form.peoplesRepresentative" :disabled="!!busy"><option>否</option><option>是</option></select>
+              <input v-model="form.interrogationRound" inputmode="numeric" :disabled="!!busy || locked" />
+              <select v-model="form.peoplesRepresentative" :disabled="!!busy || locked"><option>否</option><option>是</option></select>
             </IdentityFieldRow>
-            <IdentityFieldRow label="询问人单位" source="MANUAL"><input v-model="form.officerUnit" :disabled="!!busy" /></IdentityFieldRow>
-            <IdentityFieldRow label="记录人单位" source="MANUAL"><input v-model="form.recorderUnit" :disabled="!!busy" /></IdentityFieldRow>
+            <IdentityFieldRow label="询问人单位" source="MANUAL"><input v-model="form.officerUnit" :disabled="!!busy || locked" /></IdentityFieldRow>
+            <IdentityFieldRow label="记录人单位" source="MANUAL"><input v-model="form.recorderUnit" :disabled="!!busy || locked" /></IdentityFieldRow>
           </div>
         </section>
 

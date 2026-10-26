@@ -76,6 +76,7 @@ const cards = computed(() => {
  * 录音停止后清除。
  */
 const recordingCardId = ref<string | null>(null)
+const RECORD_HINT = '录音通道为全局一路，回答由系统按问题自动归属；新录音不会覆盖已写入正本的回答'
 watch(() => props.captureRunning, (running) => { if (!running) recordingCardId.value = null })
 
 function recordCard(cardId: string) {
@@ -175,11 +176,11 @@ const counts = computed(() => {
             <button type="button" class="draft-action is-stop" :disabled="locked || captureBusy" @click="recordCard(card.id)"><Square :size="13" aria-hidden="true" />结束并转写</button>
           </div>
           <footer v-else-if="card.state === 'empty'" class="draft-card-actions is-empty">
-            <button type="button" class="draft-action is-answer" :disabled="locked || captureBusy || captureAvailable === false" @click="recordCard(card.id)"><Mic :size="15" aria-hidden="true" />点击此处回答</button>
-            <small>对着话筒说话 · 说完再点一下结束 · 自动转成文字，可再修改</small>
+            <button type="button" class="draft-action is-answer" :disabled="locked || captureBusy || captureRunning || captureAvailable === false" :title="RECORD_HINT" @click="recordCard(card.id)"><Mic :size="15" aria-hidden="true" />点击此处回答</button>
+            <small>对着话筒说话 · 说完再点一下结束 · 回答由系统按问题自动归属，可再修改</small>
           </footer>
           <footer v-else class="draft-card-actions">
-            <button type="button" class="draft-action" :disabled="locked || captureBusy || captureAvailable === false" @click="recordCard(card.id)"><RotateCcw :size="14" aria-hidden="true" />重录这题</button>
+            <button type="button" class="draft-action" :disabled="locked || captureBusy || captureRunning || captureAvailable === false" :title="RECORD_HINT" @click="recordCard(card.id)"><RotateCcw :size="14" aria-hidden="true" />重录这题</button>
             <button v-if="card.state === 'recorded'" type="button" class="draft-action is-link" :disabled="locked" @click="emit('locate', card.id)"><FileText :size="14" aria-hidden="true" />在正本中查看 ›</button>
             <button v-else type="button" class="draft-action is-primary" :disabled="locked || !card.bufferedText" @click="insertBuffered(card.id)">插入正本<ArrowRight :size="14" aria-hidden="true" /></button>
           </footer>

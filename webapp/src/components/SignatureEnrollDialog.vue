@@ -9,7 +9,7 @@ const emit = defineEmits<{ close: [] }>()
       <h2>新增 / 更换民警签名</h2>
       <p>签名预先手写录入并绑定警号，签署环节一键调用；停用后不可调用但保留记录</p>
       <div class="enroll-fields">
-        <label><span>警号</span><input disabled placeholder="如 038291" /></label>
+        <label><span>警号</span><input disabled placeholder="民警警号" /></label>
         <label><span>姓名</span><input disabled placeholder="民警姓名" /></label>
       </div>
       <div class="enroll-canvas">手写签名区 · 功能待接入</div>

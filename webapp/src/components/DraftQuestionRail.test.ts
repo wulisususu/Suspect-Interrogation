@@ -39,4 +39,12 @@ describe('DraftQuestionRail cards (design P08–P10)', () => {
     expect(actions.length).toBeGreaterThan(0)
     for (const button of actions) expect(button).toContain('disabled')
   })
+
+  it('locks other cards while a recording runs and says answers are routed automatically', async () => {
+    const html = await render({ captureRunning: true })
+    const answer = html.match(/<button[^>]*class="draft-action is-answer"[^>]*>/g) ?? []
+    expect(answer.length).toBeGreaterThan(0)
+    for (const button of answer) expect(button).toContain('disabled')
+    expect(html).toContain('回答由系统按问题自动归属')
+  })
 })

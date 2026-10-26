@@ -33,8 +33,9 @@ describe('resolveFlowProgress', () => {
     expect(progress.suggested).toBe('signing')
   })
 
-  it('opens the archive step once signed', () => {
-    expect(resolveFlowProgress({ ...prepared, frozen: true, signed: true }).reachable).toContain('archive')
+  it('keeps the archive step closed until the case is actually archived', () => {
+    expect(resolveFlowProgress({ ...prepared, frozen: true, signed: true }).reachable).not.toContain('archive')
+    expect(resolveFlowProgress({ ...prepared, frozen: true, signed: true, archived: true }).reachable).toContain('archive')
   })
 
   it('lands on the archive step when the case is archived', () => {

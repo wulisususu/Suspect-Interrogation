@@ -21,9 +21,11 @@ const props = defineProps<{
   questions: FormalQuestion[]
   signingState: DocumentSigningState | null
   archivedAt?: number | null
+  /** 后端已进入 REPORT_GENERATED；未归档时只提示回到⑤确认归档 */
+  archived: boolean
 }>()
 
-const emit = defineEmits<{ print: []; back: [] }>()
+const emit = defineEmits<{ print: []; back: []; sign: [] }>()
 
 const questions = computed(() => [...props.questions].sort((a, b) => a.sortOrder - b.sortOrder))
 const wordCount = computed(() => recordWordCount(props.questions))
@@ -79,6 +81,14 @@ function escapeHtml(value: string) {
       <button type="button" class="archive-back" @click="emit('back')"><ArrowLeft :size="16" aria-hidden="true" />返回案件台账</button>
     </header>
 
+    <section v-if="!archived" class="archive-result is-pending record-no-print" aria-label="归档结果">
+      <div class="archive-result-main">
+        <h2>尚未归档</h2>
+        <p>签名齐备后，请在「⑤ 签署归档」确认归档并结案；归档后这里生成正式件并开放导出。</p>
+        <div><button type="button" class="archive-primary" @click="emit('sign')">返回签署归档</button></div>
+      </div>
+    </section>
+    <template v-else>
     <section class="archive-result record-no-print" aria-label="归档结果">
       <span class="archive-result-icon" aria-hidden="true"><FileCheck2 :size="40" /></span>
       <div class="archive-result-main">
@@ -117,6 +127,7 @@ function escapeHtml(value: string) {
     </div>
 
     <p class="archive-footnote record-no-print">已归档笔录只读 · 如需更正只能作废重做</p>
+    </template>
 
     <div class="archive-print-only">
       <RecordPaper class="archive-paper" :summary="summary" :facts="facts" :session="session" :questions="questions" :subtitle="`归档正式件 · ${branding.volumePrefix ? `卷号 ${volumeNo}` : volumeNo}`">
@@ -149,6 +160,7 @@ function escapeHtml(value: string) {
 .archive-result { display: flex; gap: var(--space-5); padding: var(--space-6); border: 1px solid var(--line-200); border-radius: var(--radius-lg); background: var(--surface); }
 .archive-result-icon { display: grid; place-items: center; width: 80px; height: 80px; flex: none; border: 1px solid var(--success-600); border-radius: var(--radius-lg); background: var(--success-100); color: var(--success-700); }
 .archive-result-main { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; flex: 1; }
+.archive-result.is-pending .archive-result-main h2 { color: var(--warning-700); }
 .archive-result-main h2 { margin: 0; color: var(--success-700); font-size: var(--text-2xl); font-weight: 650; }
 .archive-result-main p { margin: 0; color: var(--ink-700); font-size: var(--text-sm); }
 .archive-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-2) 0 0; }

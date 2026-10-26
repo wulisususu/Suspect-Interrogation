@@ -11,7 +11,7 @@ const facts = [
   { key: 'contact', label: '联系方式', value: '13800000000', status: 'confirmed' },
   { key: 'current_address', label: '现住址', value: '测试路 1 号', status: 'confirmed' },
 ]
-const render = (identitySource: string) => renderToString(createSSRApp(CaseProfilePage, { summary: { ...summary, identitySource }, facts }))
+const render = (identitySource: string, locked = false) => renderToString(createSSRApp(CaseProfilePage, { summary: { ...summary, identitySource }, facts, locked }))
 
 describe('CaseProfilePage (design P06)', () => {
   it('marks manually entered identity fields as 手工补填', async () => {
@@ -35,5 +35,14 @@ describe('CaseProfilePage (design P06)', () => {
   it('shows the intake completeness bar', async () => {
     const html = await render('MANUAL')
     expect(html).toMatch(/建档核对[\s\S]*信息完整度 75%/)
+  })
+
+  it('is read-only once the record is frozen', async () => {
+    const html = await render('MANUAL', true)
+    const inputs = html.match(/<(input|select)\b[^>]*>/g) ?? []
+    expect(inputs.length).toBeGreaterThan(0)
+    for (const input of inputs) expect(input).toMatch(/disabled|readonly/)
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>暂存草稿/)
+    expect(html).toContain('笔录已冻结，身份信息只读')
   })
 })

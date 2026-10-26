@@ -70,6 +70,8 @@ const flowProgress = computed<FlowProgress>(() => {
 })
 const currentStepMeta = computed(() => stepMeta(flowStep.value))
 const missingElements = computed(() => factCoverage(store.facts).missing.length)
+const profileLocked = computed(() => ['FROZEN', 'SIGNED', 'REPORT_GENERATED'].includes(store.caseSummary.workflowState || '')
+  || ['FROZEN', 'LOCKED'].includes(store.caseSummary.documentStatus || ''))
 const caseTypeText = computed(() => (
   store.caseSummary.caseType === 'suspect_interrogation'
     ? '嫌疑人询问'
@@ -329,7 +331,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
     </section>
 
     <template v-else>
-      <header class="app-topbar">
+      <header class="app-topbar record-no-print">
         <button type="button" class="topbar-back" @click="$emit('back')">‹ 返回</button>
         <span class="app-brand">笔录智能工作台</span>
         <span class="case-chip">案 {{ store.caseSummary.id || store.caseId }}<template v-if="caseTypeText"> · {{ caseTypeText }}</template></span>
@@ -352,6 +354,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
       </header>
 
       <StepBar
+        class="record-no-print"
         :steps="FLOW_STEPS"
         :current="flowStep"
         :completed="flowProgress.completed"
@@ -374,20 +377,20 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             v-if="flowStep === 'dictation' && activePage === 'interrogation'"
             type="button"
             class="step-finalize"
-            @click="goStep('review')"
+            @click="goStep('review', true)"
           >{{ missingElements ? `定稿并校验 · 缺 ${missingElements} 项` : '定稿并校验' }}</button>
           <button v-if="activePage === 'moss'" type="button" class="step-back-tool" @click="goStep('dictation')">回到笔录</button>
         </template>
       </StepBar>
 
-      <nav v-if="flowStep === 'intake' && activePage !== 'moss'" class="intake-subnav" aria-label="建档子步骤">
+      <nav v-if="flowStep === 'intake' && activePage !== 'moss'" class="intake-subnav record-no-print" aria-label="建档子步骤">
         <button type="button" :class="{ active: activePage === 'prepare' }" @click="openIntakePage('prepare'); checkPreparationDevices()">询问准备</button>
         <button type="button" :class="{ active: activePage === 'profile' }" @click="openIntakePage('profile')">身份信息</button>
         <button type="button" :class="{ active: activePage === 'voiceprint' }" @click="openIntakePage('voiceprint')">声纹注册</button>
         <span class="intake-hint">核对身份 → 注册声纹 → 设备就绪后可开始正式询问</span>
       </nav>
 
-      <div class="workspace-toast-region" aria-live="polite">
+      <div class="workspace-toast-region record-no-print" aria-live="polite">
         <div v-if="store.actionError" class="workspace-toast error">{{ store.actionError }}</div>
         <div v-else-if="store.actionMessage" class="workspace-toast success">{{ store.actionMessage }}</div>
       </div>
@@ -421,6 +424,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
           v-else-if="activePage === 'profile'"
           :summary="store.caseSummary"
           :facts="store.facts"
+          :locked="profileLocked"
           :reader-available="preparationDevices?.identity.state === 'AVAILABLE'"
           @saved="refreshCaseWorkspace"
           @next="goStep('dictation')"

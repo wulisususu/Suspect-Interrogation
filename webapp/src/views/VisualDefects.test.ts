@@ -34,6 +34,25 @@ describe('visual defects found in the design review', () => {
 describe('dictation step header', () => {
   it('offers 定稿并校验 with the missing element count while dictating', () => {
     expect(workspaceSource).toContain("missingElements ? `定稿并校验 · 缺 ${missingElements} 项` : '定稿并校验'")
-    expect(workspaceSource).toContain('@click="goStep(\'review\')"')
+    expect(workspaceSource).toContain('@click="goStep(\'review\', true)"')
+  })
+})
+
+describe('workspace print output', () => {
+  it('keeps the workspace chrome off the printed record', () => {
+    for (const tag of ['<header class="app-topbar', '<StepBar', '<nav v-if="flowStep === \'intake\'', '<div class="workspace-toast-region']) {
+      const start = workspaceSource.indexOf(tag)
+      expect(start, tag).toBeGreaterThan(0)
+      expect(workspaceSource.slice(start, workspaceSource.indexOf('>', start)), tag).toContain('record-no-print')
+    }
+  })
+})
+
+import stepBarSource from '../components/StepBar.vue?raw'
+
+describe('step bar on 1280px screens', () => {
+  it('collapses non-current step titles to numbers but keeps their accessible names', () => {
+    expect(stepBarSource).toMatch(/@media \(max-width: 1440px\)[\s\S]*\.step-button:not\(\.is-active\) \.step-title\s*\{\s*display: none;/)
+    expect(stepBarSource).toContain(':aria-label="step.title"')
   })
 })
