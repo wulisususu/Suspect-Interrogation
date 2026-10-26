@@ -409,7 +409,14 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
           @start="startPreparedSession"
           @interrogation="goStep('dictation', true)"
         />
-        <CaseProfilePage v-else-if="activePage === 'profile'" :summary="store.caseSummary" :facts="store.facts" @saved="refreshCaseWorkspace" />
+        <CaseProfilePage
+          v-else-if="activePage === 'profile'"
+          :summary="store.caseSummary"
+          :facts="store.facts"
+          :reader-available="preparationDevices?.identity.state === 'AVAILABLE'"
+          @saved="refreshCaseWorkspace"
+          @next="goStep('dictation')"
+        />
 
         <MossTranscriptionPanel v-else-if="activePage === 'moss'" :case-id="store.caseId || props.caseId" />
 
