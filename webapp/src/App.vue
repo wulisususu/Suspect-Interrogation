@@ -66,7 +66,7 @@ function openCases() {
     <InterrogationWorkspace v-if="caseId" :key="caseId" :case-id="caseId" @back="backToList" />
     <SystemSettingsView v-else-if="rootPage === 'settings'" @back="backToList" />
     <LoginView v-else-if="rootPage === 'login'" @back="openCases" />
-    <KioskHomeView v-else-if="rootPage === 'home'" @start="openCases" @police-entry="openLogin" @resume="openCase" />
+    <KioskHomeView v-else-if="rootPage === 'home'" @start="openCases" @police-entry="openLogin" />
     <div v-else class="case-root-shell">
       <nav class="root-navigation" aria-label="系统一级导航">
         <div class="brand-area">

@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ArrowRight, FilePenLine, Mic, Nfc, ServerCog } from '@lucide/vue'
+import { ChevronRight, Lock, Mic, Nfc, ServerCog, ShieldCheck } from '@lucide/vue'
 import { backendErrorMessage, fetchCases, fetchRuntimeCapabilities } from '../api/interrogation'
+import KioskPendingBanner from '../components/KioskPendingBanner.vue'
+import { branding } from '../config/branding'
 import type { RuntimeCapabilities, RuntimeCapabilityName } from '../runtime/types'
 import type { CaseSummary } from '../types/interrogation'
+import { unfinishedCases } from '../utils/kioskLobby'
 
 /**
- * 一体机大厅
+ * 首页 · 一体机大厅（样板 P04）
  *
- * 办理人员进门看到的第一屏：先确认设备可用、有没有做到一半的案子，
- * 再决定是继续办理还是新建。案件台账不在这里展开——那是民警验证后的管理域。
+ * 办理人员进门看到的第一屏：人工模式入口、未完成办理提示（只给条数）与设备自检。
+ * 嫌疑人询问不提供当事人自助模式，右栏放设备自检。案件详情属于民警验证后的管理域。
  */
-const emit = defineEmits<{ start: []; resume: [caseId: string]; policeEntry: [] }>()
+const emit = defineEmits<{ start: []; policeEntry: [] }>()
 
 const cases = ref<CaseSummary[]>([])
 const loading = ref(true)
@@ -21,26 +24,14 @@ const deviceError = ref('')
 const now = ref(new Date())
 let clockTimer: number | undefined
 
-const clock = computed(() => {
+const clockText = computed(() => {
   const d = now.value
   const week = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()]
-  return {
-    date: `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日`,
-    time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
-    week: `星期${week}`,
-  }
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} 周${week} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 })
 
-function unfinished(item: CaseSummary) {
-  const workflow = item.workflowState || ''
-  return workflow !== 'REPORT_GENERATED' && item.state !== 'ARCHIVED'
-}
-const pendingCases = computed(() => cases.value.filter(unfinished))
-const todayCount = computed(() => {
-  const start = new Date()
-  start.setHours(0, 0, 0, 0)
-  return cases.value.filter((item) => (item.createdAt || 0) >= start.getTime()).length
-})
+const pendingCount = computed(() => unfinishedCases(cases.value).length)
 
 const deviceItems = computed(() => {
   const caps = devices.value
@@ -53,12 +44,22 @@ const deviceItems = computed(() => {
     return { ok: false, label, detail: item?.reason || '' }
   }
   return [
-    { key: 'identity', title: '身份证读卡器', icon: Nfc, ...pick('identity') },
     { key: 'microphone', title: '一体机麦克风', icon: Mic, ...pick('microphone') },
+    { key: 'identity', title: '身份证读卡器', icon: Nfc, ...pick('identity') },
     { key: 'asr', title: '语音识别服务', icon: ServerCog, ...pick('asr') },
   ]
 })
 const devicesReady = computed(() => deviceItems.value.every((item) => item.ok))
+const deviceSummary = computed(() => {
+  if (!devices.value) return '设备：自检中'
+  return devicesReady.value ? '设备：麦克风 · 读卡器 · 语音识别 就绪' : '设备：部分未就绪，可人工录入身份继续办理'
+})
+
+const flowSteps = [
+  { title: '选模板建档', detail: '选择笔录模板并录入身份信息' },
+  { title: '问答与定稿', detail: '民警提问实时转写，划选摘入正本' },
+  { title: '签署打印', detail: '屏上签名捺印，打印件含签章装卷' },
+]
 
 async function load() {
   loading.value = true
@@ -91,266 +92,135 @@ onUnmounted(() => {
 <template>
   <main class="kiosk-home">
     <header class="kiosk-topbar">
-      <span class="kiosk-brand-mark" aria-hidden="true">★</span>
-      <strong>公安笔录智能工作台</strong>
-      <span class="kiosk-venue">一楼办理大厅</span>
-      <button type="button" class="kiosk-police-entry" @click="emit('policeEntry')">民警入口</button>
+      <strong>{{ branding.productName }}</strong>
+      <span v-if="branding.venueName" class="kiosk-venue">{{ branding.venueName }}</span>
+      <button type="button" class="kiosk-police-entry" @click="emit('policeEntry')"><Lock :size="14" aria-hidden="true" />民警入口</button>
     </header>
 
     <div class="kiosk-body">
       <section class="kiosk-greeting">
         <div>
           <h1>欢迎使用公安笔录一体机</h1>
-          <p>按屏幕提示完成身份核对与问答，全程由在场民警核实</p>
+          <p>民警办案请点人工模式 · 全程保密</p>
         </div>
-        <div class="kiosk-clock">
-          <strong>{{ clock.time }}</strong>
-          <span>{{ clock.date }} · {{ clock.week }}</span>
-        </div>
+        <span class="kiosk-clock">{{ clockText }}</span>
       </section>
 
       <p v-if="loadError" class="kiosk-alert" role="alert">{{ loadError }}<button type="button" @click="load">重新检查</button></p>
-      <button v-else-if="pendingCases.length" type="button" class="kiosk-pending" @click="emit('resume', pendingCases[0]!.id)">
-        <span class="kiosk-pending-count">{{ pendingCases.length }}</span>
-        <span class="kiosk-pending-text">项未完成办理 · 含断电恢复与挂起会话，验证后展开详情</span>
-        <span class="kiosk-pending-action">继续办理<ArrowRight :size="16" /></span>
-      </button>
-      <p v-else-if="!loading" class="kiosk-clear">当前没有未完成的笔录，可新建一起</p>
+      <KioskPendingBanner v-else-if="pendingCount" :count="pendingCount" @verify="emit('policeEntry')" />
 
-      <section class="kiosk-card" aria-labelledby="kiosk-entry-title">
-        <header>
-          <span class="kiosk-card-kicker">人工模式 · 民警办理</span>
-          <h2 id="kiosk-entry-title">新建一份询问笔录</h2>
-          <p>选模板 → 建档核对 → 问答成文 → 定稿校验 → 签署归档，一条线走完</p>
-        </header>
-        <ol class="kiosk-steps">
-          <li><b>①</b><span>选模板建档</span></li>
-          <li><b>②</b><span>问答与定稿</span></li>
-          <li><b>③</b><span>签署并归档</span></li>
-        </ol>
-        <footer>
-          <p class="kiosk-today">今日已建 {{ todayCount }} 起</p>
-          <button type="button" class="kiosk-primary" @click="emit('start')">
-            <FilePenLine :size="18" />开始新建笔录
-          </button>
-        </footer>
+      <div class="kiosk-modes">
+        <section class="kiosk-card" aria-labelledby="kiosk-manual-title">
+          <header class="kiosk-card-head">
+            <span class="kiosk-card-icon" aria-hidden="true"><ShieldCheck :size="34" /></span>
+            <div>
+              <h2 id="kiosk-manual-title">人工模式 <span class="kiosk-badge">民警办理</span></h2>
+              <p>民警提问、系统实时转写，左侧草稿右侧正本，划选摘入后定稿</p>
+              <small>适用：民警提问录入 · 询问 / 讯问笔录办理</small>
+            </div>
+          </header>
+          <div class="kiosk-flow">
+            <span class="kiosk-flow-label">办理流程</span>
+            <ol>
+              <li v-for="(step, index) in flowSteps" :key="step.title">
+                <b>{{ index + 1 }}</b>
+                <strong>{{ step.title }}</strong>
+                <span>{{ step.detail }}</span>
+              </li>
+            </ol>
+          </div>
+          <footer>
+            <small>笔录生成后可导出 Word / PDF 或打印件</small>
+            <button type="button" class="kiosk-primary" @click="emit('start')">开始新建笔录<ChevronRight :size="17" aria-hidden="true" /></button>
+          </footer>
+        </section>
+
+        <section class="kiosk-card kiosk-devices" aria-labelledby="kiosk-device-title">
+          <h2 id="kiosk-device-title">设备自检</h2>
+          <ul>
+            <li v-for="item in deviceItems" :key="item.key" :title="item.detail || undefined">
+              <component :is="item.icon" :size="18" aria-hidden="true" />
+              <span>{{ item.title }}</span>
+              <em :class="{ ok: item.ok }">{{ item.label }}</em>
+            </li>
+          </ul>
+          <p v-if="deviceError" class="kiosk-alert" role="alert">{{ deviceError }}</p>
+          <button type="button" class="kiosk-secondary" @click="load">重新自检</button>
+        </section>
+      </div>
+
+      <section class="kiosk-strip" aria-label="办理须知">
+        <span><i class="dot is-primary" aria-hidden="true"></i>合规：民警在场确认后定稿</span>
+        <span><i class="dot is-success" aria-hidden="true"></i>隐私：全程保密，仅用于本次办理</span>
+        <span><i class="dot" :class="devicesReady ? 'is-success' : 'is-warning'" aria-hidden="true"></i>{{ deviceSummary }}</span>
       </section>
-
-      <section class="kiosk-devices" aria-label="设备自检">
-        <div v-for="item in deviceItems" :key="item.key" class="kiosk-device">
-          <span class="kiosk-device-dot" :class="{ ok: item.ok }" aria-hidden="true"></span>
-          <component :is="item.icon" :size="15" aria-hidden="true" />
-          <span :title="item.detail || undefined">{{ item.title }} · {{ item.label }}</span>
-        </div>
-        <button type="button" class="kiosk-device-refresh" @click="load">重新自检</button>
-      </section>
-      <p v-if="deviceError" class="kiosk-alert" role="alert">{{ deviceError }}</p>
-
-      <footer class="kiosk-footer">
-        <span>{{ devicesReady ? '设备就绪，可以开始办理' : '部分设备未就绪，仍可人工录入身份继续办理' }}</span>
-        <span class="kiosk-footer-note">内网专用终端 · 全程留痕 · 笔录签字捺印后生效</span>
-      </footer>
     </div>
+
+    <footer class="kiosk-footer">
+      <span>{{ [branding.unitName, branding.venueName, '值班民警在场'].filter(Boolean).join(' · ') }}</span>
+      <span>使用中有疑问，请呼叫在场民警</span>
+    </footer>
   </main>
 </template>
 
 <style scoped>
-.kiosk-home {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: auto;
-  background: var(--surface-sunken);
-}
+.kiosk-home { display: flex; flex-direction: column; height: 100vh; overflow: auto; background: var(--surface-sunken); }
 
-.kiosk-topbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex: 0 0 auto;
-  min-height: var(--height-topbar);
-  padding: 0 var(--space-8);
-  background: var(--navy-900);
-  color: var(--surface);
-}
-.kiosk-brand-mark { color: var(--warning-700); font-size: var(--text-md); }
+.kiosk-topbar { display: flex; align-items: center; gap: var(--space-3); flex: 0 0 auto; min-height: var(--height-topbar); padding: 0 var(--space-8); background: var(--navy-900); color: var(--surface); }
 .kiosk-topbar strong { font-size: var(--text-lg); font-weight: 600; letter-spacing: 0.5px; }
-.kiosk-venue {
-  padding: 3px 10px;
-  border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--primary-100);
-  font-size: var(--text-sm);
-}
-.kiosk-police-entry {
-  margin-left: auto;
-  min-height: 34px;
-  padding: 0 16px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--primary-100);
-  font-size: var(--text-sm);
-}
-.kiosk-police-entry:hover { background: rgba(255, 255, 255, 0.12); }
+.kiosk-venue { padding: 3px 10px; border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.1); color: var(--primary-100); font-size: var(--text-xs); }
+.kiosk-police-entry { display: inline-flex; align-items: center; gap: var(--space-1); margin-left: auto; min-height: 36px; padding: 0 var(--space-4); border: 1px solid rgba(255, 255, 255, 0.24); border-radius: var(--radius-sm); background: rgba(255, 255, 255, 0.08); color: var(--primary-100); font-size: var(--text-sm); }
+.kiosk-police-entry:hover { background: rgba(255, 255, 255, 0.16); }
 
-.kiosk-body {
-  flex: 1 1 auto;
-  width: 100%;
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: var(--space-8) var(--space-8) var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
+.kiosk-body { flex: 1 1 auto; width: 100%; max-width: 1320px; margin: 0 auto; padding: var(--space-8) var(--space-8) var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
 
 .kiosk-greeting { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6); }
-.kiosk-greeting h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 600; letter-spacing: 0.5px; }
+.kiosk-greeting h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 650; }
 .kiosk-greeting p { margin: var(--space-2) 0 0; color: var(--ink-500); font-size: var(--text-md); }
-.kiosk-clock { text-align: right; }
-.kiosk-clock strong { display: block; color: var(--primary-700); font-size: 40px; /* token-exempt: 大厅时钟读数 */ font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
-.kiosk-clock span { color: var(--ink-400); font-size: var(--text-sm); }
+.kiosk-clock { padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--ink-500); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-.kiosk-pending {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--warning-700);
-  border-radius: var(--radius-md);
-  background: var(--warning-100);
-  color: var(--warning-700);
-  text-align: left;
-  font-size: var(--text-base);
-}
-.kiosk-pending:hover { border-color: var(--warning-700); }
-.kiosk-pending-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 24px;
-  height: 24px;
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--warning-700);
-  font-weight: 600;
-}
-.kiosk-pending-text { flex: 1 1 auto; min-width: 0; }
-.kiosk-pending-action { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; white-space: nowrap; }
-.kiosk-clear { margin: 0; padding: var(--space-2) 0; color: var(--ink-400); font-size: var(--text-base); }
+.kiosk-alert { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--danger-100); color: var(--danger-700); font-size: var(--text-sm); }
+.kiosk-alert button { min-height: 36px; padding: 0 var(--space-3); border: 1px solid var(--danger-600); border-radius: var(--radius-sm); background: var(--surface); color: var(--danger-700); }
 
-.kiosk-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  padding: var(--space-7);
-  border: 1px solid var(--line-200);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
-}
-.kiosk-card-kicker { color: var(--primary-600); font-size: var(--text-sm); font-weight: 600; }
-.kiosk-card h2 { margin: var(--space-2) 0 var(--space-1); color: var(--ink-900); font-size: var(--text-2xl); font-weight: 600; }
-.kiosk-card header p { margin: 0; color: var(--ink-500); font-size: var(--text-base); }
+.kiosk-modes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-5); }
+.kiosk-card { display: flex; flex-direction: column; gap: var(--space-5); padding: var(--space-6); border: 1px solid var(--line-200); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
+.kiosk-modes > .kiosk-card:first-child { border-color: var(--primary-500); background: var(--primary-50); }
+.kiosk-card-head { display: flex; gap: var(--space-4); }
+.kiosk-card-icon { display: grid; place-items: center; width: 72px; height: 72px; flex: none; border-radius: var(--radius-lg); background: var(--primary-100); color: var(--primary-600); }
+.kiosk-card h2 { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-2); color: var(--ink-900); font-size: var(--text-2xl); font-weight: 650; }
+.kiosk-badge { padding: 3px 10px; border-radius: var(--radius-pill); background: var(--primary-600); color: var(--surface); font-size: var(--text-xs); font-weight: 600; }
+.kiosk-card-head p { margin: 0 0 var(--space-2); color: var(--ink-700); font-size: var(--text-base); }
+.kiosk-card-head small, .kiosk-card footer small { color: var(--ink-400); font-size: var(--text-xs); }
 
-.kiosk-steps { display: flex; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-.kiosk-steps li {
-  flex: 1 1 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--primary-50);
-  color: var(--ink-700);
-  font-size: var(--text-base);
-}
-.kiosk-steps b { color: var(--primary-600); font-size: var(--text-md); }
+.kiosk-flow { padding: var(--space-4); border-radius: var(--radius-md); background: var(--surface-muted); }
+.kiosk-flow-label { color: var(--ink-400); font-size: var(--text-xs); }
+.kiosk-flow ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
+.kiosk-flow li { display: flex; flex-direction: column; gap: var(--space-1); }
+.kiosk-flow b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--primary-600); color: var(--surface); font-size: var(--text-xs); }
+.kiosk-flow strong { color: var(--primary-600); font-size: var(--text-base); font-weight: 600; }
+.kiosk-flow span { color: var(--ink-500); font-size: var(--text-xs); }
 
-.kiosk-card footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
-.kiosk-today { margin: 0; color: var(--ink-400); font-size: var(--text-sm); }
-.kiosk-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 52px;
-  padding: 0 var(--space-7);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: var(--primary-600);
-  color: var(--surface);
-  font-size: var(--text-md);
-  font-weight: 600;
-}
+.kiosk-card footer { display: flex; flex-direction: column; gap: var(--space-2); margin-top: auto; }
+.kiosk-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 48px; border: 0; border-radius: var(--radius-md); background: var(--primary-600); color: var(--surface); font-size: var(--text-md); font-weight: 600; }
 .kiosk-primary:hover { background: var(--primary-700); }
 
-.kiosk-devices {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  flex-wrap: wrap;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line-200);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--ink-500);
-  font-size: var(--text-sm);
-}
-.kiosk-device { display: inline-flex; align-items: center; gap: var(--space-2); }
-.kiosk-device-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-300); }
-.kiosk-device-dot.ok { background: var(--success-600); }
-.kiosk-device-refresh {
-  margin-left: auto;
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--line-300);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--primary-600);
-  font-size: var(--text-sm);
-}
+.kiosk-devices h2 { font-size: var(--text-xl); }
+.kiosk-devices ul { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.kiosk-devices li { display: flex; align-items: center; gap: var(--space-3); min-height: 52px; padding: 0 var(--space-4); border-radius: var(--radius-md); background: var(--surface-sunken); color: var(--ink-700); font-size: var(--text-base); }
+.kiosk-devices li em { margin-left: auto; color: var(--warning-700); font-style: normal; font-weight: 600; }
+.kiosk-devices li em.ok { color: var(--success-700); }
+.kiosk-secondary { min-height: 44px; margin-top: auto; border: 1px solid var(--primary-500); border-radius: var(--radius-md); background: var(--surface); color: var(--primary-600); font-size: var(--text-base); font-weight: 600; }
 
-.kiosk-alert {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--danger-100);
-  color: var(--danger-700);
-  font-size: var(--text-base);
-}
-.kiosk-alert button {
-  margin-left: auto;
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid currentColor;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: inherit;
-  font-size: var(--text-sm);
-}
+.kiosk-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--ink-700); font-size: var(--text-sm); }
+.kiosk-strip span { display: flex; align-items: center; gap: var(--space-2); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.dot.is-primary { background: var(--primary-600); }
+.dot.is-success { background: var(--success-600); }
+.dot.is-warning { background: var(--warning-600); }
 
-.kiosk-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-top: auto;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--line-200);
-  color: var(--ink-400);
-  font-size: var(--text-sm);
-}
-.kiosk-footer-note { color: var(--ink-300); }
+.kiosk-footer { display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-8); border-top: 1px solid var(--line-200); background: var(--surface); color: var(--ink-400); font-size: var(--text-xs); }
 
-@media (max-width: 900px) {
-  .kiosk-body { padding: var(--space-5); }
-  .kiosk-greeting h1 { font-size: var(--text-2xl); }
-  .kiosk-clock strong { font-size: var(--text-3xl); }
-  .kiosk-steps { flex-direction: column; }
+@media (max-width: 1100px) {
+  .kiosk-modes, .kiosk-strip { grid-template-columns: 1fr; }
 }
 </style>
