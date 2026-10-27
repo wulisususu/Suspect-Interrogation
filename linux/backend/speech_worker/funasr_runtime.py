@@ -13,6 +13,12 @@ from speech_worker.speaker.eres2net_large import ERes2NetLargeBackend, ModelFact
 
 DEFAULT_MODEL_ROOT = Path("/opt/suspect-interrogation/models/funasr")
 _CRITICAL_MODEL_NAMES = ("paraformer", "fsmn-vad")
+# 两档加载：整套离线/流式 ASR，或只保留声纹与 VAD（实时识别交给 asr-stack 时用，
+# 可省掉 paraformer 的 848M + 流式模型的 849M 常驻）。
+_MODEL_PROFILES: dict[str, tuple[str, ...]] = {
+    "full": _CRITICAL_MODEL_NAMES,
+    "speaker_vad": ("fsmn-vad",),
+}
 _FORMAL_MAX_SINGLE_SEGMENT_MS = 5_000
 _MODEL_NAMES = _CRITICAL_MODEL_NAMES
 _STREAMING_MODEL_NAME = "paraformer-streaming"
@@ -44,7 +50,11 @@ class FunASRSpeechRuntime:
         legacy_speaker_factory: Any | None = None,
         eres2net_model_dir: str | Path | None = None,
         eres2net_model_factory: ERes2NetModelFactory | None = None,
+        profile: str = "full",
     ) -> None:
+        self.profile = str(profile or "full").strip().lower()
+        if self.profile not in _MODEL_PROFILES:
+            raise ValueError(f"unknown funasr model profile: {profile}")
         self.model_root = Path(model_root)
         configured_streaming_dir = os.environ.get("SUSPECT_FUNASR_STREAMING_MODEL_DIR") or None
         self.streaming_asr_model_dir = (
@@ -84,6 +94,10 @@ class FunASRSpeechRuntime:
 
     @property
     def core_loaded(self) -> bool:
+        # speaker_vad 档位本就不加载 paraformer，用「该档位所需模型是否就绪」判定，
+        # 否则 health 会一直报 not_loaded，部署校验也会误判。
+        if self.profile == "speaker_vad":
+            return self.vad_model is not None
         return self.asr_model is not None and self.vad_model is not None
 
     @property
@@ -95,19 +109,20 @@ class FunASRSpeechRuntime:
         self._speaker_backends = {}
         self.model_errors = {}
         model_dirs = {name: self.model_root / name for name in _MODEL_NAMES}
+        required = _MODEL_PROFILES[self.profile]
 
         missing_critical = [
-            str(model_dirs[name]) for name in _CRITICAL_MODEL_NAMES if not model_dirs[name].is_dir()
+            str(model_dirs[name]) for name in required if not model_dirs[name].is_dir()
         ]
         if missing_critical:
             raise ModelNotInstalledError(
                 "required FunASR ASR/VAD model directories are not installed",
-                details={"model_root": str(self.model_root), "missing": missing_critical},
+                details={"model_root": str(self.model_root), "missing": missing_critical, "profile": self.profile},
             )
 
         factory = self._model_factory or self._load_vendor_factory()
         loaded: dict[str, Any] = {}
-        for name in _CRITICAL_MODEL_NAMES:
+        for name in required:
             model_path = model_dirs[name]
             try:
                 options = (
@@ -127,9 +142,10 @@ class FunASRSpeechRuntime:
                     },
                 ) from exc
 
-        self.asr_model = loaded["paraformer"]
-        self.vad_model = loaded["fsmn-vad"]
-        self._load_streaming_asr(factory)
+        self.asr_model = loaded.get("paraformer")
+        self.vad_model = loaded.get("fsmn-vad")
+        if self.profile == "full":
+            self._load_streaming_asr(factory)
         self._load_eres2net()
 
     def _load_streaming_asr(self, factory: ModelFactory) -> None:

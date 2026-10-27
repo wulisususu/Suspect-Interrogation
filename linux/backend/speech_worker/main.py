@@ -29,9 +29,11 @@ class _SessionEntry:
 
 
 class SpeechWorkerServer:
-    def __init__(self, socket_path: str | Path, runtime: Any) -> None:
+    def __init__(self, socket_path: str | Path, runtime: Any, *, asr_stack: Any | None = None) -> None:
         self.socket_path = Path(socket_path)
         self.runtime = runtime
+        # 非 None 时实时识别改走 asr-stack；funasr 仅保留声纹与 VAD 相关能力。
+        self.asr_stack = asr_stack
         self._server: socket.socket | None = None
         self._owned_socket: tuple[int, int] | None = None
         self._stop = threading.Event()
@@ -148,6 +150,14 @@ class SpeechWorkerServer:
         if op == "health":
             with self._runtime_lock:
                 health = dict(self.runtime.health())
+            if self.asr_stack is not None:
+                # 灰度期两套后端并存：把 asr-stack 的可用性合并进同一份 health，
+                # 部署校验仍然按 models.asr / models.speaker 判断。
+                health["backend"] = "asr_stack"
+                health["asr_stack"] = {"url": self.asr_stack.ws_url, "configured": True}
+                models = dict(health.get("models") or {})
+                models["asr"] = True
+                health["models"] = models
             with self._sessions_lock:
                 health["sessions"] = len(self._sessions)
                 health["vad_progress_sessions"] = len(self._vad_sessions)
@@ -163,21 +173,31 @@ class SpeechWorkerServer:
             with self._sessions_lock:
                 if session_id in self._sessions:
                     raise ResourceBusyError("speech session is already open", details={"session_id": session_id})
-                self._sessions[session_id] = _SessionEntry(
-                    SpeechSession(
+                if self.asr_stack is not None:
+                    from .asr_stack_session import AsrStackSpeechSession
+
+                    session: Any = AsrStackSpeechSession(
+                        session_id,
+                        sample_rate,
+                        self.asr_stack,
+                        base_sample=base_sample,
+                    )
+                    session.open()
+                else:
+                    session = SpeechSession(
                         session_id,
                         sample_rate,
                         self.runtime,
                         speaker_backend_key=speaker_backend,
                         authoritative_speaker_backend_key="eres2net_large",
                         base_sample=base_sample,
-                    ),
-                    threading.RLock(),
-                )
+                    )
+                self._sessions[session_id] = _SessionEntry(session, threading.RLock())
             result = {
                 "session_id": session_id,
                 "sample_rate": sample_rate,
                 "speaker_backend": speaker_backend,
+                "backend": "asr_stack" if self.asr_stack is not None else "funasr",
             }
             return result
 
@@ -283,6 +303,13 @@ class SpeechWorkerServer:
             entry = collection.pop(session_id, None)
         if entry is None:
             raise AIError(f"{label} session is not open", details={"session_id": session_id})
+        # asr-stack 会话背后是一条真实的 WebSocket，不主动关会一直占着对端会话。
+        close = getattr(entry.session, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:  # noqa: BLE001 - 关闭失败不该阻断会话清理
+                logger.warning("关闭 %s 会话失败：%s", label, session_id, exc_info=True)
         return entry
 
     def _close_listener(self) -> None:
@@ -319,9 +346,24 @@ class SpeechWorkerServer:
 def main() -> int:
     socket_path = Path(os.environ.get("SUSPECT_SPEECH_SOCKET", str(DEFAULT_SOCKET_PATH)))
     model_root = Path(os.environ.get("SUSPECT_FUNASR_MODEL_ROOT", str(DEFAULT_MODEL_ROOT)))
-    runtime = FunASRSpeechRuntime(model_root=model_root)
+    backend = (os.environ.get("SUSPECT_SPEECH_BACKEND") or "funasr").strip().lower()
+
+    asr_stack = None
+    if backend == "asr_stack":
+        from .asr_stack_session import endpoint_from_env
+
+        asr_stack = endpoint_from_env(dict(os.environ))
+        if asr_stack is None:
+            raise SystemExit(
+                "SUSPECT_SPEECH_BACKEND=asr_stack 需要同时设置 "
+                "SUSPECT_ASR_STACK_WS_URL 与 SUSPECT_ASR_STACK_KEY"
+            )
+        # 实时识别交给 asr-stack 后，FunASR 只承担声纹与 VAD，省掉两套 ASR 模型的常驻。
+        runtime = FunASRSpeechRuntime(model_root=model_root, profile="speaker_vad")
+    else:
+        runtime = FunASRSpeechRuntime(model_root=model_root)
     runtime.load()
-    server = SpeechWorkerServer(socket_path, runtime)
+    server = SpeechWorkerServer(socket_path, runtime, asr_stack=asr_stack)
 
     def handle_signal(signum: int, frame: Any) -> None:
         del signum, frame
