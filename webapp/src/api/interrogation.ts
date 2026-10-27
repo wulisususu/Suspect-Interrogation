@@ -6,6 +6,7 @@ import {
   type RuntimeEventListener,
   type RuntimeSessionConnection,
 } from '../runtime'
+import { currentOperatorId } from './operator'
 import type {
   AsrCaptureStatus,
   AsrRecognitionEvidence,
@@ -133,6 +134,10 @@ function normalizeVoiceprintReadiness(value: unknown): VoiceprintReadiness {
     recorderReady: Boolean(raw.recorderReady),
     recognitionMode: mode,
     canStart: Boolean(raw.canStart),
+    roleBindingScope: raw.roleBindingScope == null
+      ? 'NONE'
+      : String(raw.roleBindingScope) as 'ACTIVE_SESSION' | 'LAST_SESSION' | 'NONE',
+    roleBindingSessionId: raw.roleBindingSessionId == null ? null : String(raw.roleBindingSessionId),
     ...(raw.simulated === undefined ? {} : { simulated: Boolean(raw.simulated) }),
     // Task 17B-1: registration metrics and the runtime speaker operating point must
     // survive normalization, otherwise the card can never prove the effective mode.
@@ -370,7 +375,10 @@ export function fetchRuntimeCapabilities(force = false): Promise<RuntimeCapabili
 export function connectRuntimeSession(sessionId: string, listener: RuntimeEventListener): RuntimeSessionConnection { return runtime().connectSession(sessionId, listener) }
 
 export async function createCase(payload: Partial<CaseSummary> = {}): Promise<CaseSummary> {
-  const request = { ...payload, operator_id: payload.officerName || '当前警官', case_type: 'suspect_interrogation' } as unknown as Record<string, unknown>
+  // 不再用"当前警官"之类的占位串填 operator_id：它会被原样写进 CASE_CREATE 审计，
+  // 等于伪造一个不存在的操作人。没有真实姓名就留空，审计显示"未记录人员"。
+  const operatorId = payload.officerName?.trim() || undefined
+  const request = { ...payload, operator_id: operatorId, case_type: 'suspect_interrogation' } as unknown as Record<string, unknown>
   return normalizeCaseSummary(await runtime().invoke<unknown>('case.create', request), payload)
 }
 export interface CaseIntakeInput {
@@ -409,13 +417,16 @@ export async function fetchCase(caseId: string): Promise<CaseSummary> { return n
 export function fetchMessages(caseId: string): Promise<TranscriptMessage[]> { return runtime().invoke<TranscriptMessage[]>('message.list', { caseId, limit: 1000 }) }
 export function fetchFacts(caseId: string): Promise<FactItem[]> { return runtime().invoke<FactItem[]>('fact.list', { caseId }) }
 export async function fetchSessionState(caseId: string): Promise<SessionState> { return normalizeSessionState(await runtime().invoke<unknown>('session.get', { caseId }), caseId) }
-export function persistQuestionOrAnswer(caseId: string, text: string, speaker: '民警' | '嫌疑人'): Promise<TranscriptMessage> { return runtime().invoke<TranscriptMessage>('message.add', { caseId, text, speaker }) }
-export function updateTranscriptMessage(caseId: string, messageId: string, text: string): Promise<TranscriptMessage> { return runtime().invoke<TranscriptMessage>('message.update', { caseId, messageId, text, reason: '警官在审讯工作台修订' }) }
-export function markTranscriptMessage(caseId: string, messageId: string, mark: RecordMark): Promise<TranscriptMessage> { return runtime().invoke<TranscriptMessage>('message.mark', { caseId, messageId, mark }) }
+export function persistQuestionOrAnswer(caseId: string, text: string, speaker: '民警' | '嫌疑人'): Promise<TranscriptMessage> { return runtime().invoke<TranscriptMessage>('message.add', { caseId, text, speaker, actorId: currentOperatorId() }) }
+export function updateTranscriptMessage(caseId: string, messageId: string, text: string): Promise<TranscriptMessage> { return runtime().invoke<TranscriptMessage>('message.update', { caseId, messageId, text, reason: '警官在审讯工作台修订', actorId: currentOperatorId() }) }
+export function markTranscriptMessage(caseId: string, messageId: string, mark: RecordMark): Promise<TranscriptMessage> { return runtime().invoke<TranscriptMessage>('message.mark', { caseId, messageId, mark, actorId: currentOperatorId() }) }
 export function fetchRevisions(caseId: string, messageId?: string): Promise<RecordRevision[]> { return runtime().invoke<RecordRevision[]>('message.revisions', { caseId, ...(messageId ? { messageId } : {}) }) }
 
 async function sessionAction(caseId: string, action: 'pause' | 'resume' | 'finish'): Promise<SessionState> {
-  return normalizeSessionState(await runtime().invoke<unknown>(`session.${action}`, { caseId }), caseId)
+  return normalizeSessionState(
+    await runtime().invoke<unknown>(`session.${action}`, { caseId, actorId: currentOperatorId() }),
+    caseId,
+  )
 }
 export async function startSession(
   caseId: string,
@@ -427,13 +438,13 @@ export async function startSession(
     caseId,
     interrogatorOfficerId: interrogatorOfficerId ?? null,
     recorderOfficerId: recorderOfficerId ?? null,
-    actorId,
+    actorId: actorId ?? currentOperatorId(),
   }), caseId)
 }
 export const pauseSession = (caseId: string) => sessionAction(caseId, 'pause')
 export const resumeSession = (caseId: string) => sessionAction(caseId, 'resume')
 export const finishSession = (caseId: string) => sessionAction(caseId, 'finish')
-export async function changeSessionStage(caseId: string, stage: InterrogationStage): Promise<SessionState> { return normalizeSessionState(await runtime().invoke<unknown>('session.stage', { caseId, stage }), caseId) }
+export async function changeSessionStage(caseId: string, stage: InterrogationStage): Promise<SessionState> { return normalizeSessionState(await runtime().invoke<unknown>('session.stage', { caseId, stage, actorId: currentOperatorId() }), caseId) }
 export function invokeDeviceAction(type: 'identity' | 'fingerprint' | 'signature'): Promise<DeviceActionResult> { return runtime().invoke<DeviceActionResult>('device.action', { type }) }
 
 export async function fetchVoiceprintReadiness(caseId: string): Promise<VoiceprintReadiness> { return normalizeVoiceprintReadiness(await runtime().invoke<unknown>('voiceprint.readiness', { caseId })) }
@@ -478,12 +489,18 @@ export async function updateAsrFragment(
 }
 export async function confirmAsrFragment(caseId: string, fragmentId: string): Promise<TemporaryAsrFragment> { return normalizeTemporaryAsrFragment(await runtime().invoke<unknown>('asr.fragment.confirm', { caseId, fragmentId })) }
 export async function confirmAsrFragmentBatch(caseId: string, fragmentIds: string[]): Promise<{ confirmedCount: number; fragments: TemporaryAsrFragment[] }> {
-  const raw = asRecord(await runtime().invoke<unknown>('asr.fragment.confirmBatch', { caseId, fragmentIds }))
+  const raw = asRecord(await runtime().invoke<unknown>('asr.fragment.confirmBatch', { caseId, fragmentIds, actorId: currentOperatorId() }))
   const fragments = Array.isArray(raw.fragments) ? raw.fragments.map(normalizeTemporaryAsrFragment) : []
   return { confirmedCount: Number(raw.confirmedCount ?? fragments.length), fragments }
 }
-export async function applyAsrFragmentsToRecord(caseId: string, _captureSessionId: string, _recordId: string, fragmentIds: string[], _text: string): Promise<{ confirmedCount: number; fragments: TemporaryAsrFragment[] }> {
-  const raw = asRecord(await runtime().invoke<unknown>('asr.fragment.applyToRecord', { caseId, fragmentIds }))
+/**
+ * 把指定片段写入正式笔录。
+ *
+ * 注意 fragmentIds 必须逐条传：后端在收到空列表时会退化成"应用该案所有待确认
+ * 片段"，所以这里不允许在调用方无意识的情况下传空数组。
+ */
+export async function applyAsrFragmentsToRecord(caseId: string, fragmentIds: string[]): Promise<{ confirmedCount: number; fragments: TemporaryAsrFragment[] }> {
+  const raw = asRecord(await runtime().invoke<unknown>('asr.fragment.applyToRecord', { caseId, fragmentIds, actorId: currentOperatorId() }))
   const fragments = Array.isArray(raw.fragments) ? raw.fragments.map(normalizeTemporaryAsrFragment) : []
   return { confirmedCount: Number(raw.confirmedCount ?? fragments.length), fragments }
 }

@@ -26,4 +26,26 @@ describe('reviewAutoChecks (design P13)', () => {
     expect(reviewAutoChecks([], readiness({}))[3]!.state).toBe('pass')
     expect(reviewAutoChecks([], readiness({ interrogatorReady: false }))[3]!.state).toBe('pending')
   })
+
+  it('keeps the signer check passing after the session ended', () => {
+    // 审讯结束后没有 active session，后端回退到本场审讯开始时的角色绑定。
+    const afterSession = reviewAutoChecks([], readiness({
+      interrogatorReady: true,
+      roleBindingScope: 'LAST_SESSION',
+      roleBindingSessionId: 'session-1',
+    }))[3]!
+
+    expect(afterSession.state).toBe('pass')
+    expect(afterSession.detail).toBe('被询问人 已注册 · 主审民警 本场审讯已绑定')
+  })
+
+  it('reports an unbound officer without inventing a binding scope', () => {
+    const unbound = reviewAutoChecks([], readiness({
+      interrogatorReady: false,
+      roleBindingScope: 'NONE',
+    }))[3]!
+
+    expect(unbound.state).toBe('pending')
+    expect(unbound.detail).toBe('被询问人 已注册 · 主审民警 未绑定')
+  })
 })

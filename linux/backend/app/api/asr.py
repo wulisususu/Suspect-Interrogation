@@ -20,6 +20,7 @@ from app.services.message_service import MessageService
 from app.services.formal_record_policy import assert_formal_record_mutable
 from app.services.speaker_mode import resolve_runtime_speaker_mode
 from app.services.speaker_policy import SpeakerRole, SpeakerSource
+from app.websocket.publisher import publish_recording_state
 
 
 router = APIRouter(tags=["asr"])
@@ -198,12 +199,16 @@ def capture_status(case_id: str, request: Request):
 
 @router.post("/cases/{case_id}/asr/capture/start")
 def capture_start(case_id: str, request: Request):
-    return _capture_service(request).start(case_id)
+    status = _capture_service(request).start(case_id)
+    publish_recording_state(request.app.state, case_id, status)
+    return status
 
 
 @router.post("/cases/{case_id}/asr/capture/stop")
 def capture_stop(case_id: str, request: Request):
-    return _capture_service(request).stop(case_id)
+    status = _capture_service(request).stop(case_id)
+    publish_recording_state(request.app.state, case_id, status)
+    return status
 
 
 @router.post("/cases/{case_id}/asr/question-preparation/start")

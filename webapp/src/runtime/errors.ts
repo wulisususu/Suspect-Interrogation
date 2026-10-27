@@ -62,7 +62,12 @@ export function normalizeRuntimeError(error: unknown, operation: string): Runtim
     return new RuntimeAdapterError(backendCode, backendMessage || '本地能力正在忙碌', 'BUSY', capability, error)
   }
 
-  if (status === 404 || status === 501) {
+  // 404/501 只有在"路由本身不存在"时才说明能力没装：后端对未知路由统一返回
+  // code=NOT_FOUND（app/api/errors.py），FastAPI 原生 404 则完全没有 code。
+  // 带具体领域码的 404 是业务找不到资源（如 ASR_FRAGMENT_NOT_FOUND），
+  // 改写成"模型未安装"会把现场排障引到模型目录而不是数据本身。
+  const routeMissing = !backendCode || backendCode === 'NOT_FOUND'
+  if ((status === 404 || status === 501) && routeMissing) {
     const modelFeature = capability === 'asr' || capability === 'ocr' || capability === 'llm' || capability === 'recording'
     return new RuntimeAdapterError(
       modelFeature ? 'MODEL_NOT_INSTALLED' : 'CAPABILITY_NOT_CONFIGURED',

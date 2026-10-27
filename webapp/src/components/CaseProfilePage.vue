@@ -44,7 +44,7 @@ function syncFromProps() {
   form.caseType = factText('case_type', props.summary.caseType === 'suspect_interrogation' ? '' : props.summary.caseType || '')
   form.interrogationRound = factText('interrogation_round', '1')
   form.interrogationPlace = factText('interrogation_place')
-  form.officerName = props.summary.officerName || '当前警官'
+  form.officerName = props.summary.officerName && props.summary.officerName !== '当前警官' ? props.summary.officerName : ''
   form.officerUnit = factText('officer_unit')
   form.recorderName = factText('recorder_name')
   form.recorderUnit = factText('recorder_unit', form.officerUnit)
@@ -72,7 +72,7 @@ async function save(next = false) {
       age: form.age.trim() || calculateAge(form.birthDate),
       idNumber,
       address: form.idCardAddress.trim(),
-      officerName: form.officerName.trim() || '当前警官',
+      officerName: form.officerName.trim(),
       caseType: form.caseType.trim() || 'suspect_interrogation',
     })
     await saveIdentityProfileFacts(props.summary.id, identityFactValues(form))

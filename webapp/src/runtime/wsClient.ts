@@ -37,11 +37,12 @@ function normalizeEvent(raw: Record<string, unknown>): RuntimeEvent {
       : 'UNKNOWN'
   const payload = raw.payload !== undefined
     ? raw.payload
-    : Object.fromEntries(Object.entries(raw).filter(([key]) => !['event', 'type', 'id', 'seq'].includes(key)))
+    : Object.fromEntries(Object.entries(raw).filter(([key]) => !['event', 'type', 'id', 'seq', 'epoch'].includes(key)))
 
   return {
     ...(typeof raw.id === 'string' ? { id: raw.id } : {}),
     ...(typeof raw.seq === 'number' && Number.isFinite(raw.seq) ? { seq: raw.seq } : {}),
+    ...(typeof raw.epoch === 'string' && raw.epoch ? { epoch: raw.epoch } : {}),
     event: eventName,
     payload,
     receivedAt: Date.now(),
@@ -55,6 +56,7 @@ export class RuntimeWebSocketClient implements RuntimeSessionConnection {
   private reconnectAttempt = 0
   private openedBefore = false
   private lastSeq = 0
+  private epoch?: string
   private readonly seenIds = new Set<string>()
   private readonly seenIdOrder: string[] = []
   private readonly WebSocketCtor: RuntimeWebSocketConstructor
@@ -86,7 +88,9 @@ export class RuntimeWebSocketClient implements RuntimeSessionConnection {
       this.reconnectAttempt = 0
       this.options.onConnectionState?.('CONNECTED')
       if (isReconnect) {
-        this.send('SESSION_RESYNC', {
+        // 后端要求的信封字段一个都不能少（session_id / event / seq / timestamp），
+        // 否则只会换回一条 PROTOCOL_ERROR。
+        this.send('STATE_SYNC_REQUEST', {
           session_id: this.options.sessionId,
           last_seq: this.lastSeq,
         })
@@ -123,6 +127,14 @@ export class RuntimeWebSocketClient implements RuntimeSessionConnection {
   }
 
   private acceptEvent(event: RuntimeEvent) {
+    if (event.epoch && event.epoch !== this.epoch) {
+      // 服务端进程换过了：它的 seq 存在内存里，重启后从 1 重新开始。
+      // 不清零就会把重启后的新消息全部当成旧消息丢掉（每次部署都会重启运行时）。
+      this.epoch = event.epoch
+      this.lastSeq = 0
+      this.seenIds.clear()
+      this.seenIdOrder.length = 0
+    }
     if (event.id && this.seenIds.has(event.id)) return false
     if (event.seq !== undefined && event.seq <= this.lastSeq) return false
 
@@ -152,7 +164,13 @@ export class RuntimeWebSocketClient implements RuntimeSessionConnection {
 
   send(event: string, payload: Record<string, unknown> = {}) {
     if (!this.socket || this.socket.readyState !== 1) return false
-    this.socket.send(JSON.stringify({ event, payload }))
+    this.socket.send(JSON.stringify({
+      session_id: this.options.sessionId,
+      event,
+      seq: this.lastSeq,
+      timestamp: new Date().toISOString(),
+      payload,
+    }))
     return true
   }
 

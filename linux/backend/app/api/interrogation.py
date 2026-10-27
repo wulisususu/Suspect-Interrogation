@@ -7,6 +7,7 @@ from app.api.schemas import ActorRequest, MessageCreateRequest, MessageMarkReque
 from app.api.voiceprints import make_voiceprint_service
 from app.services.message_service import MessageService
 from app.services.session_service import SessionService
+from app.websocket.publisher import publish_session_state
 
 router = APIRouter(tags=["interrogation"])
 
@@ -23,36 +24,43 @@ def get_session(case_id: str, db: Session = Depends(get_db)):
 @router.post("/cases/{case_id}/session/start")
 def start_session(case_id: str, request: Request, body: SessionStartRequest | None = None, db: Session = Depends(get_db)):
     body = body or SessionStartRequest()
-    return envelope(
-        SessionService(db).start(
-            case_id,
-            _actor(body),
-            voiceprint_service=make_voiceprint_service(request, db),
-            interrogator_officer_id=body.interrogator_officer_id,
-            recorder_officer_id=body.recorder_officer_id,
-        ),
-        "审讯已开始",
+    state = SessionService(db).start(
+        case_id,
+        _actor(body),
+        voiceprint_service=make_voiceprint_service(request, db),
+        interrogator_officer_id=body.interrogator_officer_id,
+        recorder_officer_id=body.recorder_officer_id,
     )
+    publish_session_state(request.app.state, state)
+    return envelope(state, "审讯已开始")
 
 
 @router.post("/cases/{case_id}/session/pause")
-def pause_session(case_id: str, body: ActorRequest | None = None, db: Session = Depends(get_db)):
-    return envelope(SessionService(db).pause(case_id, _actor(body)), "审讯已暂停")
+def pause_session(case_id: str, request: Request, body: ActorRequest | None = None, db: Session = Depends(get_db)):
+    state = SessionService(db).pause(case_id, _actor(body))
+    publish_session_state(request.app.state, state)
+    return envelope(state, "审讯已暂停")
 
 
 @router.post("/cases/{case_id}/session/resume")
-def resume_session(case_id: str, body: ActorRequest | None = None, db: Session = Depends(get_db)):
-    return envelope(SessionService(db).resume(case_id, _actor(body)), "审讯已恢复")
+def resume_session(case_id: str, request: Request, body: ActorRequest | None = None, db: Session = Depends(get_db)):
+    state = SessionService(db).resume(case_id, _actor(body))
+    publish_session_state(request.app.state, state)
+    return envelope(state, "审讯已恢复")
 
 
 @router.post("/cases/{case_id}/session/finish")
-def finish_session(case_id: str, body: ActorRequest | None = None, db: Session = Depends(get_db)):
-    return envelope(SessionService(db).finish(case_id, _actor(body)), "审讯已结束，进入复核")
+def finish_session(case_id: str, request: Request, body: ActorRequest | None = None, db: Session = Depends(get_db)):
+    state = SessionService(db).finish(case_id, _actor(body))
+    publish_session_state(request.app.state, state)
+    return envelope(state, "审讯已结束，进入复核")
 
 
 @router.post("/cases/{case_id}/session/stage")
-def change_stage(case_id: str, body: StageRequest, db: Session = Depends(get_db)):
-    return envelope(SessionService(db).change_stage(case_id, body.stage, body.actor_id), "审讯阶段已切换")
+def change_stage(case_id: str, request: Request, body: StageRequest, db: Session = Depends(get_db)):
+    state = SessionService(db).change_stage(case_id, body.stage, body.actor_id)
+    publish_session_state(request.app.state, state)
+    return envelope(state, "审讯阶段已切换")
 
 
 @router.get("/cases/{case_id}/messages")

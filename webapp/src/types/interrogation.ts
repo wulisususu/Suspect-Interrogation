@@ -324,6 +324,12 @@ export interface VoiceprintReadiness extends VoiceprintBackendReadiness {
   authoritativeSpeakerBackend?: SpeakerBackendKey
   simulated?: boolean
   /**
+   * 角色绑定取自哪场审讯：ACTIVE_SESSION 当前进行中，LAST_SESSION 本场已结束
+   * （定稿校验/签署阶段的正常情况），NONE 该案件还没有任何审讯。
+   */
+  roleBindingScope?: 'ACTIVE_SESSION' | 'LAST_SESSION' | 'NONE'
+  roleBindingSessionId?: string | null
+  /**
    * Registration metrics of the active suspect voiceprint used by the condensed re-record card.
    * Task 17B-1 populates them from the backend readiness payload; the card still degrades
    * gracefully when a deployment returns an older payload.

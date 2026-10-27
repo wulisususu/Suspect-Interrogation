@@ -312,6 +312,8 @@ def create_app(
     )
     app.state.voiceprint_enrollment_context = {}
     app.state.websocket_manager = websocket_manager
+    # REST 处理器（在线程池里跑）通过它把领域状态变更推给已连接的实时视图。
+    app.state.publish_session_event = publish_asr_event
 
     install_error_handlers(app)
     app.add_middleware(AudioSourceContextMiddleware)

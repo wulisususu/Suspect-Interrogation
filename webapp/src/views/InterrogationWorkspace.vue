@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { backendErrorMessage, fetchRuntimeCapabilities, updateAsrFragment } from '../api/interrogation'
+import { currentOperatorId } from '../api/operator'
 import { updateCaseFact, updateCaseProfile } from '../api/caseProfile'
 import {
   startQuestionPreparationDictation,
@@ -269,15 +270,20 @@ async function saveRecordHeader(target: 'case' | 'fact', key: string, value: str
   try {
     if (target === 'case') {
       await updateCaseProfile(caseId, { [key]: value } as Partial<CaseSummary>)
+      if (store.caseId !== caseId || generation !== recordSaveGeneration) return
+      // 抬头只影响本页显示，直接回填本地摘要即可。原先这里走 refreshCaseWorkspace()，
+      // 会重新 initialize 整个工作台，页面闪一下、其他输入框里未保存的内容全被冲掉。
+      store.caseSummary = { ...store.caseSummary, [key]: value } as CaseSummary
     } else {
-      await updateCaseFact(caseId, key, {
+      const saved = await updateCaseFact(caseId, key, {
         value: value || '未录入',
         status: value ? 'confirmed' : 'missing',
       })
+      if (store.caseId !== caseId || generation !== recordSaveGeneration) return
+      const index = store.facts.findIndex((item) => item.key === saved.key)
+      if (index >= 0) store.facts[index] = saved
+      else store.facts = [...store.facts, saved]
     }
-    if (store.caseId !== caseId || generation !== recordSaveGeneration) return
-    await refreshCaseWorkspace()
-    if (store.caseId !== caseId || generation !== recordSaveGeneration) return
     store.feedback('笔录抬头已保存')
   } catch (err) {
     if (store.caseId === caseId && generation === recordSaveGeneration) store.feedback(backendErrorMessage(err), true)
@@ -307,7 +313,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
       fragmentId,
       text ?? (fragment.editedText || fragment.rawText),
       speaker,
-      store.caseSummary.officerName || '当前警官',
+      currentOperatorId() ?? (store.caseSummary.officerName || undefined),
       cleanReason,
     )
     if (store.caseId !== caseId || generation !== recordSaveGeneration) return

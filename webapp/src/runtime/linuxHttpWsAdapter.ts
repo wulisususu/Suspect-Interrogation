@@ -52,6 +52,11 @@ function unwrap<T>(payload: unknown): T {
   return payload as T
 }
 
+/** ActorRequest 用 snake_case 字段名且没有 alias，只透传真实存在的操作人。 */
+function actorBody(payload: Record<string, unknown>): Record<string, unknown> {
+  return payload.actorId === undefined ? {} : { actor_id: payload.actorId }
+}
+
 function endpoint(operation: RuntimeOperation, payload: Record<string, unknown>): RuntimeHttpRequestConfig {
   const caseId = encode(payload.caseId)
   const messageId = encode(payload.messageId)
@@ -67,18 +72,19 @@ function endpoint(operation: RuntimeOperation, payload: Record<string, unknown>)
       return { method: 'GET', url: '/api/v1/cases', params }
     }
     case 'case.get': return { method: 'GET', url: `/api/v1/cases/${caseId}` }
-    case 'case.update': return { method: 'PUT', url: `/api/v1/cases/${caseId}`, data: payload.patch ?? payload }
+    case 'case.update': return { method: 'PUT', url: `/api/v1/cases/${caseId}`, data: { ...(payload.patch ?? {} as Record<string, unknown>), ...actorBody(payload) } }
     case 'message.list': return { method: 'GET', url: `/api/v1/cases/${caseId}/messages`, params: { limit: payload.limit ?? 1000 } }
-    case 'message.add': return { method: 'POST', url: `/api/v1/cases/${caseId}/messages`, data: { text: payload.text, speaker: payload.speaker } }
-    case 'message.update': return { method: 'PUT', url: `/api/v1/cases/${caseId}/messages/${messageId}`, data: { text: payload.text, reason: payload.reason } }
-    case 'message.mark': return { method: 'POST', url: `/api/v1/cases/${caseId}/messages/${messageId}/mark`, data: { mark: payload.mark } }
+    case 'message.add': return { method: 'POST', url: `/api/v1/cases/${caseId}/messages`, data: { text: payload.text, speaker: payload.speaker, ...actorBody(payload) } }
+    case 'message.update': return { method: 'PUT', url: `/api/v1/cases/${caseId}/messages/${messageId}`, data: { text: payload.text, reason: payload.reason, ...actorBody(payload) } }
+    case 'message.mark': return { method: 'POST', url: `/api/v1/cases/${caseId}/messages/${messageId}/mark`, data: { mark: payload.mark, ...actorBody(payload) } }
     case 'message.revisions': {
       const suffix = payload.messageId ? `/messages/${messageId}/revisions` : '/revisions'
       return { method: 'GET', url: `/api/v1/cases/${caseId}${suffix}` }
     }
     case 'fact.list': return { method: 'GET', url: `/api/v1/cases/${caseId}/facts` }
-    case 'fact.update': return { method: 'PUT', url: `/api/v1/cases/${caseId}/facts/${encode(payload.factKey)}`, data: payload.patch ?? payload }
-    case 'timeline.list': return { method: 'GET', url: `/api/v1/cases/${caseId}/timeline` }
+    case 'fact.update': return { method: 'PUT', url: `/api/v1/cases/${caseId}/facts/${encode(payload.factKey)}`, data: { ...(payload.patch ?? {} as Record<string, unknown>), ...actorBody(payload) } }
+    // 时间线：后端没有 timeline 路由（只有 facts / audit / session / messages）。
+    // 之前这里映射到一个不存在的地址，接了也只会 404；等后端真正提供接口再加回来。
     case 'audit.list': return { method: 'GET', url: `/api/v1/cases/${caseId}/audit` }
     case 'session.get': return { method: 'GET', url: `/api/v1/cases/${caseId}/session` }
     case 'session.start': return {
@@ -90,10 +96,10 @@ function endpoint(operation: RuntimeOperation, payload: Record<string, unknown>)
         actor_id: payload.actorId,
       },
     }
-    case 'session.pause': return { method: 'POST', url: `/api/v1/cases/${caseId}/session/pause`, data: {} }
-    case 'session.resume': return { method: 'POST', url: `/api/v1/cases/${caseId}/session/resume`, data: {} }
-    case 'session.finish': return { method: 'POST', url: `/api/v1/cases/${caseId}/session/finish`, data: {} }
-    case 'session.stage': return { method: 'POST', url: `/api/v1/cases/${caseId}/session/stage`, data: { stage: payload.stage } }
+    case 'session.pause': return { method: 'POST', url: `/api/v1/cases/${caseId}/session/pause`, data: actorBody(payload) }
+    case 'session.resume': return { method: 'POST', url: `/api/v1/cases/${caseId}/session/resume`, data: actorBody(payload) }
+    case 'session.finish': return { method: 'POST', url: `/api/v1/cases/${caseId}/session/finish`, data: actorBody(payload) }
+    case 'session.stage': return { method: 'POST', url: `/api/v1/cases/${caseId}/session/stage`, data: { stage: payload.stage, ...actorBody(payload) } }
     case 'identity.read': return {
       method: 'POST',
       url: '/api/v1/identity/read',
@@ -133,8 +139,11 @@ function endpoint(operation: RuntimeOperation, payload: Record<string, unknown>)
       data: { edited_text: payload.editedText, speaker: payload.speaker, actor_id: payload.actorId, reason: payload.reason },
     }
     case 'asr.fragment.confirm': return { method: 'POST', url: `/api/v1/cases/${caseId}/asr/fragments/${fragmentId}/confirm`, data: {} }
-    case 'asr.fragment.confirmBatch': return { method: 'POST', url: `/api/v1/cases/${caseId}/asr/fragments/confirm`, data: { fragment_ids: payload.fragmentIds } }
-    case 'asr.fragment.applyToRecord': return { method: 'POST', url: `/api/v1/cases/${caseId}/asr/fragments/apply`, data: payload }
+    case 'asr.fragment.confirmBatch': return { method: 'POST', url: `/api/v1/cases/${caseId}/asr/fragments/confirm`, data: { fragment_ids: payload.fragmentIds, ...actorBody(payload) } }
+    // 后端 FragmentBatchRequest 的字段是 fragment_ids（无 alias 且 extra="ignore"）。
+    // 之前直接透传 payload，发的是 fragmentIds → 后端收到空列表后会退化成
+    // "把该案所有待确认片段一次性写入笔录"，属于静默的数据污染。
+    case 'asr.fragment.applyToRecord': return { method: 'POST', url: `/api/v1/cases/${caseId}/asr/fragments/apply`, data: { fragment_ids: payload.fragmentIds ?? [], ...actorBody(payload) } }
     case 'asr.fragment.discard': return { method: 'POST', url: `/api/v1/cases/${caseId}/asr/fragments/${fragmentId}/discard`, data: {} }
     case 'voiceprint.readiness': return { method: 'GET', url: `/api/v1/cases/${caseId}/voiceprints/readiness` }
     case 'voiceprint.roleDraft.get': return { method: 'GET', url: `/api/v1/cases/${caseId}/voiceprints/role-draft` }
@@ -188,10 +197,21 @@ function endpoint(operation: RuntimeOperation, payload: Record<string, unknown>)
       },
     }
     case 'document.signing.get': return { method: 'GET', url: `/api/v1/cases/${caseId}/document` }
-    case 'document.freeze': return { method: 'POST', url: `/api/v1/cases/${caseId}/document/freeze`, data: {} }
-    case 'document.finalize': return { method: 'POST', url: `/api/v1/cases/${caseId}/document/finalize`, data: {} }
-    case 'document.sign': return { method: 'POST', url: `/api/v1/cases/${caseId}/document/sign`, data: payload }
-    case 'case.report.generated': return { method: 'POST', url: `/api/v1/cases/${caseId}/report/generated`, data: {} }
+    case 'document.freeze': return { method: 'POST', url: `/api/v1/cases/${caseId}/document/freeze`, data: actorBody(payload) }
+    case 'document.finalize': return { method: 'POST', url: `/api/v1/cases/${caseId}/document/finalize`, data: actorBody(payload) }
+    case 'document.sign': {
+      // FastAPI 的 DocumentSignRequest 是 extra="forbid" 的严格模型（85f88dd0 起），
+      // caseId 已经在 URL 里，再放进 body 会被判为多余字段直接 422。
+      const signature: Record<string, unknown> = {
+        signerRole: payload.signerRole,
+        signerName: payload.signerName,
+        imageDataUrl: payload.imageDataUrl,
+        strokesJson: payload.strokesJson,
+      }
+      if (payload.actorId !== undefined) signature.actorId = payload.actorId
+      return { method: 'POST', url: `/api/v1/cases/${caseId}/document/sign`, data: signature }
+    }
+    case 'case.report.generated': return { method: 'POST', url: `/api/v1/cases/${caseId}/report/generated`, data: actorBody(payload) }
     default: throw new RuntimeAdapterError('UNSUPPORTED_OPERATION', `Linux Runtime 不支持操作：${operation}`, 'NOT_CONFIGURED')
   }
 }

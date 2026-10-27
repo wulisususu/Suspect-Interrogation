@@ -73,8 +73,44 @@ describe('RuntimeWebSocketClient', () => {
 
     FakeSocket.instances[1]!.open()
     const resync = FakeSocket.instances[1]!.sent.map((item) => JSON.parse(item))
-    expect(resync).toContainEqual({ event: 'SESSION_RESYNC', payload: { session_id: 'session-1', last_seq: 7 } })
+    expect(resync).toHaveLength(1)
+    expect(resync[0]).toMatchObject({
+      session_id: 'session-1',
+      event: 'STATE_SYNC_REQUEST',
+      seq: 7,
+      payload: { last_seq: 7 },
+    })
+    expect(typeof resync[0].timestamp).toBe('string')
 
+    client.close()
+  })
+
+  it('resets the sequence watermark when the backend process epoch changes', () => {
+    const received: string[] = []
+    const client = new RuntimeWebSocketClient({
+      url: 'ws://127.0.0.1/ws/interrogation/session-3',
+      sessionId: 'session-3',
+      WebSocketCtor: FakeSocket as never,
+      onEvent: (event) => received.push(`${event.event}:${event.seq}`),
+    })
+
+    client.connect()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    socket.message({ epoch: 'boot-a', seq: 40, event: 'ASR_FINAL', payload: {} })
+    socket.message({ epoch: 'boot-a', seq: 41, event: 'ASR_FINAL', payload: {} })
+    socket.message({ epoch: 'boot-a', seq: 40, event: 'ASR_FINAL', payload: {} })
+
+    // 后端重启：epoch 变了，seq 从 1 重新开始，不能当成旧消息丢掉。
+    socket.message({ epoch: 'boot-b', seq: 1, event: 'RECORDING_STATE', payload: { running: true } })
+    socket.message({ epoch: 'boot-b', seq: 2, event: 'SESSION_STATE', payload: { status: 'PAUSED' } })
+
+    expect(received).toEqual([
+      'ASR_FINAL:40',
+      'ASR_FINAL:41',
+      'RECORDING_STATE:1',
+      'SESSION_STATE:2',
+    ])
     client.close()
   })
 

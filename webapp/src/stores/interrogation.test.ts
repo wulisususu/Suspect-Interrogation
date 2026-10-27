@@ -1,7 +1,11 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-describe('interrogation capture event reducer', () => {
+// 每个用例都 await import('./interrogation') 装载整张 store 依赖图；全量并行跑时
+// 首次装载会超过默认 5s（本机负载敏感，实测 1s~6s 波动），因此放宽超时。
+const SUITE_TIMEOUT = { timeout: 20_000 }
+
+describe('interrogation capture event reducer', SUITE_TIMEOUT, () => {
   beforeEach(() => {
     vi.stubGlobal('location', { search: '' })
     setActivePinia(createPinia())
@@ -119,5 +123,54 @@ describe('interrogation capture event reducer', () => {
     expect(store.captureElapsedMs).toBe(2_000)
     vi.advanceTimersByTime(1_000)
     expect(store.captureElapsedMs).toBe(3_000)
+  })
+})
+
+describe('interrogation realtime status events', SUITE_TIMEOUT, () => {
+  beforeEach(() => {
+    vi.stubGlobal('location', { search: '' })
+    setActivePinia(createPinia())
+  })
+
+  it('keeps the local fragment list when only a lightweight recording signal arrives', async () => {
+    const { useInterrogationStore } = await import('./interrogation')
+    const store = useInterrogationStore()
+    store.resetCaseContext('case-1')
+    store.applyCaptureEvent({ event: 'RECORDING_STATE', payload: {
+      caseId: 'case-1', captureSessionId: 'capture-1', running: true,
+      startedAt: Date.now(), sampleRate: 16000, partialText: '', fragments: [],
+    } })
+    store.applyCaptureEvent({ event: 'ASR_FRAGMENT', payload: {
+      id: 'f1', fragmentId: 'f1', caseId: 'case-1', captureSessionId: 'capture-1',
+      ordinal: 0, startedAtMs: 0, endedAtMs: 1000, rawText: '问', editedText: '问',
+      speaker: 'SUSPECT', speakerSource: 'MODEL', state: 'PENDING',
+      createdAt: Date.now(), updatedAt: Date.now(),
+    } })
+    expect(store.capture.fragments).toHaveLength(1)
+
+    // 后端推送只带 running（别的终端开/停录音），不能把本机片段清空。
+    store.applyCaptureEvent({ event: 'RECORDING_STATE', payload: {
+      caseId: 'case-1', captureSessionId: 'capture-1', running: true,
+    } })
+    expect(store.capture.fragments).toHaveLength(1)
+
+    store.applyCaptureEvent({ event: 'RECORDING_STATE', payload: {
+      caseId: 'case-1', captureSessionId: 'capture-1', running: false, active: false,
+    } })
+    expect(store.capture.fragments).toHaveLength(1)
+  })
+
+  it('applies a pushed session state so another terminal pause shows up locally', async () => {
+    const { useInterrogationStore } = await import('./interrogation')
+    const store = useInterrogationStore()
+    store.resetCaseContext('case-1')
+    store.session = { ...store.session, id: 'session-1', caseId: 'case-1', status: 'RUNNING' }
+
+    store.applySessionState({
+      id: 'session-1', caseId: 'case-1', status: 'PAUSED', stage: 'STATEMENT',
+      updatedAt: Date.now(),
+    }, { caseId: 'case-1', generation: 0 })
+
+    expect(store.session.status).toBe('PAUSED')
   })
 })

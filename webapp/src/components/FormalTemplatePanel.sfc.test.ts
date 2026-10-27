@@ -13,3 +13,14 @@ describe('FormalTemplatePanel SFC boundary', () => {
     expect(templateClose).toBeLessThan(scopedStyleOpen)
   })
 })
+
+describe('FormalTemplatePanel header fields', () => {
+  it('edits the current address fact, not the ID-card address on the case', () => {
+    const line = source.split('\n').find((item) => item.includes('aria-label="现住址"')) ?? ''
+
+    // 纸面文书用的是 current_address，编辑器必须读写同一个字段。
+    expect(line).toContain("factText('current_address')")
+    expect(line).toContain("saveHeader($event, 'fact', 'current_address')")
+    expect(line).not.toContain('summary.address')
+  })
+})

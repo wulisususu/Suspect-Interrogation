@@ -20,7 +20,9 @@ const createdCase = ref<CaseSummary | null>(null)
 const modalElement = ref<HTMLElement | null>(null)
 let previousFocus: HTMLElement | null = null
 const identityAvailable = computed(() => capabilities.value?.identity.state === 'AVAILABLE')
-const form = reactive({ ...createIdentityForm(), officerName: '当前警官' })
+// 主审民警不再预填"当前警官"占位串：该值会原样写入建案审计的操作人，
+// 占位文字等于伪造操作人。留空则要求现场填写。
+const form = reactive({ ...createIdentityForm(), officerName: '' })
 function syncAge() { form.age = calculateAge(form.birthDate) }
 function selectMode(next: 'card' | 'manual') {
   if (busy.value || createdCase.value) return
@@ -49,7 +51,7 @@ async function readCard() {
   if (!identityAvailable.value) { error.value = capabilities.value?.identity.reason || '身份证读卡器尚未配置，请手动录入。'; return }
   busy.value = 'card'; error.value = ''
   try {
-    const result = await getRuntimeAdapter().invoke<IdentityReadResponse>('identity.read', { actorId: form.officerName || '当前警官' }, { timeoutMs: 30_000 })
+    const result = await getRuntimeAdapter().invoke<IdentityReadResponse>('identity.read', { actorId: form.officerName.trim() || undefined }, { timeoutMs: 30_000 })
     const identity = result.identity
     if (!identity?.name && !identity?.id_number) throw new Error('读卡器未返回可核对的身份字段')
     form.suspectName = identity.name || form.suspectName
@@ -63,10 +65,11 @@ async function submit() {
   if (busy.value || (mode.value === 'card' && !cardApplied.value)) return
   const validation = identityFormError(form)
   if (validation) { error.value = validation; return }
+  const officerName = form.officerName.trim()
+  if (!officerName) { error.value = '请填写主审民警姓名，该姓名会作为建案操作的留痕人。'; return }
   const suspectName = form.suspectName.trim(); const idNumber = form.idNumber.trim().toUpperCase()
   busy.value = 'submit'; error.value = ''
   try {
-    const officerName = form.officerName.trim() || '当前警官'
     const item = createdCase.value || await createCaseWithIdentity({
       operatorId: officerName,
       officerName,
@@ -98,7 +101,7 @@ onUnmounted(() => { document.removeEventListener('keydown', onEscape); previousF
     <form @submit.prevent="submit">
       <template v-if="mode === 'card'">
         <div class="identity-card" aria-live="polite"><CreditCard v-if="!cardApplied" :size="34" /><ShieldCheck v-else :size="34" /><strong>{{ cardApplied ? '身份证信息已读取，请核对以下内容' : '请将居民身份证平放至读卡器感应区' }}</strong><span :class="{ available: cardApplied }">{{ cardApplied ? '读取完成，请核对证件原件与本人信息' : capabilities ? identityAvailable ? '读卡器已就绪' : capabilities.identity.reason || '读卡器未配置，可切换人工录入' : '正在检查读卡器…' }}</span><button type="button" :disabled="!!busy || !identityAvailable" @click="readCard"><LoaderCircle v-if="busy === 'card'" :size="16" class="spinning" />{{ busy === 'card' ? '读取中…' : cardApplied ? '重新读取' : '读取身份证' }}</button></div>
-        <dl class="identity-summary"><div v-for="row in [{ label: '姓名', value: form.suspectName }, { label: '公民身份号码', value: form.idNumber }, { label: '性别', value: form.gender }, { label: '民族', value: form.nation }, { label: '出生日期', value: form.birthDate }, { label: '年龄', value: form.age ? form.age + ' 岁' : '' }, { label: '身份证住址', value: form.idCardAddress }]" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ cardApplied ? row.value || '未读取到' : '待读取' }}</dd></div><div><dt><label for="intake-card-officer">主审民警</label></dt><dd><input id="intake-card-officer" v-model="form.officerName" :disabled="!!busy" /></dd></div></dl>
+        <dl class="identity-summary"><div v-for="row in [{ label: '姓名', value: form.suspectName }, { label: '公民身份号码', value: form.idNumber }, { label: '性别', value: form.gender }, { label: '民族', value: form.nation }, { label: '出生日期', value: form.birthDate }, { label: '年龄', value: form.age ? form.age + ' 岁' : '' }, { label: '身份证住址', value: form.idCardAddress }]" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ cardApplied ? row.value || '未读取到' : '待读取' }}</dd></div><div><dt><label for="intake-card-officer">主审民警</label></dt><dd><input id="intake-card-officer" v-model="form.officerName" :disabled="!!busy" placeholder="填写主审民警姓名" /></dd></div></dl>
       </template>
       <template v-else><p class="manual-notice">人工录入信息请由另一名在场民警对照证件原件核对。保存录入信息不能替代现场身份核验。</p><ManualIdentityFields :form="form" :disabled="!!busy || !!createdCase" /></template>
       <p v-if="error" class="error" role="alert">{{ error }}</p>

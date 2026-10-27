@@ -219,6 +219,18 @@ def test_officer_library_and_full_role_assignment_api(tmp_path):
         assert readiness["interrogatorReady"] is True
         assert readiness["recorderReady"] is True
         assert readiness["recognitionMode"] == "FULL"
+        assert readiness["roleBindingScope"] == "ACTIVE_SESSION"
+
+        # 定稿校验与签署只在审讯结束后才看得到，那时已经没有 active session。
+        # 角色绑定必须仍能被读到，并明确标为"本场审讯"的绑定。
+        finished = payload(client.post(f"/api/v1/cases/{case_id}/session/finish", json={"actor_id": "op"}))
+        assert finished["status"] == "COMPLETED"
+        after_end = payload(client.get(f"/api/v1/cases/{case_id}/voiceprints/readiness"))
+        assert after_end["roleBindingScope"] == "LAST_SESSION"
+        assert after_end["roleBindingSessionId"] == started["id"]
+        assert after_end["interrogatorReady"] is True
+        assert after_end["recorderReady"] is True
+        assert after_end["recognitionMode"] == "FULL"
 
         revoked = payload(client.delete("/api/v1/officer-voiceprints/P-001?actor_id=admin"))
         assert revoked["active"] is False

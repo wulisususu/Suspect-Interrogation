@@ -70,7 +70,17 @@ class VoiceprintService:
         """
 
         case_repo.get(self.db, case_id)
+        # 角色绑定发生在审讯开始时，落在 session_voice_assignments 上。审讯结束后
+        # 已经没有 active session，若只看 active session，定稿校验与签署界面一律
+        # 读到"未绑定"——而这两处恰恰只在审讯结束后才看得到。
+        # 因此没有 active session 时回退到最近一场审讯的绑定，并用 roleBindingScope
+        # 明确告诉界面这是"上一场"的绑定，不是当前进行中的会话。
         session = session_repo.active_for_case(self.db, case_id)
+        binding_scope = "ACTIVE_SESSION"
+        if session is None:
+            session = session_repo.latest_for_case(self.db, case_id)
+            binding_scope = "LAST_SESSION" if session is not None else "NONE"
+
         assignment = None
         if session is not None:
             assignment = self.db.scalar(
@@ -89,6 +99,8 @@ class VoiceprintService:
             "recorderReady": recorder_ready,
             "recognitionMode": declared_mode,
             "canStart": suspect is not None,
+            "roleBindingScope": binding_scope,
+            "roleBindingSessionId": None if session is None else session.id,
             **self._suspect_reference_fields(suspect),
             **self._speaker_mode_fields(declared_mode, speaker_mode),
         }

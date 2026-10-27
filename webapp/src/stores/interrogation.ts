@@ -37,6 +37,7 @@ import {
   updateVoiceprintAssignments,
   updateVoiceprintRoleDraft,
 } from '../api/interrogation'
+import { resetCurrentOperator, setCurrentOperator } from '../api/operator'
 import {
   clearBrowserAsrCaptureLeaseRefusal,
   BrowserFormalCaptureLeaseError,
@@ -73,15 +74,17 @@ import type {
 const uid = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`
 const stageOrder: InterrogationStage[] = ['IDENTITY', 'STATEMENT', 'FOLLOW_UP', 'SIGNING']
 
-const stateTextMap: Record<string, string> = {
-  DRAFT: '草稿',
-  IDENTITY_VERIFYING: '身份核验中',
-  READY: '待开始',
-  INTERROGATING: '审讯中',
-  REVIEWING: '复核中',
-  SIGNING: '签名中',
-  COMPLETED: '已完成',
-  ARCHIVED: '已归档',
+const workflowStateTextMap: Record<string, string> = {
+  INIT: '草稿',
+  IDENTITY_REQUIRED: '待核验身份',
+  IDENTITY_READY: '身份已核验',
+  CASE_CREATED: '待开始审讯',
+  QUESTIONING: '审讯中',
+  PAUSED: '已暂停',
+  SUMMARY: '待定稿',
+  FROZEN: '已冻结',
+  SIGNED: '已签署',
+  REPORT_GENERATED: '已归档',
 }
 
 const stageTextMap: Record<InterrogationStage, string> = {
@@ -152,6 +155,8 @@ function emptyVoiceprintReadiness(): VoiceprintReadiness {
     recorderReady: false,
     recognitionMode: 'SUSPECT_ONLY',
     canStart: false,
+    roleBindingScope: 'NONE',
+    roleBindingSessionId: null,
   }
 }
 
@@ -199,13 +204,20 @@ export const useInterrogationStore = defineStore('interrogation', () => {
   const browserResumeGate = new BrowserCaptureResumeGate()
   let voiceprintProgressTimer: ReturnType<typeof setInterval> | undefined
   let sessionConnection: RuntimeSessionConnection | undefined
+  /** 本连接生命周期内收到过的 STATE_SYNC 次数；第一次是建连快照，之后才是重连补账。 */
+  let stateSyncCount = 0
 
   const completion = computed(() => {
     if (!facts.value.length) return 0
     const done = facts.value.filter((item) => item.status === 'confirmed').length
     return Math.round((done / facts.value.length) * 100)
   })
-  const stateText = computed(() => stateTextMap[caseSummary.value.state] || caseSummary.value.state)
+  // 状态文案只认工作流状态：兼容字段 state 对已归档案件也返回 REVIEWING。
+  const stateText = computed(() => {
+    const workflow = caseSummary.value.workflowState
+    if (workflow) return workflowStateTextMap[workflow] ?? workflow
+    return ''
+  })
   const stageText = computed(() => stageTextMap[session.value.stage])
   const canRecord = computed(() => session.value.status === 'RUNNING')
   const captureElapsedMs = computed(() => capture.value.running && capture.value.startedAt
@@ -247,6 +259,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
   function disposeCaptureEvents() {
     sessionConnection?.close()
     sessionConnection = undefined
+    stateSyncCount = 0
     if (captureTimer) clearInterval(captureTimer)
     captureTimer = undefined
     if (captureStatusSyncTimer) clearInterval(captureStatusSyncTimer)
@@ -288,6 +301,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     officerVoiceprints.value = []
     selectedInterrogatorOfficerId.value = null
     selectedRecorderOfficerId.value = null
+    resetCurrentOperator()
     voiceprintEnrollmentState.value = idleEnrollmentState()
     voiceprintBusy.value = false
   }
@@ -378,8 +392,8 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     captureStatusSyncInFlight = false
   }
 
-  async function syncCaptureStatus(scope: CaseScope) {
-    if (captureStatusSyncInFlight || !isCurrentScope(scope) || !captureWorkflowNeedsSync()) return
+  async function pullCaptureStatus(scope: CaseScope) {
+    if (captureStatusSyncInFlight || !isCurrentScope(scope)) return
     captureStatusSyncInFlight = true
     try {
       const status = await fetchAsrCaptureStatus(scope.caseId)
@@ -390,6 +404,11 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     } finally {
       captureStatusSyncInFlight = false
     }
+  }
+
+  async function syncCaptureStatus(scope: CaseScope) {
+    if (!captureWorkflowNeedsSync()) return
+    await pullCaptureStatus(scope)
   }
 
   function startCaptureStatusSync(scope: CaseScope) {
@@ -565,6 +584,24 @@ export const useInterrogationStore = defineStore('interrogation', () => {
       if (payload.jobId) processedReplacementJobIds.add(payload.jobId)
       return
     }
+    if (event.event === 'RECORDING_STATE') {
+      const payload = event.payload as Partial<AsrCaptureStatus> & {
+        caseId?: string
+        captureSessionId?: string | null
+        running?: boolean
+        active?: boolean
+      }
+      if (payload.caseId && payload.caseId !== scope.caseId) return
+      // 后端推送的是轻量信号（只有 running / captureSessionId），片段与计数字段
+      // 仍由 REST 归一化产出；直接套用会把本地已有片段列表清空。
+      if (!Array.isArray(payload.fragments) && (payload.running !== undefined || payload.active !== undefined)) {
+        const nextRunning = Boolean(payload.running ?? payload.active)
+        // 这里不能走 captureWorkflowNeedsSync 门禁：本机没在录音时它恒为 false，
+        // 别的终端一开录就永远拉不到状态。推送本身就是"该刷新了"的信号。
+        if (nextRunning !== capture.value.running) void pullCaptureStatus(scope)
+        return
+      }
+    }
     if (event.event === 'RECORDING_STATE' || event.event === 'asr.capture.status') {
       const status = event.payload as Partial<AsrCaptureStatus>
       if (status.caseId === scope.caseId && typeof status.running === 'boolean' && Array.isArray(status.fragments)) {
@@ -573,10 +610,45 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     }
   }
 
+  /**
+   * 处理后端 STATE_SYNC 快照（连接建立时与重连请求后各发一次）。
+   *
+   * 快照里的 messages 是后端原始序列化结果，前端各处消费者都依赖归一化后的
+   * 形态，因此这里不直接灌入列表，而是把它当成"这段时间可能漏了事件"的信号，
+   * 用已有的 REST 归一化链路重新取权威数据。
+   */
+  function applyStateSync(payload: unknown, scope: CaseScope) {
+    const raw = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
+    const syncCaseId = String(raw.case_id ?? raw.caseId ?? '')
+    if (syncCaseId && syncCaseId !== scope.caseId) return
+    const nextSession = raw.session
+    if (nextSession && typeof nextSession === 'object') {
+      const next = nextSession as Partial<SessionState>
+      session.value = {
+        ...session.value,
+        ...next,
+        caseId: scope.caseId,
+        updatedAt: next.updatedAt ?? Date.now(),
+      }
+    }
+    stateSyncCount += 1
+    // 建连时的第一份快照与 initialize() 的 REST 拉取重复，不再重复请求；
+    // 第二次起才说明是断线重连，需要把断连窗口里丢掉的事件补齐。
+    if (stateSyncCount === 1) return
+    formalRecordRevision.value += 1
+    void refreshTranscript(scope).catch(() => undefined)
+    void refreshCase(scope).catch(() => undefined)
+    void pullCaptureStatus(scope)
+  }
+
   function initializeRuntimeEvents(scope: CaseScope) {
     if (sessionConnection || !scope.caseId || !session.value.id) return
     sessionConnection = connectRuntimeSession(session.value.id, (event) => {
       if (!isCurrentScope(scope)) return
+      if (event.event === 'STATE_SYNC') {
+        applyStateSync(event.payload, scope)
+        return
+      }
       if (event.event === 'QA_UNIT_UPDATED' || event.event === 'FORMAL_RECORD_UPDATED') {
         formalRecordRevision.value += 1
         return
@@ -590,16 +662,25 @@ export const useInterrogationStore = defineStore('interrogation', () => {
         return
       }
       if (event.event === 'SESSION_STATE') {
-        const next = event.payload as Partial<SessionState>
-        if (next.caseId && next.caseId !== scope.caseId) return
-        session.value = {
-          ...session.value,
-          ...next,
-          caseId: scope.caseId,
-          updatedAt: next.updatedAt ?? Date.now(),
-        }
+        applySessionState(event.payload, scope)
       }
     })
+  }
+
+  /** 应用后端推送的会话状态（SESSION_STATE）。 */
+  function applySessionState(payload: unknown, scope: CaseScope) {
+    const next = (payload && typeof payload === 'object' ? payload : {}) as Partial<SessionState>
+    if (next.caseId && next.caseId !== scope.caseId) return
+    const statusChanged = next.status !== undefined && next.status !== session.value.status
+    session.value = {
+      ...session.value,
+      ...next,
+      caseId: scope.caseId,
+      updatedAt: next.updatedAt ?? Date.now(),
+    }
+    // 别的终端暂停/结束时，本机的步骤条与按钮门禁由案件 workflowState 派生，
+    // 只改 session 不会让页面跟着走，所以再取一次案件摘要。
+    if (statusChanged) void refreshCase(scope).catch(() => undefined)
   }
 
   async function initialize() {
@@ -644,6 +725,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
       officerVoiceprints.value = officers
       selectedInterrogatorOfficerId.value = roleDraft.interrogatorOfficerId
       selectedRecorderOfficerId.value = roleDraft.recorderOfficerId
+      setCurrentOperator(roleDraft.interrogatorOfficerId)
       initializeRuntimeEvents(scope)
       if (captureStatus) applyCaptureStatus(captureStatus, scope)
     } catch (err) {
@@ -682,17 +764,40 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     }
   }
 
-  async function stopCapture(_target?: AsrInsertionTarget, showFeedback = true) {
-    if (!captureAvailable.value || captureBusy.value || !capture.value.running) return
-
+  /**
+   * 停止录音。
+   *
+   * 返回 true 仅代表"确认已停止"（本来就没在录也算）。失败时必须返回 false，
+   * 否则暂停/结束审讯会在录音仍在跑的情况下继续推进，产生"会话已暂停、录音还在
+   * 采集"的分裂状态。
+   */
+  async function stopCapture(_target?: AsrInsertionTarget, showFeedback = true): Promise<boolean> {
+    if (!captureAvailable.value || !capture.value.running) return true
     const scope = currentScope()
+    if (captureBusy.value) {
+      const message = '录音正在停止中，请稍后再试'
+      if (isCurrentScope(scope)) capture.value.error = message
+      feedbackIfCurrent(scope, message, true)
+      return false
+    }
+
     captureBusy.value = true
     try {
       const status = await stopAsrCapture(scope.caseId)
       applyCaptureStatus(status, scope)
+      if (status.running) {
+        const message = '后端仍报告录音进行中，未能确认停止'
+        if (isCurrentScope(scope)) capture.value.error = message
+        if (showFeedback) feedbackIfCurrent(scope, message, true)
+        return false
+      }
       if (showFeedback) feedbackIfCurrent(scope, '录音已停止，识别结果保留为待确认片段，不会自动改写正式笔录')
+      return true
     } catch (err) {
-      feedbackIfCurrent(scope, backendErrorMessage(err), true)
+      const message = backendErrorMessage(err)
+      if (isCurrentScope(scope)) capture.value.error = message
+      if (showFeedback) feedbackIfCurrent(scope, message, true)
+      return false
     } finally {
       if (isCurrentScope(scope)) captureBusy.value = false
     }
@@ -859,6 +964,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
 
   function selectInterrogatorOfficer(officerId: string | null) {
     selectedInterrogatorOfficerId.value = officerId || null
+    setCurrentOperator(selectedInterrogatorOfficerId.value)
   }
 
   function selectRecorderOfficer(officerId: string | null) {
@@ -988,6 +1094,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
       if (!isCurrentScope(scope)) return
       selectedInterrogatorOfficerId.value = draft.interrogatorOfficerId
       selectedRecorderOfficerId.value = draft.recorderOfficerId
+      setCurrentOperator(draft.interrogatorOfficerId)
       if (session.value.status === 'READY') {
         feedbackIfCurrent(scope, '案件级民警角色草稿已保存；开始审讯后会绑定到本次 session')
         return
@@ -1104,12 +1211,27 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     }
   }
 
+  /**
+   * 暂停/结束前的前置条件：先确认录音真的停了。
+   *
+   * 停不下来就中止操作并说明原因 —— 否则会出现"会话已暂停/结束、录音还在采集"
+   * 的分裂状态，后端还会继续往这个会话里写片段。
+   */
+  async function ensureCaptureStopped(scope: CaseScope, action: string): Promise<boolean> {
+    if (!capture.value.running) return true
+    const stopped = await stopCapture(undefined, false)
+    if (!isCurrentScope(scope)) return false
+    if (stopped) return true
+    const reason = capture.value.error ? `（${capture.value.error}）` : ''
+    feedbackIfCurrent(scope, `停止录音失败${reason}，已取消${action}审讯；请先手动停止录音再重试`, true)
+    return false
+  }
+
   async function togglePause() {
     const scope = currentScope()
     try {
       if (session.value.status === 'RUNNING') {
-        if (capture.value.running) await stopCapture(undefined, false)
-        if (!isCurrentScope(scope)) return
+        if (!(await ensureCaptureStopped(scope, '暂停'))) return
         const nextSession = await pauseSessionApi(scope.caseId)
         if (!isCurrentScope(scope) || nextSession.caseId !== scope.caseId) return
         session.value = nextSession
@@ -1128,8 +1250,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
   async function finishSession() {
     const scope = currentScope()
     try {
-      if (capture.value.running) await stopCapture(undefined, false)
-      if (!isCurrentScope(scope)) return
+      if (!(await ensureCaptureStopped(scope, '结束'))) return
       const nextSession = await finishSessionApi(scope.caseId)
       if (!isCurrentScope(scope) || nextSession.caseId !== scope.caseId) return
       session.value = nextSession
@@ -1210,6 +1331,8 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     useSuggestion,
     startCapture,
     stopCapture,
+    applySessionState,
+    applyStateSync,
     updatePendingFragment,
     confirmPendingFragment,
     confirmSelectedFragments,

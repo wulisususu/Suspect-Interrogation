@@ -28,7 +28,7 @@ const id = useId()
       <label><span>公民身份号码</span><input v-model="form.idNumber" maxlength="18" autocomplete="off" /></label>
       <label><span>询问地点</span><input v-model="form.interrogationPlace" placeholder="如：2 号询问室" /></label>
       <label><span>询问时间</span><input value="开始询问后由系统自动记录" readonly /></label>
-      <label><span>主审民警</span><input v-model="form.officerName" /></label>
+      <label><span>主审民警</span><input v-model="form.officerName" placeholder="填写主审民警姓名" /></label>
       <label><span>记录民警</span><input v-model="form.recorderName" /></label>
       <label><span>询问次数</span><input v-model="form.interrogationRound" inputmode="numeric" /></label>
     </fieldset>

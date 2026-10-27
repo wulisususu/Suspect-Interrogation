@@ -61,3 +61,45 @@ def test_websocket_reconnect_sync_comes_from_persisted_database(tmp_path, enroll
             requested = ws.receive_json()
             assert requested["event"] == "STATE_SYNC"
             assert requested["payload"]["session"]["state"] == "PAUSED"
+
+
+def test_envelope_carries_process_epoch_and_tolerates_legacy_resync(tmp_path, enroll_test_suspect_voiceprint):
+    """旧前端重连只发 {event, payload}，不能因此换回 PROTOCOL_ERROR。
+
+    seq 只存在于 ConnectionManager 内存里，进程重启后从 1 重新计数；客户端必须
+    能通过 epoch 判断"换代"，否则重启后的实时消息会被当成旧消息丢弃。
+    """
+    app = create_app(database_url=f"sqlite:///{tmp_path / 'epoch.db'}", hardware_gateway=MockHardwareGateway(simulated=True))
+    with TestClient(app) as client:
+        case_id, session_id = create_running_case(client, app, enroll_test_suspect_voiceprint)
+        with client.websocket_connect(f"/ws/interrogation/{session_id}") as ws:
+            first = ws.receive_json()
+            assert first["event"] == "STATE_SYNC"
+            assert isinstance(first["epoch"], str) and first["epoch"]
+
+            # 旧前端格式：没有 session_id / seq / timestamp 信封字段
+            ws.send_json({"event": "SESSION_RESYNC", "payload": {"session_id": session_id, "last_seq": 0}})
+            sync = ws.receive_json()
+            assert sync["event"] == "STATE_SYNC"
+            assert sync["epoch"] == first["epoch"]
+            assert sync["payload"]["case_id"] == case_id
+
+
+def test_session_state_is_pushed_to_connected_views(tmp_path, enroll_test_suspect_voiceprint):
+    """别的终端暂停审讯后，已连接的视图必须收到 SESSION_STATE，而不是只能刷新。"""
+    app = create_app(database_url=f"sqlite:///{tmp_path / 'push.db'}", hardware_gateway=MockHardwareGateway(simulated=True))
+    with TestClient(app) as client:
+        case_id, session_id = create_running_case(client, app, enroll_test_suspect_voiceprint)
+        with client.websocket_connect(f"/ws/interrogation/{session_id}") as ws:
+            assert ws.receive_json()["event"] == "STATE_SYNC"
+
+            ok(client.post(f"/api/v1/cases/{case_id}/session/pause", json={"actor_id": "OFFICER-7"}))
+            pushed = ws.receive_json()
+            assert pushed["event"] == "SESSION_STATE"
+            assert pushed["session_id"] == session_id
+            assert pushed["payload"]["status"] == "PAUSED"
+
+            ok(client.post(f"/api/v1/cases/{case_id}/session/resume", json={}))
+            resumed = ws.receive_json()
+            assert resumed["event"] == "SESSION_STATE"
+            assert resumed["payload"]["status"] == "RUNNING"

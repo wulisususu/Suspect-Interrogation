@@ -1,5 +1,6 @@
 import { getRuntimeAdapter, RuntimeAdapterError } from '../runtime'
 import type { DocumentSignerRole, DocumentSigningState } from '../types/interrogation'
+import { currentOperatorId } from './operator'
 
 export async function fetchDocumentSigningState(caseId: string): Promise<DocumentSigningState | null> {
   try {
@@ -11,11 +12,19 @@ export async function fetchDocumentSigningState(caseId: string): Promise<Documen
 }
 
 export function freezeDocument(caseId: string): Promise<DocumentSigningState> {
-  return getRuntimeAdapter().invoke<DocumentSigningState>('document.freeze', { caseId }, { timeoutMs: 90_000 })
+  return getRuntimeAdapter().invoke<DocumentSigningState>(
+    'document.freeze',
+    { caseId, actorId: currentOperatorId() },
+    { timeoutMs: 90_000 },
+  )
 }
 
 export function finalizeDocument(caseId: string): Promise<DocumentSigningState> {
-  return getRuntimeAdapter().invoke<DocumentSigningState>('document.finalize', { caseId }, { timeoutMs: 90_000 })
+  return getRuntimeAdapter().invoke<DocumentSigningState>(
+    'document.finalize',
+    { caseId, actorId: currentOperatorId() },
+    { timeoutMs: 90_000 },
+  )
 }
 
 export function signDocument(
@@ -31,5 +40,6 @@ export function signDocument(
     signerName,
     imageDataUrl,
     strokesJson,
+    actorId: currentOperatorId(),
   }, { timeoutMs: 60_000 })
 }

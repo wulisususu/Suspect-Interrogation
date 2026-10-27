@@ -2,13 +2,18 @@ import type { CaseSummary } from '../types/interrogation'
 
 export type CasePhase = 'PREPARE' | 'IN_PROGRESS' | 'REVIEW' | 'SIGNING' | 'DONE'
 
-/** 后端工作流 → 台账阶段（与 flow/steps 的步骤投影同源，只是粒度更粗）。 */
+/**
+ * 后端工作流 → 台账阶段（与 flow/steps 的步骤投影同源，只是粒度更粗）。
+ *
+ * 只看 `workflowState`（10 态状态机的真相）。后端兼容字段 `state`
+ * 对所有已归档案件都会返回 `REVIEWING`，用它判断阶段会把归档案件显示成"复核中"。
+ */
 export function casePhase(item: CaseSummary): CasePhase {
   const workflow = item.workflowState || ''
-  if (workflow === 'REPORT_GENERATED' || item.state === 'ARCHIVED' || item.state === 'COMPLETED') return 'DONE'
-  if (workflow === 'FROZEN' || workflow === 'SIGNED' || item.state === 'SIGNING') return 'SIGNING'
-  if (workflow === 'SUMMARY' || item.state === 'REVIEWING') return 'REVIEW'
-  if (workflow === 'QUESTIONING' || workflow === 'PAUSED' || item.state === 'INTERROGATING') return 'IN_PROGRESS'
+  if (workflow === 'REPORT_GENERATED') return 'DONE'
+  if (workflow === 'FROZEN' || workflow === 'SIGNED') return 'SIGNING'
+  if (workflow === 'SUMMARY') return 'REVIEW'
+  if (workflow === 'QUESTIONING' || workflow === 'PAUSED') return 'IN_PROGRESS'
   return 'PREPARE'
 }
 

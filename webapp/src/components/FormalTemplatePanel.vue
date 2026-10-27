@@ -275,7 +275,7 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
         <p><b>身份证证件种类及号码</b><input class="record-meta-editor short" aria-label="身份证件种类" :value="factText('id_document_type', '身份证')" :disabled="busy || documentFrozen" @change="saveHeader($event, 'fact', 'id_document_type')"><span class="record-meta-label">，</span><input class="record-meta-editor" aria-label="身份证件号码" :value="summary.idNumber" :disabled="busy || documentFrozen" @change="saveHeader($event, 'case', 'idNumber')"></p>
         <p><b>性别</b><input class="record-meta-editor tiny" aria-label="性别" :value="summary.gender" :disabled="busy || documentFrozen" @change="saveHeader($event, 'case', 'gender')"><span class="record-meta-label">出生日期</span><input class="record-meta-editor" aria-label="出生日期" :value="summary.birthDate" :disabled="busy || documentFrozen" @change="saveHeader($event, 'case', 'birthDate')"></p>
         <p><b>联系方式</b><input class="record-meta-editor" aria-label="联系方式" :value="factText('contact')" :disabled="busy || documentFrozen" @change="saveHeader($event, 'fact', 'contact')"></p>
-        <p><b>现住址</b><input class="record-meta-editor" aria-label="现住址" :value="summary.address" :disabled="busy || documentFrozen" @change="saveHeader($event, 'case', 'address')"></p>
+        <p><b>现住址</b><input class="record-meta-editor" aria-label="现住址" :value="factText('current_address')" :disabled="busy || documentFrozen" placeholder="填写现住址" @change="saveHeader($event, 'fact', 'current_address')"></p>
         <p><b>户籍所在地</b><input class="record-meta-editor" aria-label="户籍所在地" :value="factText('household_registration')" :disabled="busy || documentFrozen" @change="saveHeader($event, 'fact', 'household_registration')"></p>
       </section>
 

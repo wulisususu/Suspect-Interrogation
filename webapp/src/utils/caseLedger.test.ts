@@ -30,3 +30,21 @@ describe('case ledger (design P20)', () => {
     expect(ledgerActions(c('IDENTITY_READY'))).toEqual([{ label: '继续办理', kind: 'open' }])
   })
 })
+
+describe('case ledger legacy state field', () => {
+  it('ignores the backend compatibility state when the workflow already says archived', () => {
+    // 后端兼容字段对 SUMMARY/FROZEN/SIGNED/REPORT_GENERATED 一律返回 REVIEWING。
+    const archived = c('REPORT_GENERATED', 'REVIEWING')
+    expect(casePhase(archived)).toBe('DONE')
+    expect(ledgerStatus(archived)).toBe('已归档')
+
+    expect(casePhase(c('SIGNED', 'REVIEWING'))).toBe('SIGNING')
+    expect(casePhase(c('FROZEN', 'REVIEWING'))).toBe('SIGNING')
+    expect(ledgerStatus(c('SIGNED', 'REVIEWING'))).toBe('已签署')
+  })
+
+  it('does not fall back to the legacy state when the workflow state is missing', () => {
+    expect(casePhase({ id: 'C', workflowState: undefined, state: 'ARCHIVED' } as CaseSummary)).toBe('PREPARE')
+    expect(casePhase({ id: 'C', workflowState: undefined, state: 'INTERROGATING' } as CaseSummary)).toBe('PREPARE')
+  })
+})

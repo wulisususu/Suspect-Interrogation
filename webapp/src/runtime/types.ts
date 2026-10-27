@@ -34,6 +34,8 @@ export type RuntimeOperation = string
 export interface RuntimeEvent<T = unknown> {
   id?: string
   seq?: number
+  /** 服务端进程实例标识；后端重启后 seq 会从 1 重新计数，靠它识别换代。 */
+  epoch?: string
   event: string
   payload: T
   receivedAt: number

@@ -52,3 +52,18 @@ describe('interrogation workspace shell', () => {
     expect(source).toContain('MOSS 转写')
   })
 })
+
+describe('record header editing', () => {
+  it('patches the header in place instead of reloading the whole workspace', () => {
+    const start = source.indexOf('async function saveRecordHeader')
+    const end = source.indexOf('async function correctRecognitionFragment')
+    const body = source.slice(start, end)
+
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    // 抬头保存只影响本页显示；重新 initialize 会让页面闪一下并冲掉其它未保存输入。
+    expect(body).not.toContain('await refreshCaseWorkspace()')
+    expect(body).toContain('store.caseSummary =')
+    expect(body).toContain('store.facts')
+  })
+})

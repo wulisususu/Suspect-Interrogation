@@ -242,6 +242,127 @@ describe('LinuxHttpWsAdapter', () => {
     ])
   })
 
+  it('signs a document with only the fields the strict backend accepts', async () => {
+    const calls: Array<{ method: string; url: string; data?: unknown }> = []
+    const adapter = new LinuxHttpWsAdapter({
+      request: async (config) => {
+        calls.push({ method: String(config.method), url: String(config.url), data: config.data })
+        return { data: { ok: true, data: {} } }
+      },
+      origin: 'http://127.0.0.1:8080',
+    })
+
+    await adapter.invoke('document.sign', {
+      caseId: 'CASE-001',
+      signerRole: 'SUSPECT',
+      signerName: '张三',
+      imageDataUrl: 'data:image/png;base64,AAAA',
+      strokesJson: '[]',
+    })
+
+    expect(calls).toEqual([
+      {
+        method: 'POST',
+        url: '/api/v1/cases/CASE-001/document/sign',
+        data: {
+          signerRole: 'SUSPECT',
+          signerName: '张三',
+          imageDataUrl: 'data:image/png;base64,AAAA',
+          strokesJson: '[]',
+        },
+      },
+    ])
+    // 后端 DocumentSignRequest 是 extra="forbid"，caseId 只允许出现在 URL 里。
+    expect(calls[0]!.data).not.toHaveProperty('caseId')
+  })
+
+  it('forwards the signer actor id when the caller supplies one', async () => {
+    const calls: Array<{ data?: unknown }> = []
+    const adapter = new LinuxHttpWsAdapter({
+      request: async (config) => {
+        calls.push({ data: config.data })
+        return { data: { ok: true, data: {} } }
+      },
+      origin: 'http://127.0.0.1:8080',
+    })
+
+    await adapter.invoke('document.sign', {
+      caseId: 'CASE-001',
+      signerRole: 'OFFICER',
+      signerName: '李四',
+      imageDataUrl: 'data:image/png;base64,BBBB',
+      strokesJson: '[]',
+      actorId: 'OFFICER-9',
+    })
+
+    expect(calls[0]!.data).toEqual({
+      signerRole: 'OFFICER',
+      signerName: '李四',
+      imageDataUrl: 'data:image/png;base64,BBBB',
+      strokesJson: '[]',
+      actorId: 'OFFICER-9',
+    })
+  })
+
+  it('carries the operator id into session changes so the audit trail keeps a person', async () => {
+    const calls: Array<{ url: string; data?: unknown }> = []
+    const adapter = new LinuxHttpWsAdapter({
+      request: async (config) => {
+        calls.push({ url: String(config.url), data: config.data })
+        return { data: { ok: true, data: {} } }
+      },
+      origin: 'http://127.0.0.1:8080',
+    })
+
+    await adapter.invoke('session.pause', { caseId: 'CASE-002', actorId: 'OFFICER-3' })
+    await adapter.invoke('session.finish', { caseId: 'CASE-002' })
+    await adapter.invoke('document.freeze', { caseId: 'CASE-002', actorId: 'OFFICER-3' })
+    await adapter.invoke('case.report.generated', { caseId: 'CASE-002', actorId: 'OFFICER-3' })
+
+    expect(calls).toEqual([
+      { url: '/api/v1/cases/CASE-002/session/pause', data: { actor_id: 'OFFICER-3' } },
+      { url: '/api/v1/cases/CASE-002/session/finish', data: {} },
+      { url: '/api/v1/cases/CASE-002/document/freeze', data: { actor_id: 'OFFICER-3' } },
+      { url: '/api/v1/cases/CASE-002/report/generated', data: { actor_id: 'OFFICER-3' } },
+    ])
+  })
+
+  it('sends applied fragments with the backend field name instead of relying on the empty-list fallback', async () => {
+    const calls: Array<{ url: string; data?: unknown }> = []
+    const adapter = new LinuxHttpWsAdapter({
+      request: async (config) => {
+        calls.push({ url: String(config.url), data: config.data })
+        return { data: { ok: true, data: { confirmedCount: 1, fragments: [] } } }
+      },
+      origin: 'http://127.0.0.1:8080',
+    })
+
+    await adapter.invoke('asr.fragment.applyToRecord', {
+      caseId: 'CASE-003',
+      fragmentIds: ['frag-1', 'frag-2'],
+      actorId: 'OFFICER-3',
+    })
+
+    // 后端 FragmentBatchRequest 收 fragment_ids；传 fragmentIds 会被当成空列表，
+    // 进而退化为"把该案所有待确认片段一次性写入笔录"。
+    expect(calls).toEqual([{
+      url: '/api/v1/cases/CASE-003/asr/fragments/apply',
+      data: { fragment_ids: ['frag-1', 'frag-2'], actor_id: 'OFFICER-3' },
+    }])
+  })
+
+  it('rejects the timeline operation because the backend has no such route', async () => {
+    const adapter = new LinuxHttpWsAdapter({
+      request: async () => ({ data: { ok: true, data: [] } }),
+      origin: 'http://127.0.0.1:8080',
+    })
+
+    await expect(adapter.invoke('timeline.list', { caseId: 'CASE-003' })).rejects.toMatchObject<Partial<RuntimeAdapterError>>({
+      code: 'UNSUPPORTED_OPERATION',
+      state: 'NOT_CONFIGURED',
+    })
+  })
+
   it('rejects retired operations that have no formal Linux FastAPI route', async () => {
     const adapter = new LinuxHttpWsAdapter({
       request: async () => ({ data: { ok: true, data: {} } }),

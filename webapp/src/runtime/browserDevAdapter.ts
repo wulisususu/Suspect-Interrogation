@@ -41,6 +41,8 @@ function voiceprintMock<T>(operation: string, payload: Record<string, unknown>):
         recorderReady: false,
         recognitionMode: 'SUSPECT_ONLY',
         canStart: false,
+        roleBindingScope: 'NONE',
+        roleBindingSessionId: null,
         simulated,
       } as T
     case 'voiceprint.roleDraft.get':
@@ -97,6 +99,8 @@ function voiceprintMock<T>(operation: string, payload: Record<string, unknown>):
         recorderReady: false,
         recognitionMode: 'SUSPECT_ONLY',
         canStart: false,
+        roleBindingScope: 'NONE',
+        roleBindingSessionId: null,
         simulated,
       } as T
     default:
@@ -123,7 +127,7 @@ function legacyConfig(operation: string, payload: Record<string, unknown>): Axio
     }
     case 'fact.list': return { method: 'GET', url: `/api/cases/${caseId}/facts` }
     case 'fact.update': return { method: 'PUT', url: `/api/cases/${caseId}/facts/${encode(payload.factKey)}`, data: payload.patch ?? payload }
-    case 'timeline.list': return { method: 'GET', url: `/api/cases/${caseId}/timeline` }
+    // 后端没有 timeline 路由；此处不再伪装成可用接口（与 Linux 适配器保持一致）。
     case 'session.get': return { method: 'GET', url: `/api/cases/${caseId}/session` }
     case 'session.start': return {
       method: 'POST',

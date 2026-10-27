@@ -120,7 +120,7 @@ async def interrogation_socket(websocket: WebSocket, session_id: str):
             raw = await websocket.receive_json()
             try:
                 incoming = ClientEnvelope.model_validate(raw)
-                if incoming.session_id != session_id:
+                if incoming.session_id is not None and incoming.session_id != session_id:
                     raise ValueError("session_id does not match websocket path")
                 if incoming.event not in SUPPORTED_CLIENT_EVENTS:
                     raise ValueError(f"unsupported event: {incoming.event}")
@@ -131,8 +131,13 @@ async def interrogation_socket(websocket: WebSocket, session_id: str):
                 })
                 continue
 
-            if incoming.event == "STATE_SYNC_REQUEST":
-                await manager.send(websocket, session_id, "STATE_SYNC", _state_sync(websocket, session_id))
+            if incoming.event in {"STATE_SYNC_REQUEST", "SESSION_RESYNC"}:
+                sync = _state_sync(websocket, session_id)
+                if "error" in sync:
+                    await manager.send(websocket, session_id, "PROTOCOL_ERROR", sync["error"])
+                    await websocket.close(code=4404)
+                    return
+                await manager.send(websocket, session_id, "STATE_SYNC", sync)
                 continue
 
             # Device/ASR/recording/signature transport events are broadcast to all

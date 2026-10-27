@@ -1,8 +1,13 @@
 import { getRuntimeAdapter } from '../runtime'
 import type { CaseSummary, FactItem } from '../types/interrogation'
+import { currentOperatorId } from './operator'
 
 export async function updateCaseProfile(caseId: string, patch: Partial<CaseSummary>): Promise<CaseSummary> {
-  return getRuntimeAdapter().invoke<CaseSummary>('case.update', { caseId, patch: patch as Record<string, unknown> })
+  return getRuntimeAdapter().invoke<CaseSummary>('case.update', {
+    caseId,
+    patch: patch as Record<string, unknown>,
+    actorId: currentOperatorId(),
+  })
 }
 
 export async function updateCaseFact(
@@ -10,7 +15,12 @@ export async function updateCaseFact(
   factKey: string,
   patch: Partial<Pick<FactItem, 'value' | 'status' | 'suggestion'>>,
 ): Promise<FactItem> {
-  return getRuntimeAdapter().invoke<FactItem>('fact.update', { caseId, factKey, patch: patch as Record<string, unknown> })
+  return getRuntimeAdapter().invoke<FactItem>('fact.update', {
+    caseId,
+    factKey,
+    patch: patch as Record<string, unknown>,
+    actorId: currentOperatorId(),
+  })
 }
 
 export async function saveIdentityProfileFacts(caseId: string, values: Record<string, string>): Promise<void> {
