@@ -100,10 +100,14 @@ jobs:
           test ! -f webapp/src/components/InterrogationPage.vue
           test -f linux/backend/speech_worker/vad_progress.py
           grep -q 'SystemSettingsView' webapp/src/App.vue
-          grep -q '民警声纹库' webapp/src/App.vue
+          # 系统设置的入口在 App.vue，但「民警声纹库」这个导航文案在 UI 重构后
+          # 移进了 SystemSettingsView 的页签，断言必须跟着实现走。
+          grep -q '民警声纹库' webapp/src/views/SystemSettingsView.vue
           grep -q 'OfficerVoiceprintLibrary' webapp/src/views/SystemSettingsView.vue
           grep -q 'SpeakerCalibrationCenter' webapp/src/views/SystemSettingsView.vue
-          grep -q 'recognitionEvidence' webapp/src/components/LiveDialoguePanel.vue
+          # 「识别依据」明细面板已在重构中移除（LiveDialogueEvidence.test.ts 明确
+          # 断言不得再出现），改盯仍然存在且必须保留的识别复核区。
+          grep -q 'dialogue-region recognition-region' webapp/src/components/LiveDialoguePanel.vue
           grep -q 'HTTP_REQUEST_HEADERS' webapp/src/config/audioInput.ts
           grep -q 'Sec-CH-UA-Platform' linux/backend/app/api/client_context.py
           grep -q 'client_context_router' linux/backend/app/main.py
