@@ -383,6 +383,10 @@ class VoiceprintService:
             "recorderReady": assignment.recorder_voiceprint_id is not None,
             "recognitionMode": assignment.recognition_mode,
             "canStart": True,
+            # 与 readiness() 保持同一套字段：前端绑定成功后直接用这份响应刷新
+            # 就绪状态，缺了它会把"本场审讯已绑定"降级成笼统的"已绑定"。
+            "roleBindingScope": "ACTIVE_SESSION",
+            "roleBindingSessionId": session.id,
         }
 
     @staticmethod
