@@ -40,17 +40,17 @@ const id = useId()
 </template>
 
 <style scoped>
-.manual-identity-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px 24px; color: var(--primary-700); font-size: 15px; }
+.manual-identity-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px 24px; color: var(--ink-700); font-size: var(--text-md); }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .manual-identity-column { display: flex; flex-direction: column; gap: 8px; }
-legend { padding: 0 0 10px; font-size: 15px; color: var(--primary-700); font-weight: 700; }
-label { display: flex; flex-direction: column; gap: 5px; min-width: 0; } label > span { color: var(--ink-400); font-size: 14px; } label b { color: var(--danger-700); font-weight: 400; }
+legend { padding: 0 0 10px; font-size: var(--text-md); color: var(--ink-700); font-weight: 700; }
+label { display: flex; flex-direction: column; gap: 5px; min-width: 0; } label > span { color: var(--ink-400); font-size: var(--text-base); } label b { color: var(--danger-700); font-weight: 400; }
 input,select,textarea { width: 100%; min-width: 0; min-height: 44px; padding: 10px 13px; border: 1px solid var(--line-300); border-radius: 9px; background: var(--surface-sunken); color: var(--primary-700); font: inherit; line-height: 1.4; }
-textarea { resize: vertical; } input:focus,select:focus,textarea:focus { outline: 2px solid var(--primary-500); outline-offset: 1px; border-color: var(--primary-600); }
+textarea { resize: vertical; } input:focus,select:focus,textarea:focus { outline: 2px solid var(--ink-400); outline-offset: 1px; border-color: var(--primary-600); }
 input[readonly] { color: var(--ink-400); background: var(--surface-sunken); }
 fieldset:disabled input,fieldset:disabled select,fieldset:disabled textarea { color: var(--ink-400); }
-.manual-identity-extra { grid-column: 1/-1; border-top: 1px solid var(--primary-100); padding-top: 12px; }
-summary { color: var(--primary-600); font-size: 13px; cursor: pointer; }
+.manual-identity-extra { grid-column: 1/-1; border-top: 1px solid var(--line-100); padding-top: 12px; }
+summary { color: var(--ink-500); font-size: var(--text-sm); cursor: pointer; }
 .manual-identity-extra fieldset { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px 24px; margin-top: 14px; }
 .extra-address { grid-column: 1/-1; }
 @media(max-height: 800px) { .manual-identity-column { gap: 10px; } input,select,textarea { min-height: 42px; padding: 9px 12px; } }

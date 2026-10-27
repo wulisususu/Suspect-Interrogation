@@ -41,6 +41,7 @@ function select(key: FlowStepKey) {
           class="step-button"
           :class="`is-${stateOf(step.key, index)}`"
           :aria-current="step.key === current ? 'step' : undefined"
+          :aria-label="step.title"
           :aria-disabled="canSelect(step.key) ? undefined : 'true'"
           :title="canSelect(step.key) ? step.hint : `完成前一步后才能进入${step.title}`"
           @click="select(step.key)"
@@ -196,6 +197,13 @@ function select(key: FlowStepKey) {
 
 @media (max-width: 1280px) {
   .step-meta {
+    display: none;
+  }
+}
+
+/* 1280 屏上步骤条要同时容纳会话控制与「定稿并校验」：非当前步骤只留序号，名称保留在 aria-label / title 中 */
+@media (max-width: 1440px) {
+  .step-button:not(.is-active) .step-title {
     display: none;
   }
 }

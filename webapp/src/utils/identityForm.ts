@@ -25,3 +25,11 @@ export function identityFactValues(form: IdentityForm): Record<string, string> {
     contact: form.contact, household_registration: form.householdRegistration,
   }).map(([key, value]) => [key, value.trim()]))
 }
+
+/** 建档核对的必填项：身份、联系与询问地点、记录人。 */
+const COMPLETENESS_FIELDS = ['suspectName', 'idNumber', 'gender', 'birthDate', 'currentAddress', 'contact', 'interrogationPlace', 'recorderName'] as const
+
+export function identityCompleteness(form: IdentityForm): number {
+  const filled = COMPLETENESS_FIELDS.filter((key) => form[key].trim()).length
+  return Math.round((filled / COMPLETENESS_FIELDS.length) * 100)
+}

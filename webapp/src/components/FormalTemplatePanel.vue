@@ -242,10 +242,10 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
 <template>
   <section class="formal-record-shell">
     <article ref="paper" class="formal-record-paper" :class="{ 'review-record-paper': completionMode }" aria-label="正式询问笔录编辑器">
-      <div v-if="pendingDrop" role="status" style="position:sticky;top:0;z-index:6;display:flex;gap:12px;align-items:center;justify-content:space-between;margin:12px 16px 0;padding:9px 12px;border:1px solid #173b68;border-radius:8px;background:#e9f3ff;color:#173b68;font:13px system-ui,sans-serif">
+      <div v-if="pendingDrop" role="status" class="pending-drop-banner">
         <span v-if="transcriptFragmentArmed">已选中一段转写——请点击正式笔录中的「问」或「答」栏录入</span>
         <span v-else>已选中「{{ pendingDrop.label }}」—— 请点击要放入的「问」或「答」栏位</span>
-        <button type="button" style="border:1px solid #173b68;background:#fff;color:#173b68;border-radius:6px;padding:3px 10px;font:12px system-ui,sans-serif" @click="clearDrop()">取消</button>
+        <button type="button" class="pending-drop-cancel" @click="clearDrop()">取消</button>
       </div>
       <header class="record-paper-header">
         <div class="record-title-block"><h1>询问笔录</h1><span>第 1 次</span></div>
@@ -319,8 +319,10 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
 
 <style scoped>
 .qa-question-drop, .qa-answer-drop { position: relative; border-radius: 6px; }
-.qa-question-drop.record-question-armed { outline: 2px solid #2874e5; background: #f2f7ff; cursor: pointer; }
-.qa-answer-drop.record-answer-armed { outline: 2px solid #2874e5; background: #f2f7ff; cursor: pointer; }
+.pending-drop-banner { position: sticky; top: 0; z-index: 6; display: flex; gap: var(--space-3); align-items: center; justify-content: space-between; margin: var(--space-3) var(--space-4) 0; padding: 9px var(--space-3); border: 1px solid var(--primary-700); border-radius: var(--radius-sm); background: var(--primary-100); color: var(--primary-700); font: var(--text-sm) var(--font-sans); }
+.pending-drop-cancel { border: 1px solid var(--primary-700); background: var(--surface); color: var(--primary-700); border-radius: 6px; padding: 3px 10px; font: var(--text-xs) var(--font-sans); }
+.qa-question-drop.record-question-armed { outline: 2px solid var(--primary-500); background: var(--primary-50); cursor: pointer; }
+.qa-answer-drop.record-answer-armed { outline: 2px solid var(--primary-500); background: var(--primary-50); cursor: pointer; }
 .qa-question-drop:has(textarea:focus):not(.record-question-armed), .qa-answer-drop:has(textarea:focus):not(.record-answer-armed) { outline: none; }
-.qa-question-drop > small, .qa-answer-drop > small { margin-left: 8px; color: #84909d; font-size: 10px; }
+.qa-question-drop > small, .qa-answer-drop > small { margin-left: 8px; color: var(--paper-muted); font-size: var(--text-xs); }
 </style>

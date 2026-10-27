@@ -15,7 +15,7 @@ export type RecordMode = 'interrogation' | 'review' | 'sign' | 'archive'
 
 export interface FlowStepMeta {
   key: FlowStepKey
-  /** ①–⑤，与样板一致 */
+  /** ①–⑥，与样板一致 */
   ordinal: string
   title: string
   /** 步骤条悬停与只读态的说明 */
@@ -78,7 +78,8 @@ export function resolveFlowProgress(snapshot: FlowSnapshot): FlowProgress {
 
   const intakeDone = hasTemplate && identityReady && voiceprintReady
   const dictationDone = intakeDone && hasQuestions && frozen
-  const reviewDone = dictationDone && frozen
+  // 问答以冻结收尾，冻结即视为定稿校验完成。
+  const reviewDone = dictationDone
   const archiveDone = reviewDone && archived
 
   const doneByKey: Record<FlowStepKey, boolean> = {
@@ -97,7 +98,8 @@ export function resolveFlowProgress(snapshot: FlowSnapshot): FlowProgress {
   if (intakeDone || hasQuestions) reachable.push('dictation')
   if (hasQuestions || frozen) reachable.push('review')
   if (frozen) reachable.push('signing')
-  if (signed || archived) reachable.push('archive')
+  // 归档导出只在真正归档后开放；签名齐备后在⑤页确认归档。
+  if (archived) reachable.push('archive')
 
   const suggested = ORDER.find((key) => !doneByKey[key]) ?? 'archive'
 
@@ -124,4 +126,16 @@ export function stepMeta(key: FlowStepKey): FlowStepMeta {
 
 export function stepIndex(key: FlowStepKey): number {
   return ORDER.indexOf(key)
+}
+
+/** 工作台主体区域的页面；建档步骤下有询问准备 / 身份信息 / 声纹注册三个子页。 */
+export type WorkspacePage = 'template' | 'prepare' | 'profile' | 'interrogation' | 'moss' | 'voiceprint'
+
+const INTAKE_PAGES: readonly WorkspacePage[] = ['prepare', 'profile', 'voiceprint']
+
+/** 步骤 → 主体页面。进入建档时保留当前所在的建档子页。 */
+export function pageForStep(key: FlowStepKey, current: WorkspacePage): WorkspacePage {
+  if (key === 'template') return 'template'
+  if (key === 'intake') return INTAKE_PAGES.includes(current) ? current : 'prepare'
+  return 'interrogation'
 }

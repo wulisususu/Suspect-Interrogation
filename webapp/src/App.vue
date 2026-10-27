@@ -1,108 +1,95 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AdminShell from './components/AdminShell.vue'
+import LockScreen from './components/LockScreen.vue'
 import MaintenanceGate from './components/MaintenanceGate.vue'
 import OnScreenKeyboard from './components/OnScreenKeyboard.vue'
+import AdminAuditView from './views/AdminAuditView.vue'
+import AdminCaseDetailView from './views/AdminCaseDetailView.vue'
+import AdminPendingView from './views/AdminPendingView.vue'
+import AdminPlaceholderView from './views/AdminPlaceholderView.vue'
+import AdminPanelView from './views/AdminPanelView.vue'
 import CaseDashboardView from './views/CaseDashboardView.vue'
 import KioskHomeView from './views/KioskHomeView.vue'
 import LoginView from './views/LoginView.vue'
 import InterrogationWorkspace from './views/InterrogationWorkspace.vue'
 import SystemSettingsView from './views/SystemSettingsView.vue'
+import { parseRootRoute, rootRouteUrl, type AdminPanel, type RootRoute } from './utils/rootRoute'
 
-type RootPage = 'home' | 'cases' | 'settings' | 'login'
+const route = ref<RootRoute>(parseRootRoute(location.search))
+/** 大厅「开始新建笔录」进入台账时直接打开身份录入；仅本次导航有效，不写入地址栏。 */
+const startNew = ref(false)
+/** 手动锁屏：锁定期间业务页面整体卸载，只留锁屏遮罩。 */
+const locked = ref(false)
 
-const params = new URLSearchParams(location.search)
-const caseId = ref(params.get('caseId') || '')
-const rootPage = ref<RootPage>(
-  params.get('view') === 'settings' ? 'settings'
-    : params.get('view') === 'login' ? 'login'
-      : params.get('view') === 'cases' ? 'cases'
-        : 'home',
-)
+function go(next: RootRoute) {
+  startNew.value = false
+  route.value = next
+  history.replaceState(null, '', rootRouteUrl(location.href, next))
+}
 
-function writeLocation() {
-  const next = new URL(location.href)
-  if (caseId.value) next.searchParams.set('caseId', caseId.value)
-  else next.searchParams.delete('caseId')
-  if (!caseId.value && rootPage.value === 'settings') next.searchParams.set('view', 'settings')
-  else if (!caseId.value && rootPage.value === 'login') next.searchParams.set('view', 'login')
-  else if (!caseId.value && rootPage.value === 'cases') next.searchParams.set('view', 'cases')
-  else next.searchParams.delete('view')
-  history.replaceState(null, '', next)
+const openCase = (caseId: string) => go({ page: 'case', caseId })
+const openCases = () => go({ page: 'cases' })
+function startNewRecord() {
+  go({ page: 'cases' })
+  startNew.value = true
 }
-function openCase(id: string) {
-  rootPage.value = 'cases'
-  caseId.value = id
-  writeLocation()
+const openSettings = () => go({ page: 'settings' })
+const openLogin = () => go({ page: 'login' })
+const openHome = () => go({ page: 'home' })
+const lock = () => { locked.value = true }
+function unlock() {
+  locked.value = false
+  openLogin()
 }
-function backToList() {
-  caseId.value = ''
-  rootPage.value = 'cases'
-  writeLocation()
-}
-function openSettings() {
-  caseId.value = ''
-  rootPage.value = 'settings'
-  writeLocation()
-}
-function openLogin() {
-  caseId.value = ''
-  rootPage.value = 'login'
-  writeLocation()
-}
-function openHome() {
-  caseId.value = ''
-  rootPage.value = 'home'
-  writeLocation()
-}
-function openCases() {
-  caseId.value = ''
-  rootPage.value = 'cases'
-  writeLocation()
+const openAdmin = () => go({ page: 'admin' })
+const openPlaceholder = (panel: AdminPanel) => go({ page: 'admin-placeholder', panel })
+
+const PANEL_TITLES: Record<AdminPanel, string> = {
+  knowledge: '知识库管理',
+  templates: '模板管理',
+  'template-edit': '模板编辑',
+  signatures: '民警签名管理',
+  recordings: '录音查看',
 }
 </script>
 
 <template>
-  <MaintenanceGate>
-    <InterrogationWorkspace v-if="caseId" :key="caseId" :case-id="caseId" @back="backToList" />
-    <SystemSettingsView v-else-if="rootPage === 'settings'" @back="backToList" />
-    <LoginView v-else-if="rootPage === 'login'" @back="openCases" />
-    <KioskHomeView v-else-if="rootPage === 'home'" @start="openCases" @police-entry="openLogin" @resume="openCase" />
-    <div v-else class="case-root-shell">
-      <nav class="root-navigation" aria-label="系统一级导航">
-        <div class="brand-area">
-          <span class="shield-mark" aria-hidden="true">★</span>
-          <strong>嫌疑人询问系统</strong>
-          <span class="nav-divider"></span>
-          <span class="nav-department">江北分局 · 刑侦大队</span>
-          <span class="internal-pill">● 内网专用终端</span>
-        </div>
-        <div class="root-navigation-actions">
-          <button type="button" class="voice-entry" @click="openHome">← 返回大厅</button>
-          <button type="button" class="voice-entry" @click="openSettings">系统设置 · 民警声纹库</button>
-          <button type="button" class="login-entry" @click="openLogin">登录页预览</button>
-          <span class="nav-avatar" aria-hidden="true">警</span>
-        </div>
-      </nav>
-      <CaseDashboardView @open="openCase" @settings="openSettings" @login="openLogin" />
-    </div>
+  <LockScreen v-if="locked" @unlock="unlock" />
+  <MaintenanceGate v-else>
+    <InterrogationWorkspace v-if="route.page === 'case'" :key="route.caseId" :case-id="route.caseId" @back="openCases" />
+    <SystemSettingsView v-else-if="route.page === 'settings'" @back="openAdmin" />
+    <LoginView v-else-if="route.page === 'login'" @back="openHome" @admin="openAdmin" />
+    <KioskHomeView v-else-if="route.page === 'home'" @start="startNewRecord" @police-entry="openLogin" />
+    <AdminShell v-else-if="route.page === 'admin'" title="管理面板" back-label="返回大厅" @back="openHome" @lock="lock">
+      <AdminPanelView
+        @cases="openCases"
+        @pending="go({ page: 'admin-pending' })"
+        @audit="go({ page: 'admin-audit' })"
+        @voiceprints="openSettings"
+        @placeholder="openPlaceholder"
+      />
+    </AdminShell>
+    <AdminShell v-else-if="route.page === 'admin-case'" title="案件详情" back-label="返回案件记录" @back="openCases" @lock="lock">
+      <AdminCaseDetailView :key="route.adminCaseId" :case-id="route.adminCaseId" @open="openCase" />
+    </AdminShell>
+    <AdminShell v-else-if="route.page === 'admin-pending'" title="未完成办理" @back="openAdmin" @lock="lock">
+      <AdminPendingView @open="openCase" @detail="(caseId) => go({ page: 'admin-case', adminCaseId: caseId })" />
+    </AdminShell>
+    <AdminShell v-else-if="route.page === 'admin-audit'" title="操作日志" @back="openAdmin" @lock="lock">
+      <AdminAuditView />
+    </AdminShell>
+    <AdminShell v-else-if="route.page === 'admin-placeholder'" :title="PANEL_TITLES[route.panel]" @back="openAdmin" @lock="lock">
+      <AdminPlaceholderView :key="route.panel" :kind="route.panel" @open="openPlaceholder" />
+    </AdminShell>
+    <AdminShell v-else title="全部案件记录" @back="openAdmin" @lock="lock">
+      <CaseDashboardView
+        :auto-new="startNew"
+        @open="openCase"
+        @detail="(caseId) => go({ page: 'admin-case', adminCaseId: caseId })"
+        @new-cancelled="openHome"
+      />
+    </AdminShell>
   </MaintenanceGate>
   <OnScreenKeyboard />
 </template>
-
-<style scoped>
-.case-root-shell { display: flex; flex-direction: column; height: 100vh; width: 100%; min-width: 0; background: var(--surface-sunken); }
-.root-navigation { height: 54px; flex: 0 0 54px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 0 23px; background: var(--primary-700); color: var(--surface); }
-.brand-area, .root-navigation-actions { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.brand-area strong { font-weight: 750; font-size: 15px; white-space: nowrap; }
-.shield-mark { width: 24px; height: 27px; display: grid; place-items: center; clip-path: polygon(50% 0, 95% 20%, 90% 72%, 50% 100%, 10% 72%, 5% 20%); background: var(--surface); color: var(--primary-700); font-size: 15px; }
-.nav-divider { width: 1px; height: 19px; background: var(--primary-600); }
-.nav-department { color: var(--line-300); font-size: 12px; white-space: nowrap; }
-.internal-pill { background: var(--danger-600); color: var(--danger-100); padding: 7px 12px; border-radius: 99px; font-size: 11px; white-space: nowrap; }
-.root-navigation-actions { margin-left: auto; }
-.root-navigation-actions button { padding: 7px 11px; background: var(--primary-700); border: 1px solid transparent; border-radius: 8px; color: var(--primary-100); font-size: 11px; white-space: nowrap; }
-.root-navigation-actions button:hover { background: var(--primary-600); }
-.root-navigation-actions .login-entry { background: transparent; border-color: var(--primary-600); color: var(--line-300); }
-.nav-avatar { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--primary-600); color: var(--surface); font-size: 12px; }
-@media (max-width: 1150px) { .root-navigation { padding: 0 14px; } .nav-department, .internal-pill { display: none; } }
-@media (max-width: 720px) { .voice-entry { display: none; } .brand-area strong { font-size: 13px; } }
-</style>

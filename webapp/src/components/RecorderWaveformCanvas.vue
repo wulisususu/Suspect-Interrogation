@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { cssToken } from '../utils/cssToken'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 import type { AudioLevelSample } from '../types/interrogation'
@@ -95,7 +96,7 @@ function draw() {
   context.beginPath()
   context.moveTo(0, center + 0.5)
   context.lineTo(width, center + 0.5)
-  context.strokeStyle = '#c5cdd3'
+  context.strokeStyle = cssToken('--line-300', '#d6dfeb')
   context.lineWidth = 1
   context.stroke()
 
@@ -104,7 +105,7 @@ function draw() {
   const visible = waveform.slice(-visibleCount)
   const maxBarHeight = Math.min(props.maxHeight, Math.max(2, height - 4))
   const minBarHeight = Math.min(props.minHeight, maxBarHeight)
-  context.fillStyle = '#526b7a'
+  context.fillStyle = cssToken('--ink-500', '#5b6b83')
   for (let index = 0; index < visible.length; index += 1) {
     const amplitude = visible[index] ?? 0
     const barHeight = minBarHeight + amplitude * (maxBarHeight - minBarHeight)

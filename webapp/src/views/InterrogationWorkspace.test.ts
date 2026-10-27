@@ -36,7 +36,7 @@ describe('interrogation workspace shell', () => {
   })
 
   it('renders the compact audio source banner inside the dark top bar', () => {
-    const topbarStart = source.indexOf('<header class="app-topbar"')
+    const topbarStart = source.indexOf('<header class="app-topbar')
     const topbarEnd = source.indexOf('</header>')
     const banner = source.indexOf('<VoiceprintAudioSourceBanner')
 

@@ -274,18 +274,6 @@ class SourceAwareAsrCaptureService:
                     self._capture_sources.pop(case_id, None)
         return result
 
-    def inject_officer_text(self, case_id: str, text: str, role: str = "INTERROGATOR") -> dict[str, Any]:
-        """DEV-ONLY BOT hook; delegates to the source that owns the capture."""
-        case_id = str(case_id).strip()
-        with self._lock:
-            source = self._capture_sources.get(case_id)
-        if source is None:
-            raise DomainError("ASR_CAPTURE_NOT_ACTIVE", "当前没有进行中的正式录音，请先开始审讯并开启录音", 409)
-        service = self._services.get(source)
-        if service is None or not hasattr(service, "inject_officer_text"):
-            raise DomainError("DEV_BOT_UNSUPPORTED_SOURCE", "该录音音源不支持 BOT 注入", 409)
-        return service.inject_officer_text(case_id, text, role)
-
     def start_preparation(self, case_id: str, source: str | None = None) -> dict[str, Any]:
         selected = self._source(source)
         with self._lock:

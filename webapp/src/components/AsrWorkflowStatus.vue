@@ -157,7 +157,7 @@ async function recoverLocalAudio() {
   color: var(--primary-700);
   background: var(--surface-sunken);
   border-bottom: 1px solid var(--line-300);
-  font: 12px/1.45 system-ui, sans-serif;
+  font: var(--text-xs)/1.45 system-ui, sans-serif;
 }
 
 .asr-workflow-status.compact {
@@ -165,7 +165,7 @@ async function recoverLocalAudio() {
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .workflow-compact-copy {
@@ -191,7 +191,7 @@ async function recoverLocalAudio() {
   border-radius: 4px;
   color: var(--surface);
   background: var(--primary-600);
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -201,7 +201,7 @@ async function recoverLocalAudio() {
 }
 
 .workflow-stage-copy strong {
-  color: var(--primary-700);
+  color: var(--ink-700);
 }
 
 .live-transcript-warning {
@@ -219,11 +219,11 @@ async function recoverLocalAudio() {
 .asr-workflow-status.incomplete {
   color: var(--warning-600);
   background: var(--warning-100);
-  border-bottom-color: var(--warning-700);
+  border-bottom-color: var(--warning-100);
 }
 
 .asr-workflow-status.incomplete .workflow-stage {
-  border-color: var(--warning-700);
+  border-color: var(--warning-100);
 }
 
 .workflow-error {
@@ -242,7 +242,7 @@ async function recoverLocalAudio() {
   border: 1px solid var(--warning-600);
   border-radius: 5px;
   padding: 4px 9px;
-  color: var(--warning-600);
+  color: var(--warning-700);
   background: var(--surface);
   cursor: pointer;
 }

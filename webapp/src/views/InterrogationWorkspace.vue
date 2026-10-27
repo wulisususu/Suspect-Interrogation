@@ -14,9 +14,11 @@ import MossTranscriptionPanel from '../components/MossTranscriptionPanel.vue'
 import SessionControls from '../components/SessionControls.vue'
 import StepBar from '../components/StepBar.vue'
 import TemplateDrivenInterrogationPage from '../components/TemplateDrivenInterrogationPage.vue'
+import TemplatePickerPage from '../components/TemplatePickerPage.vue'
 import {
   FLOW_STEPS,
   modeForStep,
+  pageForStep,
   resolveFlowProgress,
   stepIndex,
   stepKeyForMode,
@@ -24,12 +26,14 @@ import {
   type FlowProgress,
   type FlowStepKey,
   type RecordMode,
+  type WorkspacePage,
 } from '../flow/steps'
 import VoiceprintAudioSourceBanner from '../components/VoiceprintAudioSourceBanner.vue'
 import VoiceprintSetupPage from '../components/VoiceprintSetupPage.vue'
 import { useAutoVoiceprintEnrollment } from '../composables/useAutoVoiceprintEnrollment'
 import { useInterrogationStore } from '../stores/interrogation'
 import { useTemplateInterrogationStore } from '../stores/templateInterrogation'
+import { factCoverage } from '../utils/factCoverage'
 import type { CaseSummary, TemporaryAsrSpeaker } from '../types/interrogation'
 import type {
   CaseQuestionCreateInput,
@@ -38,8 +42,6 @@ import type {
   QAUnitResolution,
   RoundReassociateInput,
 } from '../types/templateInterrogation'
-
-type WorkspacePage = 'prepare' | 'profile' | 'interrogation' | 'moss' | 'voiceprint'
 
 const props = defineProps<{ caseId: string }>()
 defineEmits<{ back: [] }>()
@@ -50,7 +52,6 @@ const activePage = ref<WorkspacePage>('prepare')
 /** 笔录页的三种形态由步骤条驱动，不再由笔录页内部自建第二套导航 */
 const completionMode = ref<RecordMode>('interrogation')
 const flowStep = ref<FlowStepKey>('intake')
-const INTAKE_PAGES: WorkspacePage[] = ['prepare', 'profile', 'voiceprint']
 
 const flowProgress = computed<FlowProgress>(() => {
   const state = store.caseSummary.workflowState || ''
@@ -68,6 +69,9 @@ const flowProgress = computed<FlowProgress>(() => {
   })
 })
 const currentStepMeta = computed(() => stepMeta(flowStep.value))
+const missingElements = computed(() => factCoverage(store.facts).missing.length)
+const profileLocked = computed(() => ['FROZEN', 'SIGNED', 'REPORT_GENERATED'].includes(store.caseSummary.workflowState || '')
+  || ['FROZEN', 'LOCKED'].includes(store.caseSummary.documentStatus || ''))
 const caseTypeText = computed(() => (
   store.caseSummary.caseType === 'suspect_interrogation'
     ? '嫌疑人询问'
@@ -84,12 +88,8 @@ function goStep(key: FlowStepKey, force = false) {
   // 案件可能已有会话，但建档要素仍未补齐。
   if (!force && key !== flowStep.value && !flowProgress.value.reachable.includes(key)) return
   flowStep.value = key
-  if (key === 'intake') {
-    if (!INTAKE_PAGES.includes(activePage.value)) activePage.value = 'prepare'
-    return
-  }
-  activePage.value = 'interrogation'
-  completionMode.value = modeForStep(key)
+  activePage.value = pageForStep(key, activePage.value)
+  if (activePage.value === 'interrogation') completionMode.value = modeForStep(key)
 }
 
 function openIntakePage(page: WorkspacePage) {
@@ -331,7 +331,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
     </section>
 
     <template v-else>
-      <header class="app-topbar">
+      <header class="app-topbar record-no-print">
         <button type="button" class="topbar-back" @click="$emit('back')">‹ 返回</button>
         <span class="app-brand">笔录智能工作台</span>
         <span class="case-chip">案 {{ store.caseSummary.id || store.caseId }}<template v-if="caseTypeText"> · {{ caseTypeText }}</template></span>
@@ -354,6 +354,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
       </header>
 
       <StepBar
+        class="record-no-print"
         :steps="FLOW_STEPS"
         :current="flowStep"
         :completed="flowProgress.completed"
@@ -363,7 +364,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
         <span class="step-hint">{{ currentStepMeta.hint }}</span>
         <template #actions>
           <SessionControls
-            v-if="flowStep !== 'intake' && activePage !== 'moss'"
+            v-if="flowStep !== 'intake' && flowStep !== 'template' && activePage !== 'moss'"
             :session="store.session"
             :start-disabled="preparationGuard.disabled || preparationBusy || questionDictationActive || questionDictationBusy"
             :start-disabled-reason="questionDictationActive || questionDictationBusy ? '请先停止准备阶段语音输入，再开始正式审讯。' : preparationBusy ? '正在处理，请稍候' : preparationGuard.reason"
@@ -372,25 +373,62 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             @finish="store.finishSession"
             @next-stage="store.nextStage"
           />
+          <button
+            v-if="flowStep === 'dictation' && activePage === 'interrogation'"
+            type="button"
+            class="step-finalize"
+            @click="goStep('review', true)"
+          >{{ missingElements ? `定稿并校验 · 缺 ${missingElements} 项` : '定稿并校验' }}</button>
           <button v-if="activePage === 'moss'" type="button" class="step-back-tool" @click="goStep('dictation')">回到笔录</button>
         </template>
       </StepBar>
 
-      <nav v-if="flowStep === 'intake' && activePage !== 'moss'" class="intake-subnav" aria-label="建档子步骤">
+      <nav v-if="flowStep === 'intake' && activePage !== 'moss'" class="intake-subnav record-no-print" aria-label="建档子步骤">
         <button type="button" :class="{ active: activePage === 'prepare' }" @click="openIntakePage('prepare'); checkPreparationDevices()">询问准备</button>
         <button type="button" :class="{ active: activePage === 'profile' }" @click="openIntakePage('profile')">身份信息</button>
         <button type="button" :class="{ active: activePage === 'voiceprint' }" @click="openIntakePage('voiceprint')">声纹注册</button>
         <span class="intake-hint">核对身份 → 注册声纹 → 设备就绪后可开始正式询问</span>
       </nav>
 
-      <div class="workspace-toast-region" aria-live="polite">
+      <div class="workspace-toast-region record-no-print" aria-live="polite">
         <div v-if="store.actionError" class="workspace-toast error">{{ store.actionError }}</div>
         <div v-else-if="store.actionMessage" class="workspace-toast success">{{ store.actionMessage }}</div>
       </div>
 
       <section class="workspace-page-body" :class="{ 'interrogation-workspace-body': activePage === 'interrogation', 'preparation-workspace-body': activePage === 'prepare' || activePage === 'voiceprint' }">
-        <CasePreparationPage v-if="activePage === 'prepare'" :summary="store.caseSummary" :facts="store.facts" :readiness="store.voiceprintReadiness" :enrollment-state="store.voiceprintEnrollmentState" :capabilities="preparationDevices" :session-status="store.session.status" :recorder-name="recorderName" :busy="preparationBusy || questionDictationActive || questionDictationBusy" :device-error="preparationDeviceError" @profile="openIntakePage('profile')" @voiceprint="openIntakePage('voiceprint')" @refresh="refreshPreparation" @start="startPreparedSession" @interrogation="goStep('dictation', true)" />
-        <CaseProfilePage v-else-if="activePage === 'profile'" :summary="store.caseSummary" :facts="store.facts" @saved="refreshCaseWorkspace" />
+        <TemplatePickerPage
+          v-if="activePage === 'template'"
+          :template-key="templateStore.workspace.templateKey ?? null"
+          :facts="store.facts"
+          :questions="templateStore.workspace.questions"
+          @confirm="goStep('intake', true)"
+        />
+        <CasePreparationPage
+          v-else-if="activePage === 'prepare'"
+          :summary="store.caseSummary"
+          :facts="store.facts"
+          :readiness="store.voiceprintReadiness"
+          :enrollment-state="store.voiceprintEnrollmentState"
+          :capabilities="preparationDevices"
+          :session-status="store.session.status"
+          :recorder-name="recorderName"
+          :busy="preparationBusy || questionDictationActive || questionDictationBusy"
+          :device-error="preparationDeviceError"
+          @profile="openIntakePage('profile')"
+          @voiceprint="openIntakePage('voiceprint')"
+          @refresh="refreshPreparation"
+          @start="startPreparedSession"
+          @interrogation="goStep('dictation', true)"
+        />
+        <CaseProfilePage
+          v-else-if="activePage === 'profile'"
+          :summary="store.caseSummary"
+          :facts="store.facts"
+          :locked="profileLocked"
+          :reader-available="preparationDevices?.identity.state === 'AVAILABLE'"
+          @saved="refreshCaseWorkspace"
+          @next="goStep('dictation')"
+        />
 
         <MossTranscriptionPanel v-else-if="activePage === 'moss'" :case-id="store.caseId || props.caseId" />
 
@@ -417,6 +455,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
         <div v-else class="interrogation-workspace-stack">
           <TemplateDrivenInterrogationPage
             :case-id="store.caseId"
+            :officers="store.officerVoiceprints"
             :summary="store.caseSummary"
             :facts="store.facts"
             :session="store.session"
@@ -468,6 +507,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
 </template>
 
 <style scoped>
+.step-finalize { min-height: 36px; padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); background: var(--primary-600); color: var(--surface); font-size: var(--text-sm); font-weight: 600; white-space: nowrap; }
 .app-topbar {
   display: flex;
   align-items: center;
@@ -509,7 +549,8 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
 }
 .topbar-field { color: var(--line-300); font-size: var(--text-sm); white-space: nowrap; }
 .topbar-divider { width: 1px; height: 16px; background: rgba(255, 255, 255, 0.18); }
-.topbar-audio-source { border-color: rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.06); }
+.topbar-audio-source.voiceprint-source-banner { border-color: rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.06); }
+.topbar-audio-source :deep(strong) { color: var(--primary-100); }
 .topbar-tool {
   min-height: 32px;
   padding: 0 12px;

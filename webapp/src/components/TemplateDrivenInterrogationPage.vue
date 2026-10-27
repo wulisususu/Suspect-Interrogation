@@ -29,11 +29,14 @@ import FormalTemplatePanel from './FormalTemplatePanel.vue'
 import LiveDialoguePanel from './LiveDialoguePanel.vue'
 import QuestionPreparationPanel from './QuestionPreparationPanel.vue'
 import DraftQuestionRail from './DraftQuestionRail.vue'
+import FactCoverageBar from './FactCoverageBar.vue'
 import RecordArchivePage from './RecordArchivePage.vue'
 import RecordReviewPanel from './RecordReviewPanel.vue'
 import ReviewChecklistPanel from './ReviewChecklistPanel.vue'
 import RecordSigningPage from './RecordSigningPage.vue'
 import type { RecordMode } from '../flow/steps'
+import { cssToken } from '../utils/cssToken'
+import { reviewAutoChecks } from '../utils/reviewChecks'
 import { freezeBlockReason, orderedReviewFragments } from '../utils/recordCompletion'
 import './templateInterrogation.css'
 
@@ -60,6 +63,7 @@ const props = defineProps<{
   questionDictationError: string
   readiness: VoiceprintReadiness
   completionMode: RecordMode
+  officers?: Array<{ officerId: string; officerName: string }>
 }>()
 
 const emit = defineEmits<{
@@ -118,6 +122,7 @@ const signatureCanvas = ref<HTMLCanvasElement | null>(null)
 const signatureStrokes = ref<SignaturePoint[][]>([])
 let activeStroke: SignaturePoint[] | null = null
 
+const autoChecks = computed(() => reviewAutoChecks(props.facts, props.readiness))
 const documentFrozen = computed(() => !!signingState.value || ['FROZEN', 'SIGNED', 'REPORT_GENERATED'].includes(props.summary.workflowState || ''))
 const documentLocked = computed(() => signingState.value?.status === 'LOCKED')
 
@@ -294,7 +299,7 @@ function prepareCanvas() {
   ctx.clearRect(0, 0, rect.width, rect.height)
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  ctx.strokeStyle = '#111827'
+  ctx.strokeStyle = cssToken('--paper-ink', '#242b35')
 }
 
 function pointFromEvent(event: PointerEvent): SignaturePoint {
@@ -393,6 +398,7 @@ async function confirmSignature() {
       :signing-state="signingState"
       :busy="completionBusy || signingLoading"
       :archiving="archiving"
+      :officers="officers ?? []"
       @print="emit('print')"
       @sign="openSignature"
       @archive="archiveCase"
@@ -405,14 +411,16 @@ async function confirmSignature() {
       :session="session"
       :questions="workspace.questions"
       :signing-state="signingState"
-      :archived-at="signingState?.createdAt"
+      :archived="summary.workflowState === 'REPORT_GENERATED'"
       @print="emit('print')"
       @back="emit('back')"
+      @sign="mode = 'sign'"
     />
 
     <div v-else class="template-interrogation-grid" :class="{ 'record-review-grid': mode === 'review', 'draft-first': mode === 'interrogation' }">
       <div class="formal-column">
         <header v-if="mode === 'review'" class="review-formal-heading record-no-print"><strong>询问笔录 · 复核中</strong><span>修改内容离开输入框后保存</span></header>
+        <FactCoverageBar v-if="mode === 'interrogation'" :facts="facts" @fill="mode = 'review'" />
 
         <FormalTemplatePanel
           :summary="summary"
@@ -453,6 +461,7 @@ async function confirmSignature() {
           :frozen="documentFrozen"
           :unresolved-fragments="unresolvedFragments"
           :unresolved-qa="unresolvedQa"
+          :auto-checks="autoChecks"
           @check="updateFreezeCheck"
           @freeze="finishAndFreeze"
         />
@@ -485,6 +494,7 @@ async function confirmSignature() {
           :capture-running="capture.running"
           :capture-busy="captureBusy"
           :capture-available="nativeCaptureAvailable && canRecord"
+          :capture-elapsed-ms="captureElapsedMs"
           :locked="documentFrozen || completionBusy"
           @locate="locateQuestion"
           @update-answer="(questionId, text) => emit('updateAnswer', questionId, text)"

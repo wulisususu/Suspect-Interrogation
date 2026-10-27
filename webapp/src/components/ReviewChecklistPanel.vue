@@ -3,6 +3,8 @@ import { computed } from 'vue'
 import { CheckCircle2, CircleAlert, CircleDashed, ShieldCheck } from '@lucide/vue'
 import type { FactItem } from '../types/interrogation'
 import type { FormalQuestion } from '../types/templateInterrogation'
+import type { ReviewAutoCheck } from '../utils/reviewChecks'
+import LongPressButton from './LongPressButton.vue'
 
 /**
  * 定稿校验 · 左栏
@@ -19,6 +21,7 @@ const props = defineProps<{
   frozen: boolean
   unresolvedFragments: number
   unresolvedQa: number
+  autoChecks?: ReviewAutoCheck[]
 }>()
 
 const emit = defineEmits<{
@@ -33,6 +36,16 @@ const checkLabels = [
   '录音归档、转写与问答处理状态已检查',
   '已查看打印预览并核对版面',
 ]
+
+const autoSummary = computed(() => {
+  const checks = props.autoChecks ?? []
+  return {
+    total: checks.length,
+    passed: checks.filter((item) => item.state === 'pass').length,
+    pending: checks.filter((item) => item.state === 'pending').length,
+  }
+})
+const AUTO_STATE_LABEL = { pass: '通过', pending: '待确认', unavailable: '待接入' } as const
 
 const remainingChecks = computed(() => checkLabels.filter((_, index) => !props.checks[index]).length)
 
@@ -97,18 +110,26 @@ function statusMeta(status: FactItem['status']) {
     <article class="review-card">
       <header>
         <ShieldCheck :size="18" aria-hidden="true" />
-        <h2>定稿前检查</h2>
-        <span class="review-remaining">{{ remainingChecks ? `剩 ${remainingChecks} 项` : '已全部确认' }}</span>
+        <h2>定稿前校验 · 逐项确认（只提示，不代改）</h2>
       </header>
+      <p v-if="autoChecks?.length" class="review-auto-summary">{{ autoSummary.total }} 项检查 · {{ autoSummary.passed }} 项通过 · {{ autoSummary.pending }} 项待确认</p>
+      <ul v-if="autoChecks?.length" class="review-auto-list">
+        <li v-for="item in autoChecks" :key="item.key" :class="`is-${item.state}`">
+          <strong>{{ AUTO_STATE_LABEL[item.state] }} · {{ item.title }}</strong>
+          <span v-if="item.detail">{{ item.detail }}</span>
+        </li>
+      </ul>
+
+      <h3 class="review-subhead">民警确认<span class="review-remaining">{{ remainingChecks ? `剩 ${remainingChecks} 项` : '已全部确认' }}</span></h3>
 
       <label v-for="(label, index) in checkLabels" :key="label" class="review-check" :class="{ checked: checks[index] }">
         <input type="checkbox" :checked="checks[index]" :disabled="busy || frozen" @change="emit('check', index, ($event.target as HTMLInputElement).checked)" />
         <span>{{ label }}</span>
       </label>
 
-      <button type="button" class="review-freeze" :disabled="busy || frozen || !!blockReason" @click="emit('freeze')">
-        {{ frozen ? '笔录已冻结' : busy ? '处理中…' : '确认定稿并冻结' }}
-      </button>
+      <LongPressButton class="review-freeze" :duration-ms="800" :disabled="busy || frozen || !!blockReason" @confirm="emit('freeze')">
+        {{ frozen ? '笔录已冻结' : busy ? '处理中…' : '确认定稿 · 正本冻结并进入签署（长按 800ms）' }}
+      </LongPressButton>
       <p v-if="blockReason && !frozen" class="review-block" role="status">{{ blockReason }}</p>
       <p class="review-note">冻结后笔录不可再编辑，签名与捺印在「⑤ 签署归档」完成。</p>
     </article>
@@ -116,6 +137,16 @@ function statusMeta(status: FactItem['status']) {
 </template>
 
 <style scoped>
+.review-auto-summary { margin: 0; color: var(--warning-700); font-size: var(--text-xs); }
+.review-auto-list { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.review-auto-list li { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-sunken); font-size: var(--text-xs); color: var(--ink-500); }
+.review-auto-list li strong { color: var(--ink-700); font-size: var(--text-sm); font-weight: 600; }
+.review-auto-list li.is-pass { background: var(--success-100); }
+.review-auto-list li.is-pass strong { color: var(--success-700); }
+.review-auto-list li.is-pending { background: var(--warning-100); }
+.review-auto-list li.is-pending strong { color: var(--warning-700); }
+.review-subhead { display: flex; align-items: center; justify-content: space-between; margin: var(--space-2) 0 0; color: var(--ink-900); font-size: var(--text-sm); font-weight: 600; }
+
 .review-checklist {
   display: flex;
   flex-direction: column;

@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import type { AsrCaptureStatus, TemporaryAsrFragment, TemporaryAsrSpeaker } from '../types/interrogation'
-import { judgeDevBotReply, devBotAsk, devBotNextQuestion } from '../api/devBot'
 import type {
   FormalQAUnit,
   FormalQuestion,
@@ -53,302 +52,10 @@ const livePreviewUnavailableMessage = computed(() => (
 ))
 const qaReviewUnits = computed(() => props.qaUnits.filter((unit) => unit.status === 'NEEDS_REVIEW'))
 const qaResolvedUnits = computed(() => props.qaUnits.filter((unit) => unit.status === 'APPLIED' || unit.status === 'IGNORED' || unit.status === 'ROLLED_BACK'))
-const visibleDialogue = computed(() => groupLiveDialogueFragments([...props.dialogue, ...botTurns.value]))
+const visibleDialogue = computed(() => groupLiveDialogueFragments(props.dialogue))
 const recognitionFragments = computed(() => [...props.dialogue]
   .filter((item) => item.state !== 'DISCARDED' && item.state !== 'SUPERSEDED' && (item.editedText || item.rawText).trim())
   .sort((left, right) => left.startedAtMs - right.startedAtMs || left.ordinal - right.ordinal || left.id.localeCompare(right.id)))
-
-// ---------------------------------------------------------------------------
-// Dev-only BOT interrogator: one person plays both roles. The bot asks the
-// case's formal questions as text; the tester replies by voice through the
-// normal ASR capture. A reply counts when no new suspect fragment arrives for
-// 10s, then the cloud LLM judges whether it answers the question. This whole
-// block is a test rig and must never grow into the production flow.
-// ---------------------------------------------------------------------------
-const BOT_SILENCE_MS = 20_000
-const BOT_MAX_DYNAMIC = 10
-const BOT_STORAGE_PREFIX = 'dev-bot-turns:'
-let botSeq = 0
-let botQueue: FormalQuestion[] = []
-let botCurrent: { id: string; text: string } | null = null
-let botBaselineIds = new Set<string>()
-let botEmptyStreak = 0
-let botDynamicCount = 0
-let botAskedTexts: string[] = []
-let botAnswerTexts: string[] = []
-let botSilenceTimer: ReturnType<typeof setTimeout> | undefined
-const botActive = ref(false)
-const botJudging = ref(false)
-const botGenerating = ref(false)
-const botTurns = ref<TemporaryAsrFragment[]>([])
-
-const botStorageKey = computed(() => `${BOT_STORAGE_PREFIX}${props.caseId}`)
-const botAnsweredKey = computed(() => `dev-bot-answered:${props.caseId}`)
-let botAnsweredIds = new Set<string>()
-
-function loadBotAnswered() {
-  try {
-    const raw = localStorage.getItem(botAnsweredKey.value)
-    botAnsweredIds = new Set(raw ? (JSON.parse(raw) as string[]) : [])
-  } catch {
-    botAnsweredIds = new Set()
-  }
-}
-
-function markBotAnswered(questionId: string) {
-  botAnsweredIds.add(questionId)
-  try {
-    localStorage.setItem(botAnsweredKey.value, JSON.stringify([...botAnsweredIds]))
-  } catch { /* storage unavailable */ }
-}
-
-function isBotFragment(item: TemporaryAsrFragment) {
-  return item.id.startsWith('dev-bot-') || item.modelId === 'dev-bot'
-}
-
-function botTurnFrom(text: string, createdAt: number, id: string): TemporaryAsrFragment {
-  const seq = Number(id.slice('dev-bot-'.length)) || 0
-  return {
-    id,
-    captureSessionId: 'dev-bot',
-    caseId: '',
-    ordinal: 1_000_000 + seq,
-    startedAtMs: createdAt,
-    endedAtMs: createdAt,
-    rawText: text,
-    editedText: '',
-    speaker: 'INTERROGATOR',
-    speakerId: null,
-    speakerName: 'BOT 民警',
-    speakerScore: null,
-    secondBestScore: null,
-    speakerThreshold: null,
-    speakerMargin: null,
-    speakerSource: 'MANUAL',
-    voiceprintVerified: false,
-    confidence: null,
-    confidenceSource: 'UNAVAILABLE',
-    lowConfidence: false,
-    state: 'CONFIRMED',
-    confirmedQaId: null,
-    confirmedMessageId: null,
-    recognitionEvidence: null,
-    recognitionRevisions: [],
-    audio: { captureSessionId: 'dev-bot', startOffsetMs: 0, endOffsetMs: 0, available: false },
-    createdAt,
-    updatedAt: createdAt,
-  }
-}
-
-function botTurn(text: string): TemporaryAsrFragment {
-  botSeq += 1
-  return botTurnFrom(text, Date.now(), `dev-bot-${botSeq}`)
-}
-
-function persistBotTurns() {
-  try {
-    const data = botTurns.value.map((item) => ({ id: item.id, text: item.rawText, createdAt: item.createdAt }))
-    localStorage.setItem(botStorageKey.value, JSON.stringify(data.slice(-300)))
-  } catch { /* storage unavailable — bot turns stay in-memory only */ }
-}
-
-function restoreBotTurns() {
-  try {
-    const raw = localStorage.getItem(botStorageKey.value)
-    if (!raw) return
-    const parsed = JSON.parse(raw) as Array<{ id?: unknown; text?: unknown; createdAt?: unknown }>
-    if (!Array.isArray(parsed)) return
-    let maxSeq = 0
-    const restored: TemporaryAsrFragment[] = []
-    for (const item of parsed) {
-      if (typeof item?.id !== 'string' || typeof item?.text !== 'string' || typeof item?.createdAt !== 'number') continue
-      restored.push(botTurnFrom(item.text, item.createdAt, item.id))
-      maxSeq = Math.max(maxSeq, Number(item.id.slice('dev-bot-'.length)) || 0)
-    }
-    botTurns.value = restored
-    botSeq = Math.max(botSeq, maxSeq)
-  } catch { /* corrupted snapshot — start clean */ }
-}
-
-function pushBotTurn(text: string) {
-  botTurns.value = [...botTurns.value, botTurn(text)]
-  persistBotTurns()
-}
-
-function clearBotSilenceTimer() {
-  if (botSilenceTimer) clearTimeout(botSilenceTimer)
-  botSilenceTimer = undefined
-}
-
-function suspectFragmentIds() {
-  return new Set(props.dialogue.filter((item) => item.speaker === 'SUSPECT').map((item) => item.id))
-}
-
-function armSilenceTimer() {
-  clearBotSilenceTimer()
-  botSilenceTimer = setTimeout(() => { void onBotSilence() }, BOT_SILENCE_MS)
-}
-
-async function toggleBot() {
-  if (botActive.value) {
-    stopBot()
-    return
-  }
-  if (!props.captureAvailable) {
-    pushBotTurn('（BOT）当前录音不可用：请先点「开始审讯」让会话进入审讯中，确认录音可用后再点 BOT。')
-    return
-  }
-  botActive.value = true
-  botEmptyStreak = 0
-  botDynamicCount = 0
-  botAskedTexts = []
-  botAnswerTexts = []
-  loadBotAnswered()
-  // Skip questions already routed into the formal record (rounds) and ones the
-  // judge already accepted, so a refresh never re-asks answered questions.
-  botQueue = props.questions.filter(
-    (item) => item.active && !(item.rounds && item.rounds.length) && !botAnsweredIds.has(item.id),
-  )
-  if (!props.captureRunning) {
-    emit('captureToggle')
-    // The REST start is async: wait until the backend capture session really
-    // exists before injecting the first question, otherwise the injection is
-    // rejected with "no active capture".
-    const started = await waitForCaptureRunning(10_000)
-    if (!started) {
-      pushBotTurn('（BOT）录音未能自动开启，请手动点击「开始录音」后再点 BOT。')
-      stopBot()
-      return
-    }
-  }
-  await askNextBotQuestion()
-}
-
-function waitForCaptureRunning(timeoutMs: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const deadline = Date.now() + timeoutMs
-    const timer = setInterval(() => {
-      if (props.captureRunning || Date.now() > deadline) {
-        clearInterval(timer)
-        resolve(props.captureRunning)
-      }
-    }, 300)
-  })
-}
-
-function stopBot() {
-  botActive.value = false
-  botCurrent = null
-  botGenerating.value = false
-  clearBotSilenceTimer()
-}
-
-async function askNextBotQuestion() {
-  clearBotSilenceTimer()
-  const question = botQueue.shift()
-  if (!question) {
-    await askDynamicQuestion()
-    return
-  }
-  botCurrent = question
-  botBaselineIds = suspectFragmentIds()
-  // The question is injected as a REAL interrogator fragment so the suspect
-  // answer flows through the normal QA-unit / formal-record routing pipeline.
-  try {
-    await devBotAsk(props.caseId, question.text)
-    botAskedTexts.push(question.text)
-  } catch (err) {
-    pushBotTurn(`（BOT 提问失败：${err instanceof Error ? err.message : '未知错误'}）BOT 已暂停。`)
-    stopBot()
-    return
-  }
-  armSilenceTimer()
-}
-
-async function askDynamicQuestion() {
-  if (!botActive.value) return
-  if (botDynamicCount >= BOT_MAX_DYNAMIC) {
-    botCurrent = null
-    pushBotTurn(`（BOT）动态追问已达测试上限 ${BOT_MAX_DYNAMIC} 条，停止提问。`)
-    stopBot()
-    return
-  }
-  botGenerating.value = true
-  try {
-    const text = await devBotNextQuestion(props.caseId, botAskedTexts, botAnswerTexts)
-    if (!botActive.value) return
-    botDynamicCount += 1
-    botCurrent = { id: `dynamic-${botDynamicCount}`, text }
-    botBaselineIds = suspectFragmentIds()
-    await devBotAsk(props.caseId, text)
-    botAskedTexts.push(text)
-  } catch (err) {
-    pushBotTurn(`（BOT 生成追问失败：${err instanceof Error ? err.message : '未知错误'}）BOT 已暂停。`)
-    stopBot()
-    return
-  } finally {
-    botGenerating.value = false
-  }
-  armSilenceTimer()
-}
-
-async function onBotSilence() {
-  const question = botCurrent
-  if (!botActive.value || !question) return
-  const reply = props.dialogue
-    .filter((item) => item.speaker === 'SUSPECT' && !botBaselineIds.has(item.id))
-    .map((item) => (item.editedText || item.rawText || '').trim())
-    .filter(Boolean)
-    .join(' ')
-  if (!reply) {
-    botEmptyStreak += 1
-    if (!props.captureRunning || botEmptyStreak >= 3) {
-      pushBotTurn('（BOT）连续 20 秒都没有转写到你的回复，BOT 已暂停。请确认「开始审讯」和录音已开启，再点 BOT 重试。')
-      stopBot()
-      return
-    }
-    pushBotTurn('（BOT）20 秒内没有转写到你的回复，请对着麦克风说话。')
-    botBaselineIds = suspectFragmentIds()
-    armSilenceTimer()
-    return
-  }
-  botEmptyStreak = 0
-  botJudging.value = true
-  try {
-    const verdict = await judgeDevBotReply(question.text, reply)
-    if (verdict.isAnswer) {
-      markBotAnswered(question.id)
-      botAnswerTexts.push(reply)
-      botCurrent = null
-      askNextBotQuestion()
-    } else {
-      pushBotTurn(`（BOT 判定：还不算回答）${verdict.comment || '请再说明一下。'}`)
-      botBaselineIds = suspectFragmentIds()
-      armSilenceTimer()
-    }
-  } catch (err) {
-    pushBotTurn(`（BOT 判定失败：${err instanceof Error ? err.message : '未知错误'}）跳过本题，继续下一题。`)
-    botCurrent = null
-    askNextBotQuestion()
-  } finally {
-    botJudging.value = false
-  }
-}
-
-watch(() => props.dialogue.length, () => {
-  if (!botActive.value || !botCurrent) return
-  const hasNewSuspectText = props.dialogue.some(
-    (item) => item.speaker === 'SUSPECT' && !botBaselineIds.has(item.id) && (item.editedText || item.rawText || '').trim(),
-  )
-  if (hasNewSuspectText) armSilenceTimer()
-})
-
-// While capture runs, the transcription bubble stays mounted (with a 待输入
-// placeholder when idle) so the partial text does not flash between utterances.
-
-onUnmounted(() => {
-  clearBotSilenceTimer()
-})
 
 const elapsed = computed(() => {
   const total = Math.floor(props.captureElapsedMs / 1000)
@@ -422,10 +129,9 @@ function resolve(pending: PendingFormalQuestion, resolution: PendingResolution) 
 const FORMAL_ANSWER_FRAGMENT_MIME = 'application/x-formal-answer-fragments'
 
 function dialogueDropEntries(fragments: TemporaryAsrFragment[]) {
-  const fragmentIds = fragments.filter((item) => !isBotFragment(item)).map((item) => item.id)
+  const fragmentIds = fragments.map((item) => item.id)
   if (!fragmentIds.length) return []
   const text = fragments
-    .filter((item) => !isBotFragment(item))
     .map((item) => (item.editedText || item.rawText || '').trim())
     .join('')
   const entries = [
@@ -464,7 +170,7 @@ function toggleDialogueSelection(fragments: TemporaryAsrFragment[]) {
 }
 
 function dialogueArmed(fragments: TemporaryAsrFragment[]) {
-  const ids = fragments.filter((item) => !isBotFragment(item)).map((item) => item.id)
+  const ids = fragments.map((item) => item.id)
   const payload = pendingDrop.value
   if (!ids.length || !payload) return false
   return payload.entries.some(
@@ -544,15 +250,10 @@ watch(
 )
 
 watch(() => props.caseId, () => {
-  stopBot()
-  restoreBotTurns()
-  loadBotAnswered()
   void scrollToLatest(true)
 })
 
 onMounted(() => {
-  restoreBotTurns()
-  loadBotAnswered()
   void scrollToLatest(true)
 })
 </script>
@@ -565,12 +266,6 @@ onMounted(() => {
         <h2>实时语音对话</h2>
       </div>
       <div class="live-dialogue-actions">
-        <button
-          class="bot-toggle"
-          :class="{ active: botActive, judging: botJudging || botGenerating }"
-          :title="botActive ? '停止 BOT 民警' : 'BOT 扮演民警自动提问（测试用）'"
-          @click="toggleBot"
-        >{{ botActive ? (botGenerating ? 'BOT 生成中…' : botJudging ? 'BOT 判定中…' : 'BOT 提问中') : 'BOT' }}</button>
         <div class="capture-control">
           <button
             class="capture-toggle"
@@ -624,12 +319,12 @@ onMounted(() => {
                 :key="turn.key"
                 class="transcript-fragment"
                 :class="{ selected: dialogueArmed(turn.fragments) }"
-                :role="turn.fragments.some((item) => !isBotFragment(item)) ? 'button' : undefined"
-                :tabindex="turn.fragments.some((item) => !isBotFragment(item)) ? 0 : undefined"
-                :aria-label="turn.fragments.some((item) => !isBotFragment(item)) ? '选择这段转写并放入笔录' : undefined"
-                :aria-pressed="turn.fragments.some((item) => !isBotFragment(item)) ? dialogueArmed(turn.fragments) : undefined"
+                :role="'button'"
+                :tabindex="0"
+                :aria-label="'选择这段转写并放入笔录'"
+                :aria-pressed="dialogueArmed(turn.fragments)"
                 :data-fragment-id="turn.primary.id"
-                :draggable="turn.fragments.some((item) => !isBotFragment(item))"
+                :draggable="true"
                 @dragstart="startDialogueDrag($event, turn.fragments)"
                 @click.stop="armDialogue(turn.fragments)"
                 @keydown.enter.prevent="armDialogue(turn.fragments)"
@@ -814,18 +509,18 @@ onMounted(() => {
   justify-content: space-between;
   gap: 10px;
   padding: 9px 12px 7px;
-  color: var(--primary-700);
-  font: 12px/1.45 system-ui, sans-serif;
+  color: var(--ink-700);
+  font: var(--text-xs)/1.45 system-ui, sans-serif;
 }
 
 .region-heading strong {
-  color: var(--primary-700);
-  font-size: 13px;
+  color: var(--navy-700);
+  font-size: var(--text-sm);
 }
 
 .capture-meter-state {
   color: var(--ink-500);
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -845,7 +540,7 @@ onMounted(() => {
   place-items: center;
   width: 100%;
   color: var(--ink-400);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .transcript-heading > div,
@@ -872,7 +567,7 @@ onMounted(() => {
 .transcript-paragraph {
   margin: 0;
   color: var(--navy-900);
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.75;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -887,7 +582,7 @@ onMounted(() => {
 }
 
 .transcript-live-partial {
-  color: var(--primary-600);
+  color: var(--primary-500);
 }
 
 .transcript-live-partial.idle {
@@ -896,19 +591,19 @@ onMounted(() => {
 
 .latest-inline-button {
   flex: 0 0 auto;
-  border: 1px solid var(--primary-500);
+  border: 1px solid var(--ink-300);
   border-radius: 999px;
   padding: 3px 8px;
   color: var(--primary-700);
   background: var(--surface);
-  font-size: 10px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
 .recognition-count {
   flex: 0 0 auto;
   color: var(--ink-400);
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .recognition-list {
@@ -917,7 +612,7 @@ onMounted(() => {
 
 .recognition-entry {
   padding: 5px 0;
-  border-top: 1px solid var(--line-200);
+  border-top: 1px solid var(--canvas);
 }
 
 .recognition-row {
@@ -935,24 +630,24 @@ onMounted(() => {
 }
 
 .recognition-transfer-button {
-  border: 1px solid var(--primary-500);
+  border: 1px solid var(--ink-300);
   border-radius: 999px;
   padding: 3px 9px;
   color: var(--primary-600);
   background: var(--surface);
-  font-size: 10px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
 .recognition-transfer-button.selected {
-  border-color: var(--primary-600);
+  border-color: var(--primary-500);
   color: var(--surface);
-  background: var(--primary-600);
+  background: var(--primary-500);
 }
 
 .recognition-time {
   color: var(--ink-500);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -960,8 +655,8 @@ onMounted(() => {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  color: var(--primary-700);
-  font-size: 11px;
+  color: var(--ink-700);
+  font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -973,7 +668,7 @@ onMounted(() => {
   padding: 3px 8px;
   color: var(--primary-600);
   background: var(--surface-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -986,7 +681,7 @@ onMounted(() => {
 
 .recognition-result-state {
   color: var(--success-700);
-  font-size: 10px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -997,7 +692,7 @@ onMounted(() => {
 .recognition-empty {
   margin: 12px 2px;
   color: var(--ink-400);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 @media (max-width: 1100px) {
@@ -1017,7 +712,7 @@ onMounted(() => {
   border-radius: 8px;
   color: var(--ink-500);
   background: var(--surface-sunken);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 .fragment-lineage summary {
@@ -1048,7 +743,7 @@ onMounted(() => {
   border-top: 1px solid rgba(76, 112, 156, .16);
 }
 .revision-history h4,
-.recognition-correction h4 { margin: 0 0 6px; font-size: 12px; color: var(--navy-900); }
+.recognition-correction h4 { margin: 0 0 6px; font-size: var(--text-xs); color: var(--navy-900); }
 .revision-row {
   display: grid;
   grid-template-columns: auto 1fr 1.4fr 1fr auto;
@@ -1079,25 +774,25 @@ onMounted(() => {
   .revision-row { grid-template-columns: auto 1fr; }
   .correction-controls { grid-template-columns: 1fr; }
 }
-.recognition-tools { margin-top: 6px; color: var(--ink-500); font-size: 11px; }
+.recognition-tools { margin-top: 6px; color: var(--ink-500); font-size: var(--text-xs); }
 .recognition-tools summary { cursor: pointer; padding: 4px; }
-.qa-review-rail { margin-bottom: 10px; color: var(--ink-500); font-size: 12px; }
+.qa-review-rail { margin-bottom: 10px; color: var(--ink-500); font-size: var(--text-xs); }
 .qa-review-rail summary { cursor: pointer; padding: 4px 2px; }
 .qa-review-rail[open] { display: grid; gap: 8px; }
-.qa-review-card { border: 1px solid var(--warning-700); background: var(--warning-100); border-radius: 10px; padding: 10px; }
+.qa-review-card { border: 1px solid var(--warning-600); background: var(--warning-100); border-radius: 10px; padding: 10px; }
 .qa-review-card header { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .qa-review-card p { margin: 6px 0; line-height: 1.45; }
-.qa-status-chip { display: inline-flex; padding: 2px 8px; border-radius: 999px; background: var(--warning-700); color: var(--warning-600); font-weight: 800; }
+.qa-status-chip { display: inline-flex; padding: 2px 8px; border-radius: 999px; background: var(--warning-600); color: var(--warning-700); font-weight: 800; }
 .qa-suggestion { color: var(--ink-500); }
 .qa-review-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .qa-review-actions button { cursor: grab; }
 .qa-review-actions .qa-ignore { cursor: pointer; }
-.qa-routing-status { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--success-100); color: var(--success-700); font-size: 12px; }
+.qa-routing-status { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--success-100); color: var(--success-700); font-size: var(--text-xs); }
 .qa-routing-status small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qa-rollback { margin-left: auto; border: 1px solid var(--warning-700); border-radius: 6px; padding: 3px 7px; background: var(--surface); color: var(--warning-600); cursor: pointer; }
+.qa-rollback { margin-left: auto; border: 1px solid var(--warning-600); border-radius: 6px; padding: 3px 7px; background: var(--surface); color: var(--warning-700); cursor: pointer; }
 .qa-status-muted { background: var(--surface-sunken); color: var(--ink-500); opacity: .78; }
 .raw-fragment-list { display: grid; gap: 6px; padding: 9px 10px; border-top: 1px solid rgba(76, 112, 156, .16); }
 .raw-fragment-list div { display: grid; gap: 2px; }
-.raw-fragment-list strong { color: var(--primary-700); }
+.raw-fragment-list strong { color: var(--ink-700); }
 .raw-fragment-list small { color: var(--ink-500); }
 </style>
