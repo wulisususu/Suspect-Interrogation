@@ -52,19 +52,18 @@ class SessionService:
                 state = WorkflowState.CASE_CREATED
             if state != WorkflowState.CASE_CREATED:
                 raise DomainError("SESSION_START_NOT_ALLOWED", f"当前状态不可开始审讯：{state.value}", 409)
-            if voiceprint_repo.get_suspect(self.db, case_id, model_key="eres2net_large") is None:
-                raise DomainError(
-                    "SUSPECT_VOICEPRINT_REQUIRED",
-                    "请先完成嫌疑人声纹注册再开始审讯",
-                    409,
-                )
-            if voiceprint_service is not None:
+            # 声纹已从办理流程中移除：开始审讯不再要求嫌疑人声纹。
+            # 仍保有声纹的历史案件照旧绑定民警角色，其余案件跳过绑定。
+            bind_voiceprint_roles = voiceprint_service is not None and voiceprint_repo.get_suspect(
+                self.db, case_id, model_key=voiceprint_service.authoritative_speaker_backend
+            ) is not None
+            if bind_voiceprint_roles:
                 voiceprint_service.validate_role_binding(
                     case_id, interrogator_officer_id, recorder_officer_id
                 )
             self._advance(case, WorkflowState.QUESTIONING)
             row = session_repo.create(self.db, case_id, case.stage)
-            if voiceprint_service is not None:
+            if bind_voiceprint_roles:
                 voiceprint_service.bind_roles(
                     case_id,
                     interrogator_officer_id,

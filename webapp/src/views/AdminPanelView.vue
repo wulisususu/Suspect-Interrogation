@@ -14,7 +14,6 @@ const emit = defineEmits<{
   cases: []
   pending: []
   audit: []
-  voiceprints: []
   placeholder: [panel: AdminPanel]
 }>()
 
@@ -56,7 +55,6 @@ const entries = computed(() => [
         <button type="button" @click="emit('pending')">未完成办理 ›</button>
         <button type="button" @click="emit('placeholder', 'templates')">模板管理 ›</button>
         <button type="button" @click="emit('audit')">操作日志 ›</button>
-        <button type="button" @click="emit('voiceprints')">民警声纹库 ›</button>
       </nav>
     </header>
 

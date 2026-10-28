@@ -9,7 +9,8 @@ describe('root route', () => {
   it('maps view names to root pages and defaults to the lobby', () => {
     expect(parseRootRoute('')).toEqual({ page: 'home' })
     expect(parseRootRoute('?view=cases')).toEqual({ page: 'cases' })
-    expect(parseRootRoute('?view=settings')).toEqual({ page: 'settings' })
+    expect(parseRootRoute('?view=login')).toEqual({ page: 'login' })
+    expect(parseRootRoute('?view=settings')).toEqual({ page: 'home' })
     expect(parseRootRoute('?view=login')).toEqual({ page: 'login' })
     expect(parseRootRoute('?view=admin')).toEqual({ page: 'admin' })
     expect(parseRootRoute('?view=bogus')).toEqual({ page: 'home' })
@@ -27,6 +28,6 @@ describe('root route', () => {
     expect(rootRouteUrl(base, { page: 'case', caseId: 'C 1' })).toBe('https://kiosk.local/app/?debug=1&caseId=C+1')
     expect(rootRouteUrl(base, { page: 'home' })).toBe('https://kiosk.local/app/?debug=1')
     expect(rootRouteUrl(base, { page: 'admin-placeholder', panel: 'recordings' })).toBe('https://kiosk.local/app/?debug=1&view=admin-placeholder&panel=recordings')
-    expect(rootRouteUrl('https://kiosk.local/?caseId=C-1&adminCaseId=X&panel=knowledge', { page: 'settings' })).toBe('https://kiosk.local/?view=settings')
+    expect(rootRouteUrl('https://kiosk.local/?caseId=C-1&adminCaseId=X&panel=knowledge', { page: 'login' })).toBe('https://kiosk.local/?view=login')
   })
 })

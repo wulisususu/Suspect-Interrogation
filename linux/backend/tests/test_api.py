@@ -247,9 +247,9 @@ def test_formal_record_header_updates_persist_identity_and_missing_facts(tmp_pat
         assert next(item for item in facts if item["key"] == "interrogation_place")["value"] == "第一讯问室"
 
 
-def test_session_start_requires_suspect_voiceprint_after_identity(tmp_path):
+def test_session_start_does_not_require_suspect_voiceprint(tmp_path):
     app = create_app(
-        database_url=f"sqlite:///{tmp_path / 'voiceprint-required.db'}",
+        database_url=f"sqlite:///{tmp_path / 'voiceprint-optional.db'}",
         hardware_gateway=MockHardwareGateway(simulated=False),
     )
     with TestClient(app) as client:
@@ -264,8 +264,8 @@ def test_session_start_requires_suspect_voiceprint_after_identity(tmp_path):
         }))
 
         start = client.post(f"/api/v1/cases/{case_id}/session/start", json={"actor_id": "op"})
-        assert start.status_code == 409
-        assert start.json()["code"] == "SUSPECT_VOICEPRINT_REQUIRED"
+        assert start.status_code == 200
+        assert payload(start)["status"] == "RUNNING"
 
 
 def test_canonical_api_errors_are_structured(tmp_path):

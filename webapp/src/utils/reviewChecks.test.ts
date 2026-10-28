@@ -1,51 +1,34 @@
 import { describe, expect, it } from 'vitest'
-import type { FactItem, VoiceprintReadiness } from '../types/interrogation'
+import type { FactItem } from '../types/interrogation'
 import { reviewAutoChecks } from './reviewChecks'
 
 const fact = (key: string, status: FactItem['status']) => ({ key, label: key, value: '', status }) as FactItem
-const readiness = (patch: Partial<VoiceprintReadiness>) => ({ suspectReady: true, interrogatorReady: true, recorderReady: false, ...patch }) as VoiceprintReadiness
+const summary = { suspectName: '王某某', officerName: '张伟' }
 
 describe('reviewAutoChecks (design P13)', () => {
   it('lists the four automatic checks in design order', () => {
-    const checks = reviewAutoChecks([fact('time', 'confirmed')], readiness({}))
+    const checks = reviewAutoChecks([fact('time', 'confirmed')], summary, '刘敏')
     expect(checks.map((item) => item.title)).toEqual(['模板要素', '时间线一致', '同音字纠错', '签署人数与身份'])
   })
 
   it('passes element coverage only when every core element is confirmed', () => {
-    expect(reviewAutoChecks([fact('time', 'confirmed'), fact('place', 'missing')], readiness({}))[0]).toMatchObject({ state: 'pending', detail: '要素 1/2 已覆盖' })
-    expect(reviewAutoChecks([fact('time', 'confirmed')], readiness({}))[0]).toMatchObject({ state: 'pass' })
+    expect(reviewAutoChecks([fact('time', 'confirmed'), fact('place', 'missing')], summary, '刘敏')[0]).toMatchObject({ state: 'pending', detail: '要素 1/2 已覆盖' })
+    expect(reviewAutoChecks([fact('time', 'confirmed')], summary, '刘敏')[0]).toMatchObject({ state: 'pass' })
   })
 
   it('marks checks without a backend as unavailable', () => {
-    const checks = reviewAutoChecks([], readiness({}))
+    const checks = reviewAutoChecks([], summary, '刘敏')
     expect(checks[1]!.state).toBe('unavailable')
     expect(checks[2]!.state).toBe('unavailable')
   })
 
-  it('requires the suspect and the interrogating officer before signing', () => {
-    expect(reviewAutoChecks([], readiness({}))[3]!.state).toBe('pass')
-    expect(reviewAutoChecks([], readiness({ interrogatorReady: false }))[3]!.state).toBe('pending')
+  it('takes signers from the intake record instead of voiceprint bindings', () => {
+    expect(reviewAutoChecks([], summary, '刘敏')[3]).toMatchObject({ state: 'pass', detail: '被询问人 王某某 · 询问人 张伟 · 记录人 刘敏' })
   })
 
-  it('keeps the signer check passing after the session ended', () => {
-    // 审讯结束后没有 active session，后端回退到本场审讯开始时的角色绑定。
-    const afterSession = reviewAutoChecks([], readiness({
-      interrogatorReady: true,
-      roleBindingScope: 'LAST_SESSION',
-      roleBindingSessionId: 'session-1',
-    }))[3]!
-
-    expect(afterSession.state).toBe('pass')
-    expect(afterSession.detail).toBe('被询问人 已注册 · 主审民警 本场审讯已绑定')
-  })
-
-  it('reports an unbound officer without inventing a binding scope', () => {
-    const unbound = reviewAutoChecks([], readiness({
-      interrogatorReady: false,
-      roleBindingScope: 'NONE',
-    }))[3]!
-
-    expect(unbound.state).toBe('pending')
-    expect(unbound.detail).toBe('被询问人 已注册 · 主审民警 未绑定')
+  it('stays pending while a signer is missing and ignores placeholder names', () => {
+    const check = reviewAutoChecks([], { suspectName: '待录入', officerName: '当前警官' }, '')[3]!
+    expect(check.state).toBe('pending')
+    expect(check.detail).toBe('被询问人 未填写 · 询问人 未填写 · 记录人 未填写')
   })
 })

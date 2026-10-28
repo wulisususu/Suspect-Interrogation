@@ -28,28 +28,26 @@ describe('interrogation workspace shell', () => {
   })
 
   it('shows the case identity in a top bar chip and keeps officer metadata beside it', () => {
-    expect(source).toContain('案 {{ store.caseSummary.id || store.caseId }}')
-    expect(source).toContain('询问人 {{ store.caseSummary.officerName ||')
+    expect(source).toContain('`案 ${store.caseSummary.id || store.caseId}`')
+    expect(source).toContain('<span class="case-chip">{{ caseChip }}</span>')
+    expect(source).toContain('询问人 {{ officerText }}')
     expect(source).toContain('记录人 {{ recorderName }}')
     expect(source).not.toContain('对象：')
     expect(source).not.toContain('class="state-chip"')
   })
 
-  it('renders the compact audio source banner inside the dark top bar', () => {
-    const topbarStart = source.indexOf('<header class="app-topbar')
-    const topbarEnd = source.indexOf('</header>')
-    const banner = source.indexOf('<VoiceprintAudioSourceBanner')
-
-    expect(topbarStart).toBeGreaterThanOrEqual(0)
-    expect(banner).toBeGreaterThan(topbarStart)
-    expect(topbarEnd).toBeGreaterThan(banner)
-    expect(source).toContain('class="topbar-audio-source"')
-    expect(source).not.toContain('class="session-audio-source"')
+  it('matches the design top bar: status and clock on the right, no tool buttons', () => {
+    const topbar = source.slice(source.indexOf('<header class="app-topbar'), source.indexOf('</header>'))
+    expect(topbar).toContain('{{ statusText }}')
+    expect(topbar).toContain('{{ clockText }}')
+    for (const removed of ['VoiceprintAudioSourceBanner', 'MOSS 转写', 'AiSettingsPanel']) expect(topbar).not.toContain(removed)
   })
 
-  it('keeps MOSS transcription as a top bar tool rather than a workflow step', () => {
-    expect(source).toContain("activePage = 'moss'")
-    expect(source).toContain('MOSS 转写')
+  it('keeps intake on a single page without voiceprint or preparation sub-pages', () => {
+    expect(source).not.toContain('intake-subnav')
+    expect(source).not.toContain('VoiceprintSetupPage')
+    expect(source).not.toContain('CasePreparationPage')
+    expect(source).toContain("v-else-if=\"activePage === 'profile'\"")
   })
 })
 

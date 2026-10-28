@@ -4,6 +4,8 @@ defineProps<{
   label: string
   source: 'CARD' | 'MANUAL' | 'AUTO'
   required?: boolean
+  /** 覆盖右侧来源文案，如「下拉选择」「默认当前 · 可改」 */
+  sourceText?: string
 }>()
 
 const SOURCE_LABEL = { CARD: '身份证读取', MANUAL: '手工补填', AUTO: '自动推算' } as const
@@ -13,7 +15,7 @@ const SOURCE_LABEL = { CARD: '身份证读取', MANUAL: '手工补填', AUTO: '�
   <label class="identity-row" :class="`is-${source.toLowerCase()}`">
     <span class="identity-row-label">{{ label }}<b v-if="required" aria-hidden="true">*</b></span>
     <span class="identity-row-control"><slot /></span>
-    <span class="identity-row-source">{{ SOURCE_LABEL[source] }}</span>
+    <span class="identity-row-source">{{ sourceText || SOURCE_LABEL[source] }}</span>
   </label>
 </template>
 

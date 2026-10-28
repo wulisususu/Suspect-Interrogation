@@ -270,7 +270,7 @@ class CaptureSupervisor:
         return []
 
 
-def test_capture_requires_selected_reference_and_opens_matching_speech_backend(tmp_path: Path):
+def test_capture_opens_selected_speech_backend_with_or_without_reference(tmp_path: Path):
     engine, factory = _db(tmp_path)
     supervisor = CaptureSupervisor()
     try:
@@ -286,10 +286,11 @@ def test_capture_requires_selected_reference_and_opens_matching_speech_backend(t
             speaker_model_key=ERES2NET,
             read_timeout=0.01,
         )
-        with pytest.raises(DomainError) as missing:
-            service.start("CASE-1")
-        assert missing.value.code == "SUSPECT_VOICEPRINT_BACKEND_REQUIRED"
-        assert supervisor.opened == []
+        # 声纹已移出办理流程：缺少选定模型的嫌疑人声纹时照常采集，
+        # 且仍只打开选定的说话人后端，不回退到 xvector。
+        service.start("CASE-1")
+        assert supervisor.opened and supervisor.opened[-1][2] == ERES2NET
+        service.stop("CASE-1")
 
         with factory() as db:
             suspect = _add_suspect(db, ERES2NET)

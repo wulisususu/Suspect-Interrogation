@@ -6,10 +6,8 @@ import apiSource from '../api/mossTranscription.ts?raw'
 import utilsSource from '../utils/mossTranscription.ts?raw'
 
 describe('moss transcription panel contract', () => {
-  it('mounts in the interrogation workspace as its own page tab', () => {
-    expect(workspaceSource).toContain("import MossTranscriptionPanel from '../components/MossTranscriptionPanel.vue'")
-    expect(workspaceSource).toContain("activePage === 'moss'")
-    expect(workspaceSource).toContain('<MossTranscriptionPanel')
+  it('is no longer mounted in the interrogation workspace (design top bar has no MOSS tool)', () => {
+    expect(workspaceSource).not.toContain('MossTranscriptionPanel')
   })
 
   it('shows a dedicated MOSS-disabled banner and blocks submission', () => {

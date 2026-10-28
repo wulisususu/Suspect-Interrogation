@@ -13,10 +13,9 @@ describe('visual defects found in the design review', () => {
     expect(rule(dashboardSource, '.case-dashboard-table')).not.toMatch(/height:\s*100%/)
   })
 
-  it('keeps the audio-source chip dark-on-light-text inside the navy top bar', () => {
-    const chip = rule(workspaceSource, '.topbar-audio-source.voiceprint-source-banner')
-    expect(chip).toMatch(/background:\s*rgba\(255, 255, 255, 0\.0\d\)/)
-    expect(rule(workspaceSource, '.topbar-audio-source :deep(strong)')).toContain('color: var(--primary-100)')
+  it('keeps the top bar meta light-on-navy', () => {
+    expect(rule(workspaceSource, '.case-chip')).toContain('color: var(--primary-100)')
+    expect(rule(workspaceSource, '.topbar-clock')).toContain('color: var(--surface)')
   })
 
   it('keeps every workspace template line readable', () => {
@@ -40,7 +39,7 @@ describe('dictation step header', () => {
 
 describe('workspace print output', () => {
   it('keeps the workspace chrome off the printed record', () => {
-    for (const tag of ['<header class="app-topbar', '<StepBar', '<nav v-if="flowStep === \'intake\'', '<div class="workspace-toast-region']) {
+    for (const tag of ['<header class="app-topbar', '<StepBar', '<div class="workspace-toast-region']) {
       const start = workspaceSource.indexOf(tag)
       expect(start, tag).toBeGreaterThan(0)
       expect(workspaceSource.slice(start, workspaceSource.indexOf('>', start)), tag).toContain('record-no-print')

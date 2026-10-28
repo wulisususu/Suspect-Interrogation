@@ -8,14 +8,14 @@
  * 这里只做「状态 → 步骤」的投影，不复制状态机，避免两套真相。
  */
 
-export type FlowStepKey = 'template' | 'intake' | 'dictation' | 'review' | 'signing' | 'archive'
+export type FlowStepKey = 'template' | 'intake' | 'dictation' | 'review' | 'signing'
 
-/** 笔录页内部的三种呈现形态，与步骤 3/4/5 一一对应。 */
+/** 笔录页内部的呈现形态：问答对应③、校验对应④，签署与归档导出同属⑤。 */
 export type RecordMode = 'interrogation' | 'review' | 'sign' | 'archive'
 
 export interface FlowStepMeta {
   key: FlowStepKey
-  /** ①–⑥，与样板一致 */
+  /** ①–⑤，与样板一致 */
   ordinal: string
   title: string
   /** 步骤条悬停与只读态的说明 */
@@ -23,12 +23,11 @@ export interface FlowStepMeta {
 }
 
 export const FLOW_STEPS: readonly FlowStepMeta[] = [
-  { key: 'template', ordinal: '①', title: '选模板', hint: '按案件类型选定笔录模板，决定要素与预设问题' },
-  { key: 'intake', ordinal: '②', title: '建档', hint: '读卡核对身份、注册声纹、确认设备就绪' },
+  { key: 'template', ordinal: '①', title: '选模板', hint: '系统推荐不代替民警选择 · 可跳过模板直接空白笔录' },
+  { key: 'intake', ordinal: '②', title: '建档', hint: '身份证读卡自动填入 · 身份证上没有的信息手工补填' },
   { key: 'dictation', ordinal: '③', title: '问答录入', hint: '左侧逐题成卡，右侧实时成文' },
-  { key: 'review', ordinal: '④', title: '定稿校验', hint: '核对核心要素，补齐缺项后冻结笔录' },
-  { key: 'signing', ordinal: '⑤', title: '签署归档', hint: '签名、捺印、民警签章后打印装卷' },
-  { key: 'archive', ordinal: '⑥', title: '归档导出', hint: '生成归档正式件，按需导出 Word 或 PDF' },
+  { key: 'review', ordinal: '④', title: '定稿校验', hint: '定稿后笔录冻结 · 未获取项已如实标注' },
+  { key: 'signing', ordinal: '⑤', title: '签署归档', hint: '文末热区点击即弹窗签名 / 捺印 · 完成后打印 2 份装卷' },
 ] as const
 
 export interface FlowSnapshot {
@@ -36,7 +35,6 @@ export interface FlowSnapshot {
   workflowState?: string | null
   hasTemplate: boolean
   identityReady: boolean
-  voiceprintReady: boolean
   hasQuestions: boolean
   frozen: boolean
   signed: boolean
@@ -64,7 +62,7 @@ const WORKFLOW_TO_STEP: Record<string, FlowStepKey> = {
   SUMMARY: 'review',
   FROZEN: 'signing',
   SIGNED: 'signing',
-  REPORT_GENERATED: 'archive',
+  REPORT_GENERATED: 'signing',
 }
 
 /** 后端状态下，该案例所处的最远步骤（用于覆盖前端推导结果）。 */
@@ -74,21 +72,20 @@ export function stepFromWorkflowState(workflowState?: string | null): FlowStepKe
 }
 
 export function resolveFlowProgress(snapshot: FlowSnapshot): FlowProgress {
-  const { hasTemplate, identityReady, voiceprintReady, hasQuestions, frozen, signed, archived } = snapshot
+  const { hasTemplate, identityReady, hasQuestions, frozen, archived } = snapshot
 
-  const intakeDone = hasTemplate && identityReady && voiceprintReady
+  const intakeDone = hasTemplate && identityReady
   const dictationDone = intakeDone && hasQuestions && frozen
   // 问答以冻结收尾，冻结即视为定稿校验完成。
   const reviewDone = dictationDone
-  const archiveDone = reviewDone && archived
 
   const doneByKey: Record<FlowStepKey, boolean> = {
     template: hasTemplate,
     intake: intakeDone,
     dictation: dictationDone,
     review: reviewDone,
-    signing: signed || archived,
-    archive: archiveDone,
+    // 签署归档以确认归档收尾；只签了名还停在⑤。
+    signing: archived,
   }
   const completed = ORDER.filter((key) => doneByKey[key])
 
@@ -98,25 +95,22 @@ export function resolveFlowProgress(snapshot: FlowSnapshot): FlowProgress {
   if (intakeDone || hasQuestions) reachable.push('dictation')
   if (hasQuestions || frozen) reachable.push('review')
   if (frozen) reachable.push('signing')
-  // 归档导出只在真正归档后开放；签名齐备后在⑤页确认归档。
-  if (archived) reachable.push('archive')
 
-  const suggested = ORDER.find((key) => !doneByKey[key]) ?? 'archive'
+  const suggested = ORDER.find((key) => !doneByKey[key]) ?? 'signing'
 
   return { completed, reachable, suggested }
 }
 
 export function stepKeyForMode(mode: RecordMode): FlowStepKey {
   if (mode === 'review') return 'review'
-  if (mode === 'sign') return 'signing'
-  if (mode === 'archive') return 'archive'
+  if (mode === 'sign' || mode === 'archive') return 'signing'
   return 'dictation'
 }
 
-export function modeForStep(key: FlowStepKey): RecordMode {
+/** 已归档的案件进入⑤时直接展示归档导出，未归档时展示签署页。 */
+export function modeForStep(key: FlowStepKey, archived = false): RecordMode {
   if (key === 'review') return 'review'
-  if (key === 'signing') return 'sign'
-  if (key === 'archive') return 'archive'
+  if (key === 'signing') return archived ? 'archive' : 'sign'
   return 'interrogation'
 }
 
@@ -128,14 +122,11 @@ export function stepIndex(key: FlowStepKey): number {
   return ORDER.indexOf(key)
 }
 
-/** 工作台主体区域的页面；建档步骤下有询问准备 / 身份信息 / 声纹注册三个子页。 */
-export type WorkspacePage = 'template' | 'prepare' | 'profile' | 'interrogation' | 'moss' | 'voiceprint'
+/** 工作台主体区域的页面：①选模板、②建档（单页），③–⑤共用笔录页。 */
+export type WorkspacePage = 'template' | 'profile' | 'interrogation'
 
-const INTAKE_PAGES: readonly WorkspacePage[] = ['prepare', 'profile', 'voiceprint']
-
-/** 步骤 → 主体页面。进入建档时保留当前所在的建档子页。 */
-export function pageForStep(key: FlowStepKey, current: WorkspacePage): WorkspacePage {
+export function pageForStep(key: FlowStepKey): WorkspacePage {
   if (key === 'template') return 'template'
-  if (key === 'intake') return INTAKE_PAGES.includes(current) ? current : 'prepare'
+  if (key === 'intake') return 'profile'
   return 'interrogation'
 }

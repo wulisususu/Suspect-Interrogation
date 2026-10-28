@@ -46,13 +46,11 @@ function select(key: FlowStepKey) {
           :title="canSelect(step.key) ? step.hint : `完成前一步后才能进入${step.title}`"
           @click="select(step.key)"
         >
-          <span class="step-index" aria-hidden="true">
-            <Check v-if="stateOf(step.key, index) === 'done'" :size="13" :stroke-width="3" />
-            <template v-else>{{ index + 1 }}</template>
-          </span>
+          <span class="step-index" aria-hidden="true">{{ step.ordinal }}</span>
           <span class="step-title">{{ step.title }}</span>
+          <Check v-if="stateOf(step.key, index) === 'done'" class="step-check" :size="14" :stroke-width="2.5" aria-hidden="true" />
         </button>
-        <span v-if="index < steps.length - 1" class="step-divider" aria-hidden="true">›</span>
+        <span v-if="index < steps.length - 1" class="step-divider" aria-hidden="true">→</span>
       </li>
     </ol>
 
@@ -66,21 +64,21 @@ function select(key: FlowStepKey) {
 </template>
 
 <style scoped>
+/* 样板步骤条：浅底横条，序号与标题连写，完成项绿色带 ✓，当前项蓝色实心胶囊，项间用 → 连接 */
 .step-bar {
   display: flex;
   align-items: center;
   gap: var(--space-4);
   min-height: var(--height-stepbar);
-  padding: 0 var(--space-6);
-  background: var(--surface);
-  border-bottom: 1px solid var(--line-200);
+  padding: 0 var(--space-8);
+  background: var(--line-100);
   flex: 0 0 auto;
 }
 
 .step-list {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -89,88 +87,46 @@ function select(key: FlowStepKey) {
 .step-item {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .step-button {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  min-height: 34px;
+  gap: var(--space-1);
+  min-height: 32px;
   padding: 0 var(--space-3);
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--ink-400);
+  color: var(--ink-500);
   font-size: var(--text-base);
   line-height: 1;
   white-space: nowrap;
-  transition: color 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
+  transition: color 0.16s ease, background-color 0.16s ease;
 }
 
 .step-button:hover:not(.is-active):not(.is-locked) {
-  color: var(--primary-600);
   background: var(--primary-50);
 }
 
-.step-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
-  border: 1px solid var(--line-300);
-  border-radius: 50%;
-  color: var(--ink-400);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
 .step-button.is-active {
-  color: var(--primary-700);
-  background: var(--primary-100);
-  font-weight: 600;
-}
-
-.step-button.is-active .step-index {
-  border-color: var(--primary-600);
   background: var(--primary-600);
   color: var(--surface);
 }
 
-.step-button.is-done {
-  color: var(--ink-700);
-}
-
-.step-button.is-done .step-index {
-  border-color: var(--success-600);
-  background: var(--success-100);
+.step-button.is-done,
+.step-button.is-done .step-check {
   color: var(--success-700);
 }
 
-.step-button.is-visited {
-  color: var(--ink-500);
-}
-
-.step-button.is-visited .step-index {
-  border-color: var(--primary-200);
-  color: var(--primary-600);
-}
-
 .step-button.is-locked {
-  color: var(--ink-300);
+  color: var(--ink-400);
   cursor: not-allowed;
 }
 
-.step-button.is-locked .step-index {
-  border-color: var(--line-200);
-  color: var(--ink-300);
-}
-
 .step-divider {
-  color: var(--line-300);
+  color: var(--ink-300);
   font-size: var(--text-base);
   line-height: 1;
   user-select: none;
@@ -179,25 +135,35 @@ function select(key: FlowStepKey) {
 .step-meta {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-3);
-  margin-left: var(--space-3);
+  margin-left: auto;
   min-width: 0;
-  color: var(--ink-400);
+  color: var(--ink-500);
   font-size: var(--text-sm);
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .step-actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-left: auto;
   flex: 0 0 auto;
+}
+
+.step-actions:empty {
+  display: none;
 }
 
 @media (max-width: 1280px) {
   .step-meta {
     display: none;
+  }
+
+  .step-actions {
+    margin-left: auto;
   }
 }
 

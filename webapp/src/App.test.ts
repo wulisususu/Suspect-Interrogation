@@ -8,8 +8,8 @@ describe('root navigation query handling', () => {
     expect(source).toContain('history.replaceState')
   })
 
-  it('exposes the global officer voiceprint library outside a case', () => {
-    expect(source).toContain('SystemSettingsView')
-    expect(source).toContain('@voiceprints="openSettings"')
+  it('no longer exposes the officer voiceprint library now that voiceprints left the workflow', () => {
+    expect(source).not.toContain('SystemSettingsView')
+    expect(source).not.toContain('@voiceprints')
   })
 })

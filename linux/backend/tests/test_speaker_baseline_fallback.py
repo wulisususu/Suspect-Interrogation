@@ -119,7 +119,7 @@ def test_formal_capture_starts_with_suspect_voiceprint_and_baseline_threshold_wi
         engine.dispose()
 
 
-def test_formal_capture_still_blocks_when_suspect_voiceprint_is_missing(tmp_path: Path):
+def test_formal_capture_starts_without_suspect_voiceprint(tmp_path: Path):
     engine, factory, case_id = _seed_case(tmp_path, with_suspect_voiceprint=False)
     device = SilentDevice()
     service = AsrCaptureService(
@@ -130,9 +130,10 @@ def test_formal_capture_still_blocks_when_suspect_voiceprint_is_missing(tmp_path
         read_timeout=0.01,
     )
 
-    with pytest.raises(Exception) as caught:
-        service.start(case_id)
-
-    assert getattr(caught.value, "code", None) == "SUSPECT_VOICEPRINT_BACKEND_REQUIRED"
-    assert device.started == 0
-    engine.dispose()
+    try:
+        started = service.start(case_id)
+        assert started["active"] is True
+        assert device.started == 1
+    finally:
+        service.stop(case_id)
+        engine.dispose()

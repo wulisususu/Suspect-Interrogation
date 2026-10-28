@@ -14,7 +14,6 @@ import type {
   SessionState,
   TemporaryAsrFragment,
   TemporaryAsrSpeaker,
-  VoiceprintReadiness,
 } from '../types/interrogation'
 import type {
   CaseQuestionCreateInput,
@@ -61,7 +60,7 @@ const props = defineProps<{
   questionDictationBusy: boolean
   questionDictationDraft: string
   questionDictationError: string
-  readiness: VoiceprintReadiness
+  recorderName?: string
   completionMode: RecordMode
   officers?: Array<{ officerId: string; officerName: string }>
 }>()
@@ -122,7 +121,7 @@ const signatureCanvas = ref<HTMLCanvasElement | null>(null)
 const signatureStrokes = ref<SignaturePoint[][]>([])
 let activeStroke: SignaturePoint[] | null = null
 
-const autoChecks = computed(() => reviewAutoChecks(props.facts, props.readiness))
+const autoChecks = computed(() => reviewAutoChecks(props.facts, props.summary, props.recorderName ?? ''))
 const documentFrozen = computed(() => !!signingState.value || ['FROZEN', 'SIGNED', 'REPORT_GENERATED'].includes(props.summary.workflowState || ''))
 const documentLocked = computed(() => signingState.value?.status === 'LOCKED')
 
@@ -505,7 +504,6 @@ async function confirmSignature() {
           <summary>原始转写与说话人识别<small>波形 · 转写 · 说话人 · QA 归档</small></summary>
 
         <LiveDialoguePanel
-          v-if="readiness.suspectReady"
           :case-id="caseId"
           :dialogue="dialogueHistory"
           :fragment-history="fragmentHistory"
@@ -525,10 +523,6 @@ async function confirmSignature() {
           @rollback-qa-unit="(id) => emit('rollbackQaUnit', id)"
           @correct-fragment="(id, speaker, reason) => emit('correctFragment', id, speaker, reason)"
         />
-        <div v-else class="dialogue-voiceprint-hint">
-          <p>嫌疑人声纹尚未注册。</p>
-          <p>请先到「建档 · 声纹注册」完成注册，之后这里才会开始实时语音对话。</p>
-        </div>
         </details>
       </div>
     </div>

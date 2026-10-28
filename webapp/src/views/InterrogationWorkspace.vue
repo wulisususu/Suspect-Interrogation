@@ -7,11 +7,8 @@ import {
   startQuestionPreparationDictation,
   stopQuestionPreparationDictation,
 } from '../api/templateInterrogation'
-import AiSettingsPanel from '../components/AiSettingsPanel.vue'
 import CaseProfilePage from '../components/CaseProfilePage.vue'
-import CasePreparationPage, { preparationStartGuard } from '../components/CasePreparationPage.vue'
 import type { RuntimeCapabilities } from '../runtime/types'
-import MossTranscriptionPanel from '../components/MossTranscriptionPanel.vue'
 import SessionControls from '../components/SessionControls.vue'
 import StepBar from '../components/StepBar.vue'
 import TemplateDrivenInterrogationPage from '../components/TemplateDrivenInterrogationPage.vue'
@@ -29,12 +26,11 @@ import {
   type RecordMode,
   type WorkspacePage,
 } from '../flow/steps'
-import VoiceprintAudioSourceBanner from '../components/VoiceprintAudioSourceBanner.vue'
-import VoiceprintSetupPage from '../components/VoiceprintSetupPage.vue'
-import { useAutoVoiceprintEnrollment } from '../composables/useAutoVoiceprintEnrollment'
+import { TEMPLATE_CATALOG } from '../config/templateCatalog'
 import { useInterrogationStore } from '../stores/interrogation'
 import { useTemplateInterrogationStore } from '../stores/templateInterrogation'
 import { factCoverage } from '../utils/factCoverage'
+import { sessionStartGuard } from '../utils/sessionStartGuard'
 import type { CaseSummary, TemporaryAsrSpeaker } from '../types/interrogation'
 import type {
   CaseQuestionCreateInput,
@@ -48,8 +44,7 @@ const props = defineProps<{ caseId: string }>()
 defineEmits<{ back: [] }>()
 const store = useInterrogationStore()
 const templateStore = useTemplateInterrogationStore()
-const autoVoiceprint = useAutoVoiceprintEnrollment()
-const activePage = ref<WorkspacePage>('prepare')
+const activePage = ref<WorkspacePage>('profile')
 /** 笔录页的三种形态由步骤条驱动，不再由笔录页内部自建第二套导航 */
 const completionMode = ref<RecordMode>('interrogation')
 const flowStep = ref<FlowStepKey>('intake')
@@ -62,7 +57,6 @@ const flowProgress = computed<FlowProgress>(() => {
     workflowState: state,
     hasTemplate: Boolean(templateStore.workspace.templateKey),
     identityReady: Boolean(store.caseSummary.idNumber),
-    voiceprintReady: Boolean(store.voiceprintReadiness?.suspectReady),
     hasQuestions: templateStore.workspace.questions.length > 0,
     frozen,
     signed: ['SIGNED', 'REPORT_GENERATED'].includes(state),
@@ -73,15 +67,45 @@ const currentStepMeta = computed(() => stepMeta(flowStep.value))
 const missingElements = computed(() => factCoverage(store.facts).missing.length)
 const profileLocked = computed(() => ['FROZEN', 'SIGNED', 'REPORT_GENERATED'].includes(store.caseSummary.workflowState || '')
   || ['FROZEN', 'LOCKED'].includes(store.caseSummary.documentStatus || ''))
-const caseTypeText = computed(() => (
-  store.caseSummary.caseType === 'suspect_interrogation'
-    ? '嫌疑人询问'
-    : store.caseSummary.caseType || ''
-))
+function factValue(key: string) {
+  const value = store.facts.find((item) => item.key === key)?.value?.trim()
+  return value && value !== '未录入' ? value : ''
+}
+const templateTitle = computed(() => TEMPLATE_CATALOG.find((item) => item.backendKey === templateStore.workspace.templateKey)?.title || '')
+const caseTypeText = computed(() => factValue('case_type')
+  || (store.caseSummary.caseType === 'suspect_interrogation' ? templateTitle.value || '嫌疑人询问' : store.caseSummary.caseType || ''))
+const caseChip = computed(() => [`案 ${store.caseSummary.id || store.caseId}`, caseTypeText.value, factValue('interrogation_place')].filter(Boolean).join(' · '))
+const officerText = computed(() => (store.caseSummary.officerName && store.caseSummary.officerName !== '当前警官' ? store.caseSummary.officerName : '未指定'))
+const recorderName = computed(() => factValue('recorder_name') || '未指定')
+const archived = computed(() => store.caseSummary.workflowState === 'REPORT_GENERATED')
+
+/** 顶栏右侧的办理状态（样板各页顶栏）。 */
+const statusText = computed(() => {
+  const step = flowStep.value
+  if (step === 'template') return '新案建立 · 待选模板'
+  if (step === 'intake') return flowProgress.value.completed.includes('intake') ? '建档完成 · 可开始询问' : '建档中 · 待补全信息'
+  if (step === 'dictation') {
+    if (store.session.status === 'RUNNING') return store.capture.running ? '● 已联网 · 实时转写中' : '● 已联网 · 询问进行中'
+    if (store.session.status === 'PAUSED') return '询问已暂停'
+    return '待开始询问'
+  }
+  if (step === 'review') return '校验中 · 待确认定稿'
+  return archived.value ? '已归档 · 可导出' : '签署中 · 待签名捺印'
+})
+
+const now = ref(new Date())
+const clockTimer = window.setInterval(() => { now.value = new Date() }, 30_000)
+const clockText = computed(() => {
+  const d = now.value
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+})
 
 // 推进只向前：数据补齐后自动前进，用户手动回看不会被拽走。
+// 只在同一页面内推进（笔录页的③→④→⑤），步骤条与页面主体始终一致；
+// 例如建档页暂存后不会被切到问答页。跨页落点在案件加载完成时一次性决定。
 watch(() => flowProgress.value.suggested, (next) => {
-  if (stepIndex(next) > stepIndex(flowStep.value)) flowStep.value = next
+  if (stepIndex(next) > stepIndex(flowStep.value) && pageForStep(next) === activePage.value) goStep(next, true)
 })
 
 function goStep(key: FlowStepKey, force = false) {
@@ -89,13 +113,8 @@ function goStep(key: FlowStepKey, force = false) {
   // 案件可能已有会话，但建档要素仍未补齐。
   if (!force && key !== flowStep.value && !flowProgress.value.reachable.includes(key)) return
   flowStep.value = key
-  activePage.value = pageForStep(key, activePage.value)
-  if (activePage.value === 'interrogation') completionMode.value = modeForStep(key)
-}
-
-function openIntakePage(page: WorkspacePage) {
-  flowStep.value = 'intake'
-  activePage.value = page
+  activePage.value = pageForStep(key)
+  if (activePage.value === 'interrogation') completionMode.value = modeForStep(key, archived.value)
 }
 
 function onCompletionModeChange(mode: RecordMode) {
@@ -121,12 +140,6 @@ async function checkPreparationDevices() {
     preparationDeviceError.value = backendErrorMessage(cause)
   }
 }
-async function refreshPreparation() {
-  if (preparationBusy.value) return
-  preparationBusy.value = true
-  try { await Promise.all([refreshCaseWorkspace(), checkPreparationDevices()]) }
-  finally { preparationBusy.value = false }
-}
 async function startPreparedSession() {
   if (preparationGuard.value.disabled || preparationBusy.value || questionDictationActive.value || questionDictationBusy.value || store.session.status !== 'READY') return
   preparationBusy.value = true
@@ -135,12 +148,7 @@ async function startPreparedSession() {
     if (['RUNNING'].includes(store.session.status)) openInterrogation()
   } finally { preparationBusy.value = false }
 }
-const recorderName = computed(() => {
-  const recorder = store.officerVoiceprints.find((item) => item.officerId === store.selectedRecorderOfficerId)
-  return recorder?.officerName || '未指定'
-})
-
-const preparationGuard = computed(() => preparationStartGuard(store.caseSummary, store.voiceprintReadiness, preparationDevices.value, store.voiceprintEnrollmentState))
+const preparationGuard = computed(() => sessionStartGuard(store.caseSummary, preparationDevices.value))
 const questionDictationDraft = ref('')
 const questionDictationActive = ref(false)
 const questionDictationBusy = ref(false)
@@ -159,12 +167,12 @@ watch(
     recordSaveGeneration += 1
     recordSavingCount.value = 0
     const previousCaseId = store.caseId
-    await autoVoiceprint.dispose()
     if (questionDictationActive.value && previousCaseId && previousCaseId !== nextCaseId) {
       void stopQuestionPreparationDictation(previousCaseId).catch(() => undefined)
     }
     resetQuestionDictationState()
-    activePage.value = 'prepare'
+    activePage.value = 'profile'
+    flowStep.value = 'intake'
     preparationDevices.value = null
     void checkPreparationDevices()
     store.resetCaseContext(nextCaseId)
@@ -176,12 +184,13 @@ watch(
     } catch {
       store.feedback(templateStore.error || '模板笔录工作台加载失败', true)
     }
+    if (store.caseId === nextCaseId) goStep(flowProgress.value.suggested, true)
   },
   { immediate: true },
 )
 
 onUnmounted(() => {
-  void autoVoiceprint.dispose()
+  window.clearInterval(clockTimer)
   if (questionDictationActive.value && store.caseId) void stopQuestionPreparationDictation(store.caseId).catch(() => undefined)
   if (store.caseId === props.caseId) store.resetCaseContext()
   if (templateStore.caseId === props.caseId) templateStore.reset()
@@ -333,29 +342,20 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
   <main class="workspace">
     <section v-if="store.loading" class="case-loading" aria-live="polite" aria-busy="true">
       <h1>正在加载案件</h1>
-      <p>正在读取案件身份、审讯记录、声纹状态等数据…</p>
+      <p>正在读取案件身份、审讯记录等数据…</p>
     </section>
 
     <template v-else>
       <header class="app-topbar record-no-print">
-        <button type="button" class="topbar-back" @click="$emit('back')">‹ 返回</button>
-        <span class="app-brand">笔录智能工作台</span>
-        <span class="case-chip">案 {{ store.caseSummary.id || store.caseId }}<template v-if="caseTypeText"> · {{ caseTypeText }}</template></span>
+        <button type="button" class="app-brand" title="返回案件列表" @click="$emit('back')">笔录智能工作台</button>
+        <span class="topbar-divider" aria-hidden="true"></span>
+        <span class="case-chip">{{ caseChip }}</span>
 
         <div class="app-topbar-meta">
-          <span class="topbar-field">询问人 {{ store.caseSummary.officerName || '未指定' }}</span>
+          <span class="topbar-field">询问人 {{ officerText }}<i aria-hidden="true">·</i>记录人 {{ recorderName }}</span>
           <span class="topbar-divider" aria-hidden="true"></span>
-          <span class="topbar-field">记录人 {{ recorderName }}</span>
-          <VoiceprintAudioSourceBanner
-            class="topbar-audio-source"
-            compact
-            :source="autoVoiceprint.source.value"
-            :reason="autoVoiceprint.reason.value"
-            :secure-context="autoVoiceprint.secureContext.value"
-          />
-          <button type="button" class="topbar-tool" :class="{ active: activePage === 'moss' }" @click="activePage = 'moss'">MOSS 转写</button>
-          <AiSettingsPanel />
-          <span class="recording" :class="{ muted: store.session.status !== 'RUNNING' }">● {{ store.session.status === 'RUNNING' ? '录制中' : store.session.status === 'PAUSED' ? '已暂停' : '未开始' }}</span>
+          <span class="topbar-status" :class="{ live: store.session.status === 'RUNNING' }">{{ statusText }}</span>
+          <time class="topbar-clock">{{ clockText }}</time>
         </div>
       </header>
 
@@ -370,7 +370,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
         <span class="step-hint">{{ currentStepMeta.hint }}</span>
         <template #actions>
           <SessionControls
-            v-if="flowStep !== 'intake' && flowStep !== 'template' && activePage !== 'moss'"
+            v-if="flowStep !== 'intake' && flowStep !== 'template'"
             :session="store.session"
             :start-disabled="preparationGuard.disabled || preparationBusy || questionDictationActive || questionDictationBusy"
             :start-disabled-reason="questionDictationActive || questionDictationBusy ? '请先停止准备阶段语音输入，再开始正式审讯。' : preparationBusy ? '正在处理，请稍候' : preparationGuard.reason"
@@ -385,46 +385,21 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             class="step-finalize"
             @click="goStep('review', true)"
           >{{ missingElements ? `定稿并校验 · 缺 ${missingElements} 项` : '定稿并校验' }}</button>
-          <button v-if="activePage === 'moss'" type="button" class="step-back-tool" @click="goStep('dictation')">回到笔录</button>
         </template>
       </StepBar>
-
-      <nav v-if="flowStep === 'intake' && activePage !== 'moss'" class="intake-subnav record-no-print" aria-label="建档子步骤">
-        <button type="button" :class="{ active: activePage === 'prepare' }" @click="openIntakePage('prepare'); checkPreparationDevices()">询问准备</button>
-        <button type="button" :class="{ active: activePage === 'profile' }" @click="openIntakePage('profile')">身份信息</button>
-        <button type="button" :class="{ active: activePage === 'voiceprint' }" @click="openIntakePage('voiceprint')">声纹注册</button>
-        <span class="intake-hint">核对身份 → 注册声纹 → 设备就绪后可开始正式询问</span>
-      </nav>
 
       <div class="workspace-toast-region record-no-print" aria-live="polite">
         <div v-if="store.actionError" class="workspace-toast error">{{ store.actionError }}</div>
         <div v-else-if="store.actionMessage" class="workspace-toast success">{{ store.actionMessage }}</div>
       </div>
 
-      <section class="workspace-page-body" :class="{ 'interrogation-workspace-body': activePage === 'interrogation', 'preparation-workspace-body': activePage === 'prepare' || activePage === 'voiceprint' }">
+      <section class="workspace-page-body" :class="{ 'interrogation-workspace-body': activePage === 'interrogation', 'preparation-workspace-body': activePage !== 'interrogation' }">
         <TemplatePickerPage
           v-if="activePage === 'template'"
           :template-key="templateStore.workspace.templateKey ?? null"
           :facts="store.facts"
           :questions="templateStore.workspace.questions"
           @confirm="goStep('intake', true)"
-        />
-        <CasePreparationPage
-          v-else-if="activePage === 'prepare'"
-          :summary="store.caseSummary"
-          :facts="store.facts"
-          :readiness="store.voiceprintReadiness"
-          :enrollment-state="store.voiceprintEnrollmentState"
-          :capabilities="preparationDevices"
-          :session-status="store.session.status"
-          :recorder-name="recorderName"
-          :busy="preparationBusy || questionDictationActive || questionDictationBusy"
-          :device-error="preparationDeviceError"
-          @profile="openIntakePage('profile')"
-          @voiceprint="openIntakePage('voiceprint')"
-          @refresh="refreshPreparation"
-          @start="startPreparedSession"
-          @interrogation="goStep('dictation', true)"
         />
         <CaseProfilePage
           v-else-if="activePage === 'profile'"
@@ -433,29 +408,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
           :locked="profileLocked"
           :reader-available="preparationDevices?.identity.state === 'AVAILABLE'"
           @saved="refreshCaseWorkspace"
-          @next="goStep('dictation')"
-        />
-
-        <MossTranscriptionPanel v-else-if="activePage === 'moss'" :case-id="store.caseId || props.caseId" />
-
-        <VoiceprintSetupPage
-          v-else-if="activePage === 'voiceprint'"
-          :suspect-name="store.caseSummary.suspectName || ''"
-          :summary="store.caseSummary"
-          :facts="store.facts"
-          :recorder-name="recorderName"
-          :readiness="store.voiceprintReadiness"
-          :officers="store.officerVoiceprints"
-          :selected-interrogator-officer-id="store.selectedInterrogatorOfficerId"
-          :selected-recorder-officer-id="store.selectedRecorderOfficerId"
-          :enrollment-state="store.voiceprintEnrollmentState"
-          :busy="store.voiceprintBusy"
-          @suspect-start="autoVoiceprint.startSuspect()"
-          @suspect-stop="autoVoiceprint.stopSuspect()"
-          @select-interrogator="store.selectInterrogatorOfficer($event)"
-          @select-recorder="store.selectRecorderOfficer($event)"
-          @bind-roles="store.bindVoiceprintRoles()"
-          @back="openIntakePage('prepare')"
+          @next="goStep('dictation', true)"
         />
 
         <div v-else class="interrogation-workspace-stack">
@@ -481,7 +434,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             :question-dictation-busy="questionDictationBusy"
             :question-dictation-draft="questionDictationDraft"
             :question-dictation-error="questionDictationError"
-            :readiness="store.voiceprintReadiness"
+            :recorder-name="recorderName === '未指定' ? '' : recorderName"
             :completion-mode="completionMode"
             @update:completion-mode="onCompletionModeChange"
             @saved="refreshCaseWorkspace"
@@ -517,98 +470,48 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
 .app-topbar {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-4);
   flex: 0 0 auto;
-  min-height: var(--height-topbar);
-  padding: 0 var(--space-6);
+  min-height: 64px;
+  padding: 0 var(--space-8);
   background: var(--navy-900);
   color: var(--surface);
 }
-.topbar-back {
-  min-height: 32px;
-  padding: 0 12px 0 8px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: var(--radius-pill);
+.app-brand {
+  padding: 0;
+  border: 0;
   background: transparent;
-  color: var(--primary-100);
-  font-size: var(--text-sm);
+  color: var(--surface);
+  font-size: var(--text-xl);
+  font-weight: 650;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
 }
-.topbar-back:hover { background: rgba(255, 255, 255, 0.1); }
-.app-brand { font-size: var(--text-lg); font-weight: 600; letter-spacing: 0.5px; }
+.app-brand:hover { color: var(--primary-100); }
 .case-chip {
-  padding: 3px 10px;
-  border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.1);
   color: var(--primary-100);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 360px;
+  min-width: 0;
 }
 .app-topbar-meta {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-4);
   margin-left: auto;
   min-width: 0;
-}
-.topbar-field { color: var(--line-300); font-size: var(--text-sm); white-space: nowrap; }
-.topbar-divider { width: 1px; height: 16px; background: rgba(255, 255, 255, 0.18); }
-.topbar-audio-source.voiceprint-source-banner { border-color: rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.06); }
-.topbar-audio-source :deep(strong) { color: var(--primary-100); }
-.topbar-tool {
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--primary-100);
+  color: var(--line-300);
   font-size: var(--text-sm);
   white-space: nowrap;
 }
-.topbar-tool:hover { background: rgba(255, 255, 255, 0.12); }
-.topbar-tool.active { border-color: var(--primary-600); background: var(--primary-600); color: var(--surface); }
-.recording { font-size: var(--text-sm); color: var(--success-600); white-space: nowrap; }
-.recording.muted { color: var(--ink-400); }
+.topbar-field i { margin: 0 var(--space-2); font-style: normal; }
+.topbar-divider { flex: none; width: 1px; height: 20px; background: rgba(255, 255, 255, 0.22); }
+.topbar-status.live { color: var(--success-100); }
+.topbar-clock { color: var(--surface); font-size: var(--text-md); font-variant-numeric: tabular-nums; }
 
-.step-hint { color: var(--ink-400); font-size: var(--text-sm); }
-.step-back-tool {
-  min-height: 34px;
-  padding: 0 14px;
-  border: 1px solid var(--line-300);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--primary-600);
-  font-size: var(--text-base);
-}
-
-.intake-subnav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex: 0 0 auto;
-  padding: var(--space-2) var(--space-6);
-  background: var(--surface);
-  border-bottom: 1px solid var(--line-200);
-}
-.intake-subnav button {
-  min-height: 34px;
-  padding: 0 14px;
-  border: 1px solid var(--line-200);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--ink-500);
-  font-size: var(--text-base);
-}
-.intake-subnav button:hover { border-color: var(--primary-200); color: var(--primary-600); }
-.intake-subnav button.active {
-  border-color: var(--primary-200);
-  background: var(--primary-100);
-  color: var(--primary-700);
-  font-weight: 600;
-}
-.intake-hint { margin-left: auto; color: var(--ink-300); font-size: var(--text-xs); }
+.step-hint { color: var(--ink-500); font-size: var(--text-sm); }
 
 .preparation-workspace-body { padding: 0; overflow: auto; background: var(--surface-sunken); }
 .interrogation-workspace-body { padding: 0; overflow: hidden; }
@@ -616,10 +519,6 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
 
 @media (max-width: 1440px) {
   .topbar-field { display: none; }
-  .topbar-divider { display: none; }
-}
-@media (max-width: 1180px) {
-  .case-chip { max-width: 220px; }
-  .intake-hint { display: none; }
+  .topbar-field + .topbar-divider { display: none; }
 }
 </style>

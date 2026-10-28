@@ -1,6 +1,7 @@
 import { createSSRApp } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { describe, expect, it } from 'vitest'
+import { TEMPLATE_CATALOG } from '../config/templateCatalog'
 import TemplatePickerPage from './TemplatePickerPage.vue'
 
 const facts = [
@@ -13,24 +14,29 @@ const questions = ['你因何事来公安机关？', '你的基本情况？', '�
 const render = (props: Record<string, unknown>) => renderToString(createSSRApp(TemplatePickerPage, { templateKey: 'SUSPECT_INQUIRY_V1', facts, questions, ...props }))
 
 describe('TemplatePickerPage (design P05)', () => {
-  it('shows the case template as the selected card', async () => {
+  it('lists the whole catalog with category counts and preselects the case template', async () => {
     const html = await render({})
-    expect(html).toContain('选择笔录模板')
-    expect(html).toContain('嫌疑人询问')
-    expect(html).toContain('已选此模板')
-    expect(html).toContain('全部 (1)')
+    expect(html).toContain('① 选择笔录模板')
+    for (const item of TEMPLATE_CATALOG) expect(html).toContain(item.title)
+    expect(html).toContain(`全部（${TEMPLATE_CATALOG.length}）`)
+    expect(html).toContain('盗窃类（2）')
+    expect(html.match(/已选此模板/g)).toHaveLength(1)
+    expect(html.match(/选此模板 →/g)).toHaveLength(TEMPLATE_CATALOG.length - 1)
     expect(html).toContain('确认模板 · 进入建档')
   })
 
-  it('previews core elements and the first three preset questions', async () => {
+  it('previews the record skeleton, live core elements and the first three preset questions', async () => {
     const html = await render({})
+    expect(html).toContain('生成后的正本骨架')
+    expect(html).toContain('问答正文区 · 按 2 项要素顺序排')
     expect(html).toContain('核心要素（2 项）')
-    expect(html).toContain('时间')
-    expect(html).not.toContain('联系方式')
+    const preview = html.slice(html.indexOf('<aside class="picker-preview"'))
+    expect(preview).not.toContain('联系方式')
     expect(html).toContain('你因何事来公安机关？')
     expect(html).toContain('你还有什么要补充的？')
     expect(html).not.toContain('你以上说的是否属实？')
-    expect(html).toContain('共 4 条')
+    expect(html).toContain('共 4 条 · 展开查看全部')
+    expect(html).not.toContain('示例模板：')
   })
 
   it('keeps unbuilt template actions visibly disabled', async () => {
@@ -40,9 +46,15 @@ describe('TemplatePickerPage (design P05)', () => {
     }
   })
 
-  it('shows an empty state when the case has no template yet', async () => {
+  it('falls back to the first sample template and says so when the case has no template', async () => {
     const html = await render({ templateKey: null, questions: [] })
-    expect(html).toContain('暂无可用模板')
-    expect(html).not.toContain('已选此模板')
+    expect(html.match(/已选此模板/g)).toHaveLength(1)
+    expect(html).toContain('示例模板：模板目录尚未接入后端')
+  })
+
+  it('adds a card for a backend template missing from the catalog', async () => {
+    const html = await render({ templateKey: 'CUSTOM_V9' })
+    expect(html).toContain('CUSTOM_V9')
+    expect(html).toContain(`全部（${TEMPLATE_CATALOG.length + 1}）`)
   })
 })

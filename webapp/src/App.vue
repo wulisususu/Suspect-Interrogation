@@ -13,7 +13,6 @@ import CaseDashboardView from './views/CaseDashboardView.vue'
 import KioskHomeView from './views/KioskHomeView.vue'
 import LoginView from './views/LoginView.vue'
 import InterrogationWorkspace from './views/InterrogationWorkspace.vue'
-import SystemSettingsView from './views/SystemSettingsView.vue'
 import { parseRootRoute, rootRouteUrl, type AdminPanel, type RootRoute } from './utils/rootRoute'
 
 const route = ref<RootRoute>(parseRootRoute(location.search))
@@ -34,7 +33,6 @@ function startNewRecord() {
   go({ page: 'cases' })
   startNew.value = true
 }
-const openSettings = () => go({ page: 'settings' })
 const openLogin = () => go({ page: 'login' })
 const openHome = () => go({ page: 'home' })
 const lock = () => { locked.value = true }
@@ -58,7 +56,6 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
   <LockScreen v-if="locked" @unlock="unlock" />
   <MaintenanceGate v-else>
     <InterrogationWorkspace v-if="route.page === 'case'" :key="route.caseId" :case-id="route.caseId" @back="openCases" />
-    <SystemSettingsView v-else-if="route.page === 'settings'" @back="openAdmin" />
     <LoginView v-else-if="route.page === 'login'" @back="openHome" @admin="openAdmin" />
     <KioskHomeView v-else-if="route.page === 'home'" @start="startNewRecord" @police-entry="openLogin" />
     <AdminShell v-else-if="route.page === 'admin'" title="管理面板" back-label="返回大厅" @back="openHome" @lock="lock">
@@ -66,7 +63,6 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
         @cases="openCases"
         @pending="go({ page: 'admin-pending' })"
         @audit="go({ page: 'admin-audit' })"
-        @voiceprints="openSettings"
         @placeholder="openPlaceholder"
       />
     </AdminShell>

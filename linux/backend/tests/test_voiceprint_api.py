@@ -179,10 +179,6 @@ def test_suspect_enrollment_changes_readiness_and_allows_session_start(tmp_path)
             "canStart": False,
         }
 
-        blocked = client.post(f"/api/v1/cases/{case_id}/session/start", json={"actor_id": "op"})
-        assert blocked.status_code == 409
-        assert blocked.json()["code"] == "SUSPECT_VOICEPRINT_REQUIRED"
-
         enrolled = enroll_suspect(client, case_id)
         assert enrolled["usableDurationMs"] == 60000
         assert enrolled["embeddingDim"] == 3

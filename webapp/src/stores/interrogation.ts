@@ -747,7 +747,6 @@ export const useInterrogationStore = defineStore('interrogation', () => {
 
   async function startCapture() {
     if (!captureAvailable.value) return feedback('连续离线录音 Runtime 当前不可用，请检查 ASR/麦克风能力状态', true)
-    if (!voiceprintReadiness.value.canStart) return feedback('请先完成嫌疑人声纹注册，再启动正式语音采集', true)
     if (!canRecord.value) return feedback('请先开始审讯再录音', true)
     if (captureBusy.value || capture.value.running) return
 
@@ -1189,23 +1188,16 @@ export const useInterrogationStore = defineStore('interrogation', () => {
 
   async function startSession() {
     const scope = currentScope()
-    if (!voiceprintReadiness.value.canStart) {
-      feedbackIfCurrent(scope, voiceprintReadiness.value.simulated ? '浏览器模拟声纹不能解锁正式审讯' : '请先完成嫌疑人声纹注册', true)
-      return
-    }
     try {
-      const nextSession = await startSessionApi(
-        scope.caseId,
-        selectedInterrogatorOfficerId.value,
-        selectedRecorderOfficerId.value,
-      )
+      // 声纹已移出办理流程，开始询问不再绑定民警声纹角色。
+      const nextSession = await startSessionApi(scope.caseId, null, null)
       if (!isCurrentScope(scope) || nextSession.caseId !== scope.caseId) return
       session.value = nextSession
       if (!isCurrentScope(scope)) return
       disposeCaptureEvents()
       initializeRuntimeEvents(scope)
       await refreshCase(scope)
-      feedbackIfCurrent(scope, '审讯已开始：声纹角色已随本次 session 一次性冻结')
+      feedbackIfCurrent(scope, '询问已开始')
     } catch (err) {
       feedbackIfCurrent(scope, backendErrorMessage(err), true)
     }

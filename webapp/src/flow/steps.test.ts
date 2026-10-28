@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { FLOW_STEPS, pageForStep, resolveFlowProgress, type FlowSnapshot } from './steps'
+import { FLOW_STEPS, modeForStep, pageForStep, resolveFlowProgress, stepKeyForMode, type FlowSnapshot } from './steps'
 
 const empty: FlowSnapshot = {
-  hasTemplate: false, identityReady: false, voiceprintReady: false, hasQuestions: false,
+  hasTemplate: false, identityReady: false, hasQuestions: false,
   frozen: false, signed: false, archived: false,
 }
-const prepared: FlowSnapshot = { ...empty, hasTemplate: true, identityReady: true, voiceprintReady: true, hasQuestions: true }
+const prepared: FlowSnapshot = { ...empty, hasTemplate: true, identityReady: true, hasQuestions: true }
 
 describe('resolveFlowProgress', () => {
-  it('declares the six design steps in order', () => {
-    expect(FLOW_STEPS.map((step) => step.title)).toEqual(['选模板', '建档', '问答录入', '定稿校验', '签署归档', '归档导出'])
+  it('declares the five design steps in order', () => {
+    expect(FLOW_STEPS.map((step) => step.title)).toEqual(['选模板', '建档', '问答录入', '定稿校验', '签署归档'])
   })
 
   it('starts a blank case at template selection with only the first two steps open', () => {
@@ -19,7 +19,7 @@ describe('resolveFlowProgress', () => {
     expect(progress.completed).toEqual([])
   })
 
-  it('opens dictation and review once intake is complete and questions exist', () => {
+  it('completes intake from template and identity alone, without any voiceprint', () => {
     const progress = resolveFlowProgress(prepared)
     expect(progress.completed).toEqual(['template', 'intake'])
     expect(progress.reachable).toEqual(['template', 'intake', 'dictation', 'review'])
@@ -33,28 +33,30 @@ describe('resolveFlowProgress', () => {
     expect(progress.suggested).toBe('signing')
   })
 
-  it('keeps the archive step closed until the case is actually archived', () => {
-    expect(resolveFlowProgress({ ...prepared, frozen: true, signed: true }).reachable).not.toContain('archive')
-    expect(resolveFlowProgress({ ...prepared, frozen: true, signed: true, archived: true }).reachable).toContain('archive')
-  })
-
-  it('lands on the archive step when the case is archived', () => {
-    expect(resolveFlowProgress({ ...prepared, frozen: true, signed: true, archived: true }).suggested).toBe('archive')
+  it('keeps signing open until the case is archived, then marks every step done', () => {
+    expect(resolveFlowProgress({ ...prepared, frozen: true, signed: true }).completed).not.toContain('signing')
+    const archived = resolveFlowProgress({ ...prepared, frozen: true, signed: true, archived: true })
+    expect(archived.completed).toEqual(['template', 'intake', 'dictation', 'review', 'signing'])
+    expect(archived.suggested).toBe('signing')
   })
 })
 
 describe('pageForStep', () => {
-  it('opens the template picker for step ①', () => {
-    expect(pageForStep('template', 'prepare')).toBe('template')
+  it('maps ① to the template picker and ② to the single intake page', () => {
+    expect(pageForStep('template')).toBe('template')
+    expect(pageForStep('intake')).toBe('profile')
   })
 
-  it('keeps an intake sub-page when already inside intake and falls back to preparation otherwise', () => {
-    expect(pageForStep('intake', 'voiceprint')).toBe('voiceprint')
-    expect(pageForStep('intake', 'template')).toBe('prepare')
-    expect(pageForStep('intake', 'interrogation')).toBe('prepare')
+  it('shows the record page for steps ③–⑤', () => {
+    for (const key of ['dictation', 'review', 'signing'] as const) expect(pageForStep(key)).toBe('interrogation')
   })
+})
 
-  it('shows the record page for steps ③–⑥', () => {
-    for (const key of ['dictation', 'review', 'signing', 'archive'] as const) expect(pageForStep(key, 'prepare')).toBe('interrogation')
+describe('signing and archive share step ⑤', () => {
+  it('shows the export page inside ⑤ once archived', () => {
+    expect(modeForStep('signing')).toBe('sign')
+    expect(modeForStep('signing', true)).toBe('archive')
+    expect(stepKeyForMode('archive')).toBe('signing')
+    expect(stepKeyForMode('sign')).toBe('signing')
   })
 })

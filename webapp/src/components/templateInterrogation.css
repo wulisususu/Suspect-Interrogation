@@ -59,20 +59,6 @@
   min-width: 0;
 }
 
-.dialogue-voiceprint-hint {
-  align-self: center;
-  justify-self: center;
-  margin: 0 16px;
-  padding: 18px 22px;
-  border: 1px dashed var(--line-300);
-  border-radius: 10px;
-  background: var(--surface-sunken);
-  color: var(--ink-500);
-  font: var(--text-sm)/1.7 system-ui, sans-serif;
-  text-align: center;
-}
-.dialogue-voiceprint-hint p { margin: 2px 0; }
-
 .panel-kicker {
   display: block;
   margin-bottom: 3px;
@@ -805,7 +791,6 @@ button:disabled {
 .draft-column > .draft-preparation { flex: 0 0 auto; }
 .draft-column > .draft-rail { min-height: 168px; }
 .draft-column > .live-dialogue-panel { flex: 1 1 auto; min-height: 0; }
-.draft-column > .dialogue-voiceprint-hint { flex: 1 1 auto; align-self: center; }
 
 /* 从草稿卡跳到正本时的一次性高亮 */
 .record-qa-located {

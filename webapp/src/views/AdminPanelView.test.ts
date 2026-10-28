@@ -25,7 +25,8 @@ describe('AdminPanelView (design P19)', () => {
 
   it('links the other back-office pages', async () => {
     const html = await renderToString(createSSRApp(AdminPanelView))
-    for (const link of ['未完成办理', '模板管理', '操作日志', '民警声纹库']) expect(html).toContain(link)
+    for (const link of ['未完成办理', '模板管理', '操作日志']) expect(html).toContain(link)
+    expect(html).not.toContain('民警声纹库')
   })
 })
 

@@ -55,23 +55,13 @@ describe('template-driven interrogation C-page contract', () => {
     expect(pageSource).toContain('@voice-stop="emit(\'questionDictationStop\')"')
   })
 
-  it('gates live dialogue on suspect voiceprint enrollment without the legacy preparation stack', () => {
+  it('shows live dialogue without any voiceprint gate now that voiceprints left the workflow', () => {
     expect(pageSource).not.toContain('VoiceprintEnrollmentGate')
-    expect(workspaceSource).toContain("import VoiceprintSetupPage from '../components/VoiceprintSetupPage.vue'")
-    expect(workspaceSource).not.toContain('voiceprint-prep-stack')
-    expect(workspaceSource).not.toContain('<VoiceprintPreparationPanel')
-  })
-
-  it('hosts the voiceprint gate on the dedicated E page so re-recording stays reachable', () => {
-    // The gate must stay permanently mounted on its own page: the registered-state
-    // card inside it is the single entry point for re-recording an existing
-    // suspect voiceprint.
-    expect(workspaceSource).toContain('<VoiceprintSetupPage')
-    expect(workspaceSource).toContain(`@suspect-start="autoVoiceprint.startSuspect()"`)
-    expect(workspaceSource).toContain(`@bind-roles="store.bindVoiceprintRoles()"`)
+    expect(workspaceSource).not.toContain('VoiceprintSetupPage')
+    expect(workspaceSource).not.toContain('autoVoiceprint')
     expect(pageSource).toContain('<LiveDialoguePanel')
-    expect(pageSource).toContain('v-if="readiness.suspectReady"')
-    expect(pageSource).toContain('dialogue-voiceprint-hint')
+    expect(pageSource).not.toContain('readiness.suspectReady')
+    expect(pageSource).not.toContain('dialogue-voiceprint-hint')
   })
 
   it('retires the legacy monolithic interrogation C-page', () => {

@@ -1386,12 +1386,9 @@ class AsrCaptureService:
             db, case.id, model_key=selected_backend
         )
         if suspect is None:
-            raise DomainError(
-                "SUSPECT_VOICEPRINT_BACKEND_REQUIRED",
-                f"{selected_backend} 嫌疑人声纹不可用",
-                409,
-                data={"speaker_backend": selected_backend},
-            )
+            # 无声纹案件：不做说话人比对，片段照常落库并标为 UNKNOWN，
+            # 由民警在工作台手动摘入正本。
+            return [], {SpeakerRole.SUSPECT}
 
         enabled: set[SpeakerRole] = {SpeakerRole.SUSPECT}
         references: list[tuple[SpeakerRole, Any, str | None, str | None]] = [

@@ -6,12 +6,12 @@ export const ADMIN_PANELS = ['knowledge', 'templates', 'template-edit', 'signatu
 export type AdminPanel = typeof ADMIN_PANELS[number]
 
 export type RootRoute =
-  | { page: 'home' | 'cases' | 'settings' | 'login' | 'admin' | 'admin-cases' | 'admin-pending' | 'admin-audit' }
+  | { page: 'home' | 'cases' | 'login' | 'admin' | 'admin-cases' | 'admin-pending' | 'admin-audit' }
   | { page: 'case'; caseId: string }
   | { page: 'admin-case'; adminCaseId: string }
   | { page: 'admin-placeholder'; panel: AdminPanel }
 
-const SIMPLE_PAGES = ['cases', 'settings', 'login', 'admin', 'admin-cases', 'admin-pending', 'admin-audit'] as const
+const SIMPLE_PAGES = ['cases', 'login', 'admin', 'admin-cases', 'admin-pending', 'admin-audit'] as const
 
 export function parseRootRoute(search: string): RootRoute {
   const params = new URLSearchParams(search)
