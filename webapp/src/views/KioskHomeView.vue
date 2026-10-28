@@ -112,7 +112,7 @@ onUnmounted(() => {
       <div class="kiosk-modes">
         <section class="kiosk-card" aria-labelledby="kiosk-manual-title">
           <header class="kiosk-card-head">
-            <span class="kiosk-card-icon" aria-hidden="true"><ShieldCheck :size="34" /></span>
+            <span class="kiosk-card-icon" aria-hidden="true"><ShieldCheck :size="52" /></span>
             <div>
               <h2 id="kiosk-manual-title">人工模式 <span class="kiosk-badge">民警办理</span></h2>
               <p>民警提问、系统实时转写，左侧草稿右侧正本，划选摘入后定稿</p>
@@ -172,53 +172,54 @@ onUnmounted(() => {
 .kiosk-police-entry { display: inline-flex; align-items: center; gap: var(--space-1); margin-left: auto; min-height: 36px; padding: 0 var(--space-4); border: 1px solid rgba(255, 255, 255, 0.24); border-radius: var(--radius-sm); background: rgba(255, 255, 255, 0.08); color: var(--primary-100); font-size: var(--text-sm); }
 .kiosk-police-entry:hover { background: rgba(255, 255, 255, 0.16); }
 
-.kiosk-body { flex: 1 1 auto; width: 100%; max-width: 1320px; margin: 0 auto; padding: var(--space-8) var(--space-8) var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
+/* 样板 P04：内容左右约 48px，标题与两张模式卡片占据主要屏幕 */
+.kiosk-body { flex: 1 1 auto; width: 100%; padding: var(--space-10) var(--space-12) var(--space-6); display: flex; flex-direction: column; gap: var(--space-6); }
 
 .kiosk-greeting { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6); }
-.kiosk-greeting h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 650; }
-.kiosk-greeting p { margin: var(--space-2) 0 0; color: var(--ink-500); font-size: var(--text-md); }
-.kiosk-clock { padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--ink-500); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kiosk-greeting h1 { margin: 0; color: var(--ink-900); font-size: var(--text-display); font-weight: 650; line-height: 1.2; }
+.kiosk-greeting p { margin: var(--space-3) 0 0; color: var(--ink-500); font-size: var(--text-xl); }
+.kiosk-clock { padding: var(--space-2) var(--space-4); border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--ink-500); font-size: var(--text-md); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .kiosk-alert { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--danger-100); color: var(--danger-700); font-size: var(--text-sm); }
 .kiosk-alert button { min-height: 36px; padding: 0 var(--space-3); border: 1px solid var(--danger-600); border-radius: var(--radius-sm); background: var(--surface); color: var(--danger-700); }
 
-.kiosk-modes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-5); }
-.kiosk-card { display: flex; flex-direction: column; gap: var(--space-5); padding: var(--space-6); border: 1px solid var(--line-200); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
+.kiosk-modes { display: grid; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-8); min-height: 0; }
+.kiosk-card { display: flex; flex-direction: column; gap: var(--space-8); padding: var(--space-8); border: 1px solid var(--line-200); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
 .kiosk-modes > .kiosk-card:first-child { border-color: var(--primary-500); background: var(--primary-50); }
 .kiosk-card-head { display: flex; gap: var(--space-4); }
-.kiosk-card-icon { display: grid; place-items: center; width: 72px; height: 72px; flex: none; border-radius: var(--radius-lg); background: var(--primary-100); color: var(--primary-600); }
-.kiosk-card h2 { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-2); color: var(--ink-900); font-size: var(--text-2xl); font-weight: 650; }
-.kiosk-badge { padding: 3px 10px; border-radius: var(--radius-pill); background: var(--primary-600); color: var(--surface); font-size: var(--text-xs); font-weight: 600; }
-.kiosk-card-head p { margin: 0 0 var(--space-2); color: var(--ink-700); font-size: var(--text-base); }
-.kiosk-card-head small, .kiosk-card footer small { color: var(--ink-400); font-size: var(--text-xs); }
+.kiosk-card-icon { display: grid; place-items: center; width: 108px; height: 108px; flex: none; border-radius: var(--radius-lg); background: var(--primary-100); color: var(--primary-600); }
+.kiosk-card h2 { display: flex; align-items: center; gap: var(--space-3); margin: 0 0 var(--space-3); color: var(--ink-900); font-size: var(--text-4xl); font-weight: 650; }
+.kiosk-badge { padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); background: var(--primary-600); color: var(--surface); font-size: var(--text-md); font-weight: 600; }
+.kiosk-card-head p { margin: 0 0 var(--space-3); color: var(--ink-700); font-size: var(--text-xl); }
+.kiosk-card-head small, .kiosk-card footer small { color: var(--ink-400); font-size: var(--text-md); }
 
-.kiosk-flow { padding: var(--space-4); border-radius: var(--radius-md); background: var(--surface-muted); }
-.kiosk-flow-label { color: var(--ink-400); font-size: var(--text-xs); }
-.kiosk-flow ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
-.kiosk-flow li { display: flex; flex-direction: column; gap: var(--space-1); }
-.kiosk-flow b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--primary-600); color: var(--surface); font-size: var(--text-xs); }
-.kiosk-flow strong { color: var(--primary-600); font-size: var(--text-base); font-weight: 600; }
-.kiosk-flow span { color: var(--ink-500); font-size: var(--text-xs); }
+.kiosk-flow { padding: var(--space-6) var(--space-8); border-radius: var(--radius-md); background: var(--surface-muted); }
+.kiosk-flow-label { color: var(--ink-400); font-size: var(--text-md); }
+.kiosk-flow ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
+.kiosk-flow li { display: flex; flex-direction: column; gap: var(--space-2); }
+.kiosk-flow b { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--primary-600); color: var(--surface); font-size: var(--text-md); }
+.kiosk-flow strong { color: var(--primary-600); font-size: var(--text-xl); font-weight: 600; }
+.kiosk-flow span { color: var(--ink-500); font-size: var(--text-md); }
 
 .kiosk-card footer { display: flex; flex-direction: column; gap: var(--space-2); margin-top: auto; }
-.kiosk-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 48px; border: 0; border-radius: var(--radius-md); background: var(--primary-600); color: var(--surface); font-size: var(--text-md); font-weight: 600; }
+.kiosk-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 60px; border: 0; border-radius: var(--radius-md); background: var(--primary-600); color: var(--surface); font-size: var(--text-xl); font-weight: 600; box-shadow: var(--shadow-active); }
 .kiosk-primary:hover { background: var(--primary-700); }
 
-.kiosk-devices h2 { font-size: var(--text-xl); }
+.kiosk-devices h2 { font-size: var(--text-4xl); }
 .kiosk-devices ul { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.kiosk-devices li { display: flex; align-items: center; gap: var(--space-3); min-height: 52px; padding: 0 var(--space-4); border-radius: var(--radius-md); background: var(--surface-sunken); color: var(--ink-700); font-size: var(--text-base); }
+.kiosk-devices li { display: flex; align-items: center; gap: var(--space-3); min-height: 72px; padding: 0 var(--space-6); border-radius: var(--radius-md); background: var(--surface-sunken); color: var(--ink-700); font-size: var(--text-xl); }
 .kiosk-devices li em { margin-left: auto; color: var(--warning-700); font-style: normal; font-weight: 600; }
 .kiosk-devices li em.ok { color: var(--success-700); }
-.kiosk-secondary { min-height: 44px; margin-top: auto; border: 1px solid var(--primary-500); border-radius: var(--radius-md); background: var(--surface); color: var(--primary-600); font-size: var(--text-base); font-weight: 600; }
+.kiosk-secondary { min-height: 60px; margin-top: auto; border: 1px solid var(--primary-500); border-radius: var(--radius-md); background: var(--surface); color: var(--primary-600); font-size: var(--text-base); font-weight: 600; }
 
-.kiosk-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--ink-700); font-size: var(--text-sm); }
+.kiosk-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); padding: var(--space-5) var(--space-8); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--ink-700); font-size: var(--text-lg); }
 .kiosk-strip span { display: flex; align-items: center; gap: var(--space-2); }
-.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .dot.is-primary { background: var(--primary-600); }
 .dot.is-success { background: var(--success-600); }
 .dot.is-warning { background: var(--warning-600); }
 
-.kiosk-footer { display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-8); border-top: 1px solid var(--line-200); background: var(--surface); color: var(--ink-400); font-size: var(--text-xs); }
+.kiosk-footer { display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-12); border-top: 1px solid var(--line-200); background: var(--surface); color: var(--ink-400); font-size: var(--text-md); }
 
 @media (max-width: 1100px) {
   .kiosk-modes, .kiosk-strip { grid-template-columns: 1fr; }

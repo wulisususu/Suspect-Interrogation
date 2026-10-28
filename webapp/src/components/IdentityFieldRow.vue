@@ -20,13 +20,13 @@ const SOURCE_LABEL = { CARD: '身份证读取', MANUAL: '手工补填', AUTO: '�
 </template>
 
 <style scoped>
-.identity-row { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: 48px; padding: 0 var(--space-4); border: 1px solid transparent; border-radius: var(--radius-md); background: var(--surface-sunken); }
+.identity-row { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: 44px; padding: 0 var(--space-4); border: 1px solid transparent; border-radius: var(--radius-md); background: var(--surface-sunken); }
 .identity-row.is-manual { border-color: var(--primary-500); background: var(--surface); }
 .identity-row-label { color: var(--ink-400); font-size: var(--text-sm); }
 .identity-row-label b { margin-left: 2px; color: var(--danger-600); }
 .identity-row-control :slotted(input),
 .identity-row-control :slotted(select),
-.identity-row-control :slotted(textarea) { width: 100%; min-height: 40px; border: 0; background: transparent; color: var(--ink-900); font: inherit; font-size: var(--text-base); resize: none; }
+.identity-row-control :slotted(textarea) { width: 100%; min-height: 38px; border: 0; background: transparent; color: var(--ink-900); font: inherit; font-size: var(--text-base); resize: none; }
 .identity-row-control :slotted(select) { flex: 0 0 120px; width: 120px; }
 .identity-row-source { color: var(--ink-400); font-size: var(--text-xs); white-space: nowrap; }
 .identity-row.is-manual .identity-row-source { color: var(--primary-600); }

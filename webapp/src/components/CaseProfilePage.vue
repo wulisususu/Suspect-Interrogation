@@ -226,17 +226,17 @@ onMounted(syncFromProps)
 
 <style scoped>
 .profile-page { display: flex; flex-direction: column; min-height: 100%; height: calc(100% - var(--osk-height, 0px)); overflow: auto; background: var(--surface-sunken); }
-.profile-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-5) var(--space-8); background: var(--surface); }
-.profile-head h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 650; }
-.profile-head p { margin: var(--space-2) 0 0; color: var(--ink-500); font-size: var(--text-sm); }
+.profile-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-8); background: var(--surface); }
+.profile-head h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 650; line-height: 1.25; }
+.profile-head p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-sm); }
 .profile-actions { display: flex; gap: var(--space-4); }
 .profile-primary, .profile-secondary { min-height: 48px; padding: 0 var(--space-6); border-radius: var(--radius-sm); font-size: var(--text-md); font-weight: 600; }
 .profile-primary { border: 0; background: var(--primary-600); color: var(--surface); box-shadow: var(--shadow-card); }
 .profile-secondary { border: 1px solid var(--primary-600); background: var(--surface); color: var(--primary-600); }
 
-.profile-body { display: grid; flex: 1 0 auto; grid-template-columns: 420px minmax(0, 1fr); gap: var(--space-5); padding: var(--space-5) var(--space-6) var(--space-6); }
-.profile-main { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
-.profile-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5); border-radius: var(--radius-lg); background: var(--surface); }
+.profile-body { display: grid; flex: 1 0 auto; grid-template-columns: 420px minmax(0, 1fr); gap: var(--space-5); padding: var(--space-4) var(--space-6) var(--space-5); }
+.profile-main { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.profile-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); background: var(--surface); }
 .profile-card h2 { margin: 0; color: var(--ink-900); font-size: var(--text-base); font-weight: 650; }
 
 .profile-reader { gap: var(--space-4); }

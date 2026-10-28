@@ -91,7 +91,7 @@ const screen = computed(() => SCREENS[props.kind])
 </template>
 
 <style scoped>
-.placeholder-page { display: flex; flex-direction: column; gap: var(--space-4); max-width: 1400px; margin: 0 auto; }
+.placeholder-page { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; }
 .placeholder-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); }
 .placeholder-head h1 { margin: 0; color: var(--ink-900); font-size: var(--text-2xl); font-weight: 600; }
 .placeholder-head p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-xs); }

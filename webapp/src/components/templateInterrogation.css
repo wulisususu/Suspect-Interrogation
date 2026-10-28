@@ -840,9 +840,9 @@ button:disabled {
 .review-checklist .review-fact-list { max-height: min(232px, 28vh); overflow: auto; }
 
 /* ③ 问答录入（样板 P07）：白底页头 + 左草稿 / 右正本两张等宽卡片 */
-.dictation-heading { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-4); padding: var(--space-5) var(--space-8); background: var(--surface); }
-.dictation-heading h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 650; }
-.dictation-heading p { margin: var(--space-2) 0 0; color: var(--ink-500); font-size: var(--text-sm); }
+.dictation-heading { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-8); background: var(--surface); }
+.dictation-heading h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 650; line-height: 1.25; }
+.dictation-heading p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-sm); }
 .dictation-mode { margin-left: auto; padding: var(--space-2) var(--space-4); border-radius: var(--radius-pill); background: var(--primary-100); color: var(--primary-600); font-size: var(--text-sm); }
 .dictation-finalize { min-height: 52px; padding: 0 var(--space-8); border: 0; border-radius: var(--radius-sm); background: var(--primary-600); color: var(--surface); font-size: var(--text-lg); font-weight: 650; box-shadow: var(--shadow-card); }
 .dictation-finalize:disabled { opacity: .6; }

@@ -80,7 +80,7 @@ const entries = computed(() => [
 </template>
 
 <style scoped>
-.admin-panel { display: flex; flex-direction: column; gap: var(--space-5); max-width: 1400px; margin: 0 auto; }
+.admin-panel { display: flex; flex-direction: column; gap: var(--space-5); width: 100%; }
 .admin-panel-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); }
 .admin-panel-head h1 { margin: 0; color: var(--ink-900); font-size: var(--text-2xl); font-weight: 600; }
 .admin-panel-head p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-xs); }

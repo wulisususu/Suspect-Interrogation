@@ -38,7 +38,7 @@ const pending = computed(() => unfinishedCases(props.cases).sort((a, b) => (b.up
 </template>
 
 <style scoped>
-.pending-list { display: flex; flex-direction: column; gap: var(--space-4); max-width: 1400px; margin: 0 auto; }
+.pending-list { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; }
 .pending-list header h1 { margin: 0; color: var(--ink-900); font-size: var(--text-2xl); font-weight: 600; }
 .pending-list header p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-xs); }
 .pending-list ul { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }

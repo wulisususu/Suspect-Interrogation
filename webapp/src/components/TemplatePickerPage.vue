@@ -166,15 +166,15 @@ const circled = (index: number) => String.fromCharCode(0x2460 + index)
 
 <style scoped>
 .template-picker { display: flex; flex-direction: column; min-height: 100%; background: var(--surface-sunken); }
-.picker-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-5) var(--space-8); background: var(--surface); }
-.picker-head h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 650; }
-.picker-head p { margin: var(--space-2) 0 0; color: var(--ink-500); font-size: var(--text-sm); }
+.picker-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-8); background: var(--surface); }
+.picker-head h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 650; line-height: 1.25; }
+.picker-head p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-sm); }
 .picker-actions { display: flex; gap: var(--space-4); }
 .picker-primary, .picker-secondary { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 48px; padding: 0 var(--space-6); border-radius: var(--radius-sm); font-size: var(--text-md); font-weight: 600; }
 .picker-primary { border: 0; background: var(--primary-600); color: var(--surface); box-shadow: var(--shadow-card); }
 .picker-secondary { border: 1px solid var(--primary-600); background: var(--surface); color: var(--primary-600); }
 
-.picker-body { display: grid; grid-template-columns: minmax(0, 1fr) 540px; gap: var(--space-5); padding: var(--space-5) var(--space-6) var(--space-6); }
+.picker-body { display: grid; grid-template-columns: minmax(0, 1fr) 520px; gap: var(--space-5); padding: var(--space-5) var(--space-6) var(--space-6); }
 .picker-main { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
 .picker-toolbar { display: flex; align-items: center; gap: var(--space-4); }
 .picker-search { flex: 0 1 300px; min-width: 160px; min-height: 44px; padding: 0 var(--space-3); border: 0; background: transparent; color: var(--ink-900); font-size: var(--text-sm); }
@@ -185,7 +185,7 @@ const circled = (index: number) => String.fromCharCode(0x2460 + index)
 .picker-new { display: inline-flex; align-items: center; gap: var(--space-1); margin-left: auto; min-height: 44px; padding: 0 var(--space-5); border: 1px solid var(--primary-600); border-radius: var(--radius-sm); background: var(--surface); color: var(--primary-600); font-size: var(--text-md); font-weight: 600; }
 
 .picker-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
-.template-card { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); border: 2px solid transparent; border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-card); }
+.template-card { display: flex; flex-direction: column; gap: var(--space-4); min-height: 320px; padding: var(--space-6) var(--space-5); border: 2px solid transparent; border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-card); }
 .template-card.is-selected { border-color: var(--primary-600); }
 .template-card > header { display: flex; align-items: center; gap: var(--space-2); }
 .template-tag, .template-badge { padding: 2px var(--space-3); border-radius: var(--radius-pill); font-size: var(--text-xs); }
@@ -202,7 +202,7 @@ const circled = (index: number) => String.fromCharCode(0x2460 + index)
 .template-card footer { display: flex; flex-direction: column; gap: var(--space-4); margin-top: auto; padding-top: var(--space-4); border-top: 1px solid var(--line-200); }
 .template-meta { color: var(--ink-500); font-size: var(--text-sm); }
 .template-meta i, .preview-title i { margin: 0 var(--space-2); font-style: normal; }
-.template-choose { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 44px; border: 1px solid var(--primary-600); border-radius: var(--radius-sm); background: var(--surface); color: var(--primary-600); font-size: var(--text-base); font-weight: 600; }
+.template-choose { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 48px; border: 1px solid var(--primary-600); border-radius: var(--radius-sm); background: var(--surface); color: var(--primary-600); font-size: var(--text-base); font-weight: 600; }
 .template-choose.is-picked { border-color: var(--primary-600); background: var(--primary-600); color: var(--surface); cursor: default; }
 
 .picker-preview { display: flex; flex-direction: column; gap: var(--space-2); align-self: start; padding: var(--space-5); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink-700); font-size: var(--text-sm); }

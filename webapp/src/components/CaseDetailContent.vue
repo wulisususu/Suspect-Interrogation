@@ -85,7 +85,7 @@ const caseTypeText = computed(() => (props.summary.caseType === 'suspect_interro
 </template>
 
 <style scoped>
-.case-detail { display: flex; flex-direction: column; gap: var(--space-4); max-width: 1400px; margin: 0 auto; }
+.case-detail { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; }
 .case-detail-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
 .case-detail-head h1 { margin: 0; color: var(--ink-900); font-size: var(--text-2xl); font-weight: 600; }
 .case-detail-head p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-xs); }

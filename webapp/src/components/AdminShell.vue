@@ -29,5 +29,5 @@ const emit = defineEmits<{ back: []; lock: [] }>()
 .admin-title { color: var(--primary-100); font-size: var(--text-sm); }
 .admin-back, .admin-lock { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 36px; padding: 0 var(--space-3); border: 0; border-radius: var(--radius-sm); background: rgba(255, 255, 255, 0.1); color: var(--primary-100); font-size: var(--text-xs); }
 .admin-auth { margin-left: auto; padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.08); color: var(--warning-100); font-size: var(--text-xs); }
-.admin-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--space-6); }
+.admin-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: var(--space-6) var(--space-8); }
 </style>

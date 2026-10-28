@@ -49,7 +49,7 @@ onMounted(loadCases)
 </template>
 
 <style scoped>
-.audit-page { display: flex; flex-direction: column; gap: var(--space-4); max-width: 1400px; margin: 0 auto; }
+.audit-page { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; }
 .audit-page header h1 { margin: 0; color: var(--ink-900); font-size: var(--text-2xl); font-weight: 600; }
 .audit-page header p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-xs); }
 .audit-filter { display: flex; align-items: center; gap: var(--space-3); color: var(--ink-500); font-size: var(--text-sm); }
