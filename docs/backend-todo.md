@@ -84,8 +84,27 @@
 按设计稿改版后以下组件已不再挂载，可在声纹清理（第 8 项）时一并删除：
 `FormalTemplatePanel`（③④ 改为只读预览 `DictationRecordPreview` / `ReviewRecordPreview`）、
 `SessionControls`（③ 由题卡开始 / 暂停，④「确认定稿」由后端结束询问）、`LiveDialoguePanel`、
-`QuestionPreparationPanel`、`CasePreparationPage`、`VoiceprintSetupPage`、`MossTranscriptionPanel`、
-`AiSettingsPanel`。MOSS 转写与 AI 设置是否需要新的入口待定。
+`QuestionPreparationPanel`、`CasePreparationPage`、`VoiceprintSetupPage`、`AiSettingsPanel`。
+AI 设置是否需要新的入口待定。前端 MOSS 转写代码已删除（见第 11 项）。
+
+## 11. MOSS 转写下线（待办，已决定不再使用）
+
+前端 MOSS 面板、接口、类型与测试已于 2026-10-27 删除。后端与板端仍在运行：生产板 `moss-worker.service`
+处于启用状态并占用 NPU，生产部署工作流每次都会重启它（`python -m moss_worker.main`），因此后端代码不能单独删。
+需要按顺序：
+
+1. 部署流水线：`rk3588-production-redeploy.yml` 的「Restart MOSS worker」步骤改为停用并移除
+   `moss-worker.service`；`rk3588-service-bootstrap.yml` 去掉 MOSS 引导；删除 `rk3588-moss-embed-probe.yml`
+   以及 `linux-ai-runtime-rk3588.yml` 中的 MOSS 相关检查（修改 `.github/workflows` 需要带 `workflow` 权限的令牌）。
+2. 板端：停用并禁用 `moss-worker.service`。模型包 `/opt/suspect-interrogation/models/moss-rk3588`、
+   运行时 `/opt/suspect-interrogation/runtime/moss-env`、任务目录 `/var/lib/suspect-interrogation/moss` 是否删除待定。
+3. 后端代码：`app/api/moss_transcription.py`、`app/services/moss_transcription*.py`、`app/ai/moss/`、
+   `app/repositories/moss_transcriptions.py`、`app/database/moss_models.py`、`moss_worker/`、`app/main.py` 中的路由与协调器、
+   `app/health.py` 的 `moss` 能力、`app/ai/registry.py` / `settings.py` / `config/model-registry.yaml` 的 MOSS 配置、
+   `requirements-moss-rk3588.txt`，以及约 20 个 `tests/test_moss_*.py`。
+4. 数据库：MOSS 相关表（`0013_moss_transcription_integration`）是保留还是新增迁移删除，待定（删表不可恢复）。
+5. 其他：`systemd/moss-worker.service`、`deploy/rebuild_moss_manifest.py`、`deploy/tmpfiles-suspect-interrogation.conf`、
+   `tools/moss_rk3588/`、`scripts/ci/probe-moss-rk3588.py`、`tests/release` 与 `tests/tools` 中的 MOSS 测试、相关文档。
 
 ## 附：已知的预存测试失败
 
