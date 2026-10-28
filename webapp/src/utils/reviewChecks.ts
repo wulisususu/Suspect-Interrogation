@@ -1,5 +1,6 @@
 import type { CaseSummary, FactItem } from '../types/interrogation'
 import { factCoverage } from './factCoverage'
+import { officerDisplayName } from './officer'
 
 export type AutoCheckState = 'pass' | 'pending' | 'unavailable'
 
@@ -15,7 +16,7 @@ export function reviewAutoChecks(facts: FactItem[], summary: Pick<CaseSummary, '
   const coverage = factCoverage(facts)
   // 签署人以建档信息为准：被询问人 1 人、询问人与记录人各 1 人。
   const suspect = summary.suspectName && summary.suspectName !== '待录入' ? summary.suspectName : ''
-  const officer = summary.officerName && summary.officerName !== '当前警官' ? summary.officerName : ''
+  const officer = officerDisplayName(summary.officerName)
   const recorder = recorderName.trim()
   const signersReady = Boolean(suspect && officer && recorder)
   return [

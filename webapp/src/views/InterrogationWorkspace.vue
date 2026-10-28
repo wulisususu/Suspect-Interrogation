@@ -28,6 +28,7 @@ import {
 import { TEMPLATE_CATALOG } from '../config/templateCatalog'
 import { useInterrogationStore } from '../stores/interrogation'
 import { useTemplateInterrogationStore } from '../stores/templateInterrogation'
+import { officerDisplayName } from '../utils/officer'
 import { sessionStartGuard } from '../utils/sessionStartGuard'
 import type { CaseSummary, TemporaryAsrSpeaker } from '../types/interrogation'
 import type {
@@ -38,7 +39,7 @@ import type {
   RoundReassociateInput,
 } from '../types/templateInterrogation'
 
-const props = defineProps<{ caseId: string }>()
+const props = defineProps<{ caseId: string; startAtTemplate?: boolean }>()
 defineEmits<{ back: [] }>()
 const store = useInterrogationStore()
 const templateStore = useTemplateInterrogationStore()
@@ -76,7 +77,7 @@ const templateTitle = computed(() => TEMPLATE_CATALOG.find((item) => item.backen
 const caseTypeText = computed(() => factValue('case_type')
   || (store.caseSummary.caseType === 'suspect_interrogation' ? templateTitle.value || '嫌疑人询问' : store.caseSummary.caseType || ''))
 const caseChip = computed(() => [`案 ${store.caseSummary.id || store.caseId}`, caseTypeText.value, factValue('interrogation_place')].filter(Boolean).join(' · '))
-const officerText = computed(() => (store.caseSummary.officerName && store.caseSummary.officerName !== '当前警官' ? store.caseSummary.officerName : '未指定'))
+const officerText = computed(() => officerDisplayName(store.caseSummary.officerName) || '未指定')
 const recorderName = computed(() => factValue('recorder_name') || '未指定')
 const archived = computed(() => store.caseSummary.workflowState === 'REPORT_GENERATED')
 
@@ -280,7 +281,7 @@ watch(
     } catch {
       store.feedback(templateStore.error || '模板笔录工作台加载失败', true)
     }
-    if (store.caseId === nextCaseId) goStep(flowProgress.value.suggested, true)
+    if (store.caseId === nextCaseId) goStep(props.startAtTemplate ? 'template' : flowProgress.value.suggested, true)
   },
   { immediate: true },
 )

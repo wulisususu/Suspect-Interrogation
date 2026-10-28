@@ -7,6 +7,7 @@ import { branding } from '../config/branding'
 import { factValue, formatRecordTime, recordWordCount, volumeNumber } from '../utils/recordPaper'
 import { factCoverage } from '../utils/factCoverage'
 import RecordPaper from './RecordPaper.vue'
+import { officerDisplayName } from '../utils/officer'
 
 /**
  * ⑥ 归档导出
@@ -96,7 +97,7 @@ function escapeHtml(value: string) {
         <p>案 {{ summary.id }} · 《询问笔录》已登记入卷 · 要素 {{ coverage.covered }}/{{ coverage.total }} 覆盖 · 签章 {{ signedCount }} 处</p>
         <dl class="archive-tiles">
           <div><dt>卷　号</dt><dd>{{ volumeNo }}</dd></div>
-          <div><dt>归档人 · 时间</dt><dd>{{ summary.officerName || '未指定' }} · {{ archivedText }}</dd></div>
+          <div><dt>归档人 · 时间</dt><dd>{{ officerDisplayName(summary.officerName) || '未指定' }} · {{ archivedText }}</dd></div>
           <div class="is-ok"><dt>签　章</dt><dd>签名 {{ signedCount }} 处 · 指纹按纸质件</dd></div>
           <div><dt>录音 · 文书</dt><dd>{{ wordCount }} 字 · {{ questions.length }} 题 · 冻结版本 {{ signingState?.version ?? '—' }}</dd></div>
         </dl>

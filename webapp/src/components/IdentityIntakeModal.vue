@@ -8,12 +8,15 @@ import { calculateAge } from '../utils/identityOcr'
 import { createIdentityForm, identityFactValues, identityFormError } from '../utils/identityForm'
 import { saveIdentityProfileFacts } from '../api/caseProfile'
 import ManualIdentityFields from './ManualIdentityFields.vue'
+import { readerMessage } from '../utils/deviceMessage'
 
 const emit = defineEmits<{ close: []; created: [item: CaseSummary] }>()
 interface IdentityReadResponse { identity?: { name?: string; id_number?: string; sex?: string; nation?: string; birth_date?: string; address?: string } }
 const capabilities = ref<RuntimeCapabilities | null>(null)
 const busy = ref('')
 const error = ref('')
+/** 设备类错误的技术原文，收在「技术详情」里 */
+const errorDetail = ref('')
 const cardApplied = ref(false)
 const mode = ref<'card' | 'manual'>('card')
 const createdCase = ref<CaseSummary | null>(null)
@@ -24,10 +27,17 @@ const identityAvailable = computed(() => capabilities.value?.identity.state === 
 // 占位文字等于伪造操作人。留空则要求现场填写。
 const form = reactive({ ...createIdentityForm(), officerName: '' })
 function syncAge() { form.age = calculateAge(form.birthDate) }
+function showReaderError(reason?: string | null) {
+  const message = readerMessage(reason)
+  error.value = message.text
+  errorDetail.value = message.detail
+}
+const readerStatus = computed(() => readerMessage(capabilities.value?.identity.reason))
 function selectMode(next: 'card' | 'manual') {
   if (busy.value || createdCase.value) return
   mode.value = next
   error.value = ''
+  errorDetail.value = ''
   if (next === 'manual') cardApplied.value = false
   void nextTick(() => modalElement.value?.querySelector<HTMLElement>('button')?.focus())
 }
@@ -48,8 +58,8 @@ function onEscape(event: KeyboardEvent) {
 }
 
 async function readCard() {
-  if (!identityAvailable.value) { error.value = capabilities.value?.identity.reason || '身份证读卡器尚未配置，请手动录入。'; return }
-  busy.value = 'card'; error.value = ''
+  if (!identityAvailable.value) { showReaderError(capabilities.value?.identity.reason); return }
+  busy.value = 'card'; error.value = ''; errorDetail.value = ''
   try {
     const result = await getRuntimeAdapter().invoke<IdentityReadResponse>('identity.read', { actorId: form.officerName.trim() || undefined }, { timeoutMs: 30_000 })
     const identity = result.identity
@@ -58,7 +68,7 @@ async function readCard() {
     form.idNumber = (identity.id_number || form.idNumber).toUpperCase()
     form.gender = identity.sex || form.gender; form.nation = identity.nation || form.nation; form.birthDate = identity.birth_date || form.birthDate; form.idCardAddress = identity.address || form.idCardAddress
     syncAge(); cardApplied.value = true
-  } catch (cause) { error.value = backendErrorMessage(cause) } finally { busy.value = '' }
+  } catch (cause) { showReaderError(backendErrorMessage(cause)) } finally { busy.value = '' }
 }
 
 async function submit() {
@@ -68,7 +78,7 @@ async function submit() {
   const officerName = form.officerName.trim()
   if (!officerName) { error.value = '请填写主审民警姓名，该姓名会作为建案操作的留痕人。'; return }
   const suspectName = form.suspectName.trim(); const idNumber = form.idNumber.trim().toUpperCase()
-  busy.value = 'submit'; error.value = ''
+  busy.value = 'submit'; error.value = ''; errorDetail.value = ''
   try {
     const item = createdCase.value || await createCaseWithIdentity({
       operatorId: officerName,
@@ -96,16 +106,16 @@ onUnmounted(() => { document.removeEventListener('keydown', onEscape); previousF
 
 <template>
   <div class="identity-mask" :class="{ 'manual-entry-mode': mode === 'manual' }" @click.self="close"><section ref="modalElement" class="identity-modal" role="dialog" aria-modal="true" aria-labelledby="intake-title" :aria-busy="!!busy">
-    <header><div><h2 id="intake-title">{{ mode === 'manual' ? '人工录入身份信息' : '新建询问' }}</h2><p v-if="mode === 'manual'" class="intake-subtitle">请对照证件原件逐项填写，核对后进入询问准备。</p></div><div class="intake-header-actions"><span v-if="mode === 'manual'" class="review-reminder">需现场复核</span><button v-if="mode === 'manual' && !createdCase" type="button" class="back-to-card" :disabled="!!busy" @click="selectMode('card')">返回读卡</button><button class="close-button" type="button" aria-label="关闭新建询问" :disabled="!!busy" @click="close"><X :size="21" /></button></div></header>
+    <header><div><h2 id="intake-title">{{ mode === 'manual' ? '人工录入身份信息' : '新建询问' }}</h2><p v-if="mode === 'manual'" class="intake-subtitle">请对照证件原件逐项填写，核对后进入选择模板。</p></div><div class="intake-header-actions"><span v-if="mode === 'manual'" class="review-reminder">需现场复核</span><button v-if="mode === 'manual' && !createdCase" type="button" class="back-to-card" :disabled="!!busy" @click="selectMode('card')">返回读卡</button><button class="close-button" type="button" aria-label="关闭新建询问" :disabled="!!busy" @click="close"><X :size="21" /></button></div></header>
     <div v-if="mode === 'card'" class="intake-tabs" aria-label="身份信息录入方式"><button type="button" class="active" aria-pressed="true" :disabled="!!busy" @click="selectMode('card')">身份证读取（推荐）</button><button type="button" aria-pressed="false" :disabled="!!busy" @click="selectMode('manual')">人工录入</button></div>
     <form @submit.prevent="submit">
       <template v-if="mode === 'card'">
-        <div class="identity-card" aria-live="polite"><CreditCard v-if="!cardApplied" :size="34" /><ShieldCheck v-else :size="34" /><strong>{{ cardApplied ? '身份证信息已读取，请核对以下内容' : '请将居民身份证平放至读卡器感应区' }}</strong><span :class="{ available: cardApplied }">{{ cardApplied ? '读取完成，请核对证件原件与本人信息' : capabilities ? identityAvailable ? '读卡器已就绪' : capabilities.identity.reason || '读卡器未配置，可切换人工录入' : '正在检查读卡器…' }}</span><button type="button" :disabled="!!busy || !identityAvailable" @click="readCard"><LoaderCircle v-if="busy === 'card'" :size="16" class="spinning" />{{ busy === 'card' ? '读取中…' : cardApplied ? '重新读取' : '读取身份证' }}</button></div>
+        <div class="identity-card" aria-live="polite"><CreditCard v-if="!cardApplied" :size="34" /><ShieldCheck v-else :size="34" /><strong>{{ cardApplied ? '身份证信息已读取，请核对以下内容' : '请将居民身份证平放至读卡器感应区' }}</strong><span :class="{ available: cardApplied }">{{ cardApplied ? '读取完成，请核对证件原件与本人信息' : capabilities ? identityAvailable ? '读卡器已就绪' : readerStatus.text : '正在检查读卡器…' }}</span><button type="button" :disabled="!!busy || !identityAvailable" @click="readCard"><LoaderCircle v-if="busy === 'card'" :size="16" class="spinning" />{{ busy === 'card' ? '读取中…' : cardApplied ? '重新读取' : '读取身份证' }}</button></div>
         <dl class="identity-summary"><div v-for="row in [{ label: '姓名', value: form.suspectName }, { label: '公民身份号码', value: form.idNumber }, { label: '性别', value: form.gender }, { label: '民族', value: form.nation }, { label: '出生日期', value: form.birthDate }, { label: '年龄', value: form.age ? form.age + ' 岁' : '' }, { label: '身份证住址', value: form.idCardAddress }]" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ cardApplied ? row.value || '未读取到' : '待读取' }}</dd></div><div><dt><label for="intake-card-officer">主审民警</label></dt><dd><input id="intake-card-officer" v-model="form.officerName" :disabled="!!busy" placeholder="填写主审民警姓名" /></dd></div></dl>
       </template>
       <template v-else><p class="manual-notice">人工录入信息请由另一名在场民警对照证件原件核对。保存录入信息不能替代现场身份核验。</p><ManualIdentityFields :form="form" :disabled="!!busy || !!createdCase" /></template>
-      <p v-if="error" class="error" role="alert">{{ error }}</p>
-      <footer><button type="button" class="cancel-button" :disabled="!!busy" @click="close">{{ createdCase ? '进入已建案件补充' : '取消' }}</button><button class="primary" :disabled="!!busy || (mode === 'card' && !cardApplied)">{{ busy === 'submit' ? '保存中…' : createdCase ? '重试保存补充资料' : mode === 'manual' ? '保存并进入询问准备' : '下一步：询问准备' }}<ArrowRight :size="18" /></button></footer>
+      <div v-if="error" class="error" role="alert">{{ error }}<details v-if="errorDetail" class="error-detail"><summary>技术详情</summary><code>{{ errorDetail }}</code></details></div>
+      <footer><button type="button" class="cancel-button" :disabled="!!busy" @click="close">{{ createdCase ? '进入已建案件补充' : '取消' }}</button><button class="primary" :disabled="!!busy || (mode === 'card' && !cardApplied)">{{ busy === 'submit' ? '保存中…' : createdCase ? '重试保存补充资料' : mode === 'manual' ? '保存并进入选择模板' : '下一步：选择模板' }}<ArrowRight :size="18" /></button></footer>
     </form>
   </section></div>
 </template>
@@ -143,6 +153,8 @@ dt { color: var(--ink-400); font-size: var(--text-base); } dd { margin: 0; text-
 input,select,textarea { width: 100%; min-width: 0; min-height: 42px; border: 1px solid var(--primary-100); padding: 10px 12px; border-radius: 8px; background: var(--surface-sunken); color: var(--ink-700); font: inherit; }
 input:focus,select:focus,textarea:focus { outline: 2px solid var(--ink-400); outline-offset: 1px; }
 .error { margin: 12px 0; padding: 10px; border-radius: 7px; background: var(--danger-100); color: var(--danger-600); }
+.error-detail { margin-top: var(--space-1); color: var(--ink-500); font-size: var(--text-xs); }
+.error-detail code { font-family: var(--font-mono); overflow-wrap: anywhere; }
 footer { display: grid; grid-template-columns: 1fr 2fr; gap: 14px; margin-top: 18px; } footer button { min-height: 50px; }
 .spinning { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
 @media(max-height: 800px) { .identity-modal { padding: 22px 26px; } header { margin-bottom: 16px; } .identity-card { padding: 16px; gap: 8px; } .identity-summary { padding: 12px 16px; } .identity-summary > div { min-height: 29px; } }

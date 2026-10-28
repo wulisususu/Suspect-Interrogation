@@ -23,11 +23,18 @@ const locked = ref(false)
 
 function go(next: RootRoute) {
   startNew.value = false
+  freshCaseId.value = ''
   route.value = next
   history.replaceState(null, '', rootRouteUrl(location.href, next))
 }
 
+/** 新建的案件按样板流程从①选模板开始（读卡建案 → 选模板 → 建档 → 问答），仅本次进入有效。 */
+const freshCaseId = ref('')
 const openCase = (caseId: string) => go({ page: 'case', caseId })
+function openNewCase(caseId: string) {
+  go({ page: 'case', caseId })
+  freshCaseId.value = caseId
+}
 const openCases = () => go({ page: 'cases' })
 function startNewRecord() {
   go({ page: 'cases' })
@@ -55,7 +62,7 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
 <template>
   <LockScreen v-if="locked" @unlock="unlock" />
   <MaintenanceGate v-else>
-    <InterrogationWorkspace v-if="route.page === 'case'" :key="route.caseId" :case-id="route.caseId" @back="openCases" />
+    <InterrogationWorkspace v-if="route.page === 'case'" :key="route.caseId" :case-id="route.caseId" :start-at-template="freshCaseId === route.caseId" @back="openCases" />
     <LoginView v-else-if="route.page === 'login'" @back="openHome" @admin="openAdmin" />
     <KioskHomeView v-else-if="route.page === 'home'" @start="startNewRecord" @police-entry="openLogin" />
     <AdminShell v-else-if="route.page === 'admin'" title="管理面板" back-label="返回大厅" @back="openHome" @lock="lock">
@@ -82,6 +89,7 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
       <CaseDashboardView
         :auto-new="startNew"
         @open="openCase"
+        @created="openNewCase"
         @detail="(caseId) => go({ page: 'admin-case', adminCaseId: caseId })"
         @new-cancelled="openHome"
       />

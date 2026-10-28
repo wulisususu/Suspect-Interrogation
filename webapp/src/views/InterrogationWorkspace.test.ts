@@ -46,6 +46,15 @@ describe('interrogation workspace shell', () => {
   })
 })
 
+describe('new case entry (audit D02)', () => {
+  it('opens a freshly created case at ① 选模板 instead of jumping to the suggested step', async () => {
+    const app = (await import('../App.vue?raw')).default
+    expect(app).toContain('@created="openNewCase"')
+    expect(app).toContain(':start-at-template="freshCaseId === route.caseId"')
+    expect(source).toContain("goStep(props.startAtTemplate ? 'template' : flowProgress.value.suggested, true)")
+  })
+})
+
 describe('record header editing', () => {
   it('patches the header in place instead of reloading the whole workspace', () => {
     const start = source.indexOf('async function saveRecordHeader')

@@ -7,6 +7,7 @@ import FilterSelect, { type FilterOption } from '../components/FilterSelect.vue'
 import IdentityIntakeModal from '../components/IdentityIntakeModal.vue'
 import type { CaseSummary } from '../types/interrogation'
 import { casePhase, ledgerActions, ledgerStatus, type CasePhase, type LedgerAction } from '../utils/caseLedger'
+import { officerDisplayName } from '../utils/officer'
 
 /**
  * 全部案件记录（样板 P20）
@@ -15,7 +16,7 @@ import { casePhase, ledgerActions, ledgerStatus, type CasePhase, type LedgerActi
  * 新建询问从这里发起（身份录入弹窗），大厅「开始新建笔录」进来时自动打开。
  */
 const props = withDefaults(defineProps<{ autoNew?: boolean }>(), { autoNew: false })
-const emit = defineEmits<{ open: [caseId: string]; detail: [caseId: string]; newCancelled: [] }>()
+const emit = defineEmits<{ open: [caseId: string]; detail: [caseId: string]; created: [caseId: string]; newCancelled: [] }>()
 
 const cases = ref<CaseSummary[]>([])
 const loading = ref(true)
@@ -86,7 +87,7 @@ function clearFilters() {
 function created(item: CaseSummary) {
   identityOpen.value = false
   cases.value = [item, ...cases.value.filter((row) => row.id !== item.id)]
-  emit('open', item.id)
+  emit('created', item.id)
 }
 function closeIntake() {
   identityOpen.value = false
@@ -106,7 +107,7 @@ const statusFilterOptions = computed<FilterOption[]>(() => PHASE_ORDER.map((key)
 })))
 const officerFilterOptions = computed<FilterOption[]>(() => [...new Set(cases.value.map((item) => item.officerName).filter(Boolean))]
   .sort()
-  .map((name) => ({ key: name, label: name })))
+  .map((name) => ({ key: name, label: officerDisplayName(name) || '未指定' })))
 /** 关键字在已加载的案件里即时匹配案件编号 / 案由 / 主审民警 / 姓名（样板 P14）；身份证号前缀交给后端检索。 */
 const keyword = computed(() => {
   const value = searchTerm.value.trim()
@@ -161,7 +162,7 @@ onMounted(() => {
             <td class="ledger-id">案 {{ item.id }}</td>
             <td>{{ caseTypeLabel(item.caseType) }}<small v-if="item.suspectName"> · {{ item.suspectName }}</small></td>
             <td><span class="case-status" :class="`is-${casePhase(item).toLowerCase()}`">{{ ledgerStatus(item) }}</span></td>
-            <td>{{ item.officerName || '—' }}</td>
+            <td :class="{ 'ledger-muted': !officerDisplayName(item.officerName) }">{{ officerDisplayName(item.officerName) || '未指定' }}</td>
             <td>{{ formatTime(item.updatedAt) }}</td>
             <td class="ledger-actions">
               <button
@@ -220,6 +221,7 @@ onMounted(() => {
 .case-dashboard-table tbody tr { cursor: pointer; }
 .case-dashboard-table tbody tr:hover { background: var(--surface-sunken); }
 .case-dashboard-table small { color: var(--ink-400); }
+.case-dashboard-table td.ledger-muted { color: var(--ink-400); }
 .ledger-id { color: var(--ink-900); font-weight: 600; }
 .ledger-actions { display: flex; align-items: center; gap: var(--space-2); height: 60px; }
 .ledger-actions button { min-height: 32px; padding: 0 var(--space-2); border: 0; background: transparent; color: var(--primary-600); font-size: var(--text-sm); }

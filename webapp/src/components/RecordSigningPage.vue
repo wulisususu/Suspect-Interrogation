@@ -7,6 +7,7 @@ import { branding } from '../config/branding'
 import { formatRecordTime, recordWordCount, volumeNumber } from '../utils/recordPaper'
 import RecordPaper from './RecordPaper.vue'
 import SignatureHotspotDialog from './SignatureHotspotDialog.vue'
+import { officerDisplayName } from '../utils/officer'
 
 /**
  * ⑤ 签署归档
@@ -126,7 +127,7 @@ const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.su
           <div><dt>份数</dt><dd>2 份（1 份装卷 · 1 份交当事人）</dd></div>
           <div><dt>纸张</dt><dd>A4 · 单面黑白</dd></div>
           <div><dt>卷号</dt><dd>{{ caseVolumeNo }}</dd></div>
-          <div><dt>归档人</dt><dd>{{ summary.officerName || '未指定' }}</dd></div>
+          <div><dt>归档人</dt><dd>{{ officerDisplayName(summary.officerName) || '未指定' }}</dd></div>
           <div><dt>归档时间</dt><dd>签名捺印完成后自动登记</dd></div>
         </dl>
 

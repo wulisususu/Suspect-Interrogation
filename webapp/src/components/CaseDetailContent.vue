@@ -7,6 +7,7 @@ import { coreFacts, factCoverage } from '../utils/factCoverage'
 import { formatRecordTime } from '../utils/recordPaper'
 import EmptyState from './EmptyState.vue'
 import RecordPaper from './RecordPaper.vue'
+import { officerDisplayName } from '../utils/officer'
 
 /**
  * 案件详情（样板 P21 / P22）：笔录与卷宗信息、要素覆盖、录音与文书预览集中在一页。
@@ -51,7 +52,7 @@ const caseTypeText = computed(() => (props.summary.caseType === 'suspect_interro
         <h2>笔录与卷宗信息</h2>
         <dl>
           <div><dt>被询问人</dt><dd>{{ summary.suspectName || '未填写' }} · {{ summary.gender || '未填写' }} · {{ maskedId }}</dd></div>
-          <div><dt>询问人</dt><dd>{{ summary.officerName || '未填写' }}</dd></div>
+          <div><dt>询问人</dt><dd>{{ officerDisplayName(summary.officerName) || '未指定' }}</dd></div>
           <div><dt>文书</dt><dd>询问笔录（要素 {{ coverage.covered }}/{{ coverage.total }} 覆盖）· 签名 {{ signingState?.signatures.length ?? 0 }} 处</dd></div>
           <div><dt>录音</dt><dd><EmptyState kind="pending" title="录音查看" /></dd></div>
           <div><dt>导出记录</dt><dd>功能待接入</dd></div>

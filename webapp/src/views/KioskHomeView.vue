@@ -56,7 +56,7 @@ const deviceSummary = computed(() => {
 })
 
 const flowSteps = [
-  { title: '选模板建档', detail: '选择笔录模板并录入身份信息' },
+  { title: '选模板建档', detail: '读取身份证建案，选择笔录模板后补全身份信息' },
   { title: '问答与定稿', detail: '民警提问实时转写，划选摘入正本' },
   { title: '签署打印', detail: '屏上签名捺印，打印件含签章装卷' },
 ]
