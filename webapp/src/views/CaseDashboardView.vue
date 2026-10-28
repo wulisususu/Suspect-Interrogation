@@ -62,15 +62,18 @@ async function load(query = '') {
   }
 }
 function handleSearchInput() {
+  page.value = 1
   const value = searchTerm.value.trim()
-  if (!value) { void load(); return }
+  if (!value) { if (activeQuery.value) void load(); return }
   if (isIdentityPrefix(value)) { void load(value); return }
   if (activeQuery.value) void load()
 }
+/** 回车 / 搜索：本地已匹配就直接用；本地没有时再按姓名到后端检索更早的案件。 */
 function submitSearch() {
   const value = searchTerm.value.trim()
   if (!value) { void load(); return }
-  if (/^\d+$/.test(value) && !isIdentityPrefix(value)) return
+  if (isIdentityPrefix(value)) { void load(value); return }
+  if (/^\d+$/.test(value) || filteredCases.value.length) return
   void load(value)
 }
 function clearFilters() {
@@ -104,10 +107,20 @@ const statusFilterOptions = computed<FilterOption[]>(() => PHASE_ORDER.map((key)
 const officerFilterOptions = computed<FilterOption[]>(() => [...new Set(cases.value.map((item) => item.officerName).filter(Boolean))]
   .sort()
   .map((name) => ({ key: name, label: name })))
+/** 关键字在已加载的案件里即时匹配案件编号 / 案由 / 主审民警 / 姓名（样板 P14）；身份证号前缀交给后端检索。 */
+const keyword = computed(() => {
+  const value = searchTerm.value.trim()
+  return value && !isIdentityPrefix(value) ? value.toLowerCase() : ''
+})
+function matchesKeyword(item: CaseSummary) {
+  if (!keyword.value) return true
+  return [item.id, caseTypeLabel(item.caseType), item.officerName, item.suspectName]
+    .some((field) => (field || '').toLowerCase().includes(keyword.value))
+}
 const filteredCases = computed(() => cases.value.filter((item) => {
   if (statusFilter.value && casePhase(item) !== statusFilter.value) return false
   if (officerFilter.value && item.officerName !== officerFilter.value) return false
-  return true
+  return matchesKeyword(item)
 }))
 const pages = computed(() => Math.max(1, Math.ceil(filteredCases.value.length / pageSize)))
 const visibleCases = computed(() => filteredCases.value.slice((page.value - 1) * pageSize, page.value * pageSize))
@@ -132,7 +145,7 @@ onMounted(() => {
     <form class="ledger-filters" @submit.prevent="submitSearch">
       <label class="ledger-field ledger-keyword">
         <span>关键字</span>
-        <span class="ledger-search"><Search :size="16" aria-hidden="true" /><input v-model="searchTerm" type="search" placeholder="姓名或身份证前 7 位" @input="handleSearchInput" /></span>
+        <span class="ledger-search"><Search :size="16" aria-hidden="true" /><input v-model="searchTerm" type="search" placeholder="搜索案件编号 / 案由 / 主审民警 / 姓名，或输入身份证号前 7 位" @input="handleSearchInput" /><button type="submit" class="ledger-search-submit">搜索</button></span>
       </label>
       <div class="ledger-field"><span>状态</span><FilterSelect v-model="statusFilter" label="" :options="statusFilterOptions" all-label="全部" /></div>
       <div class="ledger-field"><span>主审</span><FilterSelect v-model="officerFilter" label="" :options="officerFilterOptions" all-label="全部" /></div>
@@ -147,7 +160,7 @@ onMounted(() => {
           <tr v-for="item in visibleCases" :key="item.id" tabindex="0" @click="emit('detail', item.id)" @keydown.enter="emit('detail', item.id)">
             <td class="ledger-id">案 {{ item.id }}</td>
             <td>{{ caseTypeLabel(item.caseType) }}<small v-if="item.suspectName"> · {{ item.suspectName }}</small></td>
-            <td><span class="ledger-status" :class="`is-${casePhase(item).toLowerCase()}`">{{ ledgerStatus(item) }}</span></td>
+            <td><span class="case-status" :class="`is-${casePhase(item).toLowerCase()}`">{{ ledgerStatus(item) }}</span></td>
             <td>{{ item.officerName || '—' }}</td>
             <td>{{ formatTime(item.updatedAt) }}</td>
             <td class="ledger-actions">
@@ -193,6 +206,12 @@ onMounted(() => {
 .ledger-field { display: flex; flex-direction: column; gap: var(--space-1); color: var(--ink-500); font-size: var(--text-xs); }
 .ledger-search { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink-400); }
 .ledger-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink-900); font-size: var(--text-sm); outline: none; }
+.ledger-search-submit { min-height: 36px; margin-right: calc(-1 * var(--space-2)); padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); background: var(--primary-600); color: var(--surface); font-size: var(--text-sm); font-weight: 600; }
+/* 筛选触发器撑满所在列，展开浮层与触发器同宽（走查 D31） */
+.ledger-field :deep(.filter-select) { width: 100%; }
+.ledger-field :deep(.filter-trigger) { width: 100%; min-height: 44px; }
+.ledger-field :deep(.filter-chevron) { margin-left: auto; }
+.ledger-field :deep(.filter-panel) { width: 100%; }
 
 .ledger-table-shell { display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; }
 .case-dashboard-table { width: 100%; border-collapse: collapse; text-align: left; font-size: var(--text-sm); }
@@ -202,11 +221,6 @@ onMounted(() => {
 .case-dashboard-table tbody tr:hover { background: var(--surface-sunken); }
 .case-dashboard-table small { color: var(--ink-400); }
 .ledger-id { color: var(--ink-900); font-weight: 600; }
-.ledger-status { padding: 3px var(--space-2); border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--ink-500); font-size: var(--text-xs); }
-.ledger-status.is-done { background: var(--success-100); color: var(--success-700); }
-.ledger-status.is-signing { background: var(--primary-100); color: var(--primary-600); }
-.ledger-status.is-review { background: var(--warning-100); color: var(--warning-700); }
-.ledger-status.is-in_progress { background: var(--primary-100); color: var(--primary-700); }
 .ledger-actions { display: flex; align-items: center; gap: var(--space-2); height: 60px; }
 .ledger-actions button { min-height: 32px; padding: 0 var(--space-2); border: 0; background: transparent; color: var(--primary-600); font-size: var(--text-sm); }
 .ledger-state { padding: var(--space-6); color: var(--ink-400); text-align: center; font-size: var(--text-sm); }

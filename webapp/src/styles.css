@@ -221,3 +221,11 @@ h1 { font-size: var(--text-xl); margin: 0 0 5px; }
 
 .back-btn { background: transparent; border: 1px solid rgba(255,255,255,0.35); color: var(--surface); border-radius: 8px; padding: 6px 12px; font-size: var(--text-base); cursor: pointer; }
 .back-btn:hover { background: rgba(255,255,255,0.12); }
+
+/* 案件办理状态徽标：台账、未完成办理、案件详情共用一套颜色（走查 D33）。
+   蓝色 = 进行中 / 待签署，橙色 = 待定稿，绿色 = 已归档；中断原因等提示另用橙色文字，不与状态混用。 */
+.case-status { display: inline-block; padding: 3px var(--space-2); border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--ink-500); font-size: var(--text-xs); white-space: nowrap; }
+.case-status.is-in_progress { background: var(--primary-100); color: var(--primary-700); }
+.case-status.is-review { background: var(--warning-100); color: var(--warning-700); }
+.case-status.is-signing { background: var(--primary-100); color: var(--primary-600); }
+.case-status.is-done { background: var(--success-100); color: var(--success-700); }

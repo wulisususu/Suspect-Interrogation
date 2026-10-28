@@ -21,4 +21,18 @@ describe('PendingCaseList (design P23)', () => {
     const html = await renderToString(createSSRApp(PendingCaseList, { cases: [] }))
     expect(html).toContain('暂无未完成办理')
   })
+
+  it('renders the design table with honest interruption reason and the shared status colours (audit D14 / D15 / D33)', async () => {
+    const html = await renderToString(createSSRApp(PendingCaseList, { cases: [c('B', 'QUESTIONING', 'INTERROGATING')] }))
+    for (const column of ['中断事由', '案件', '最后更新时间', '当前状态', '操作']) expect(html).toMatch(new RegExp(`<th[^>]*>${column}</th>`))
+    expect(html).toContain('未记录')
+    expect(html).toMatch(/class="(?=[^"]*\bcase-status\b)(?=[^"]*\bis-in_progress\b)[^"]*"[^>]*>进行中/)
+  })
+
+  it('pages long lists ten at a time', async () => {
+    const cases = Array.from({ length: 23 }, (_, index) => c(`P${index}`, 'QUESTIONING', 'INTERROGATING'))
+    const html = await renderToString(createSSRApp(PendingCaseList, { cases }))
+    expect(html.match(/继续办理/g)?.length).toBe(10)
+    expect(html).toContain('1 / 3')
+  })
 })

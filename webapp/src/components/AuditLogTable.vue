@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { auditActionLabel, type AuditEntry } from '../api/audit'
+import { auditActionLabel, auditActorLabel, auditTargetLabel, type AuditEntry } from '../api/audit'
 import { formatRecordTime } from '../utils/recordPaper'
 import EmptyState from './EmptyState.vue'
 
@@ -17,9 +17,9 @@ defineProps<{ entries: AuditEntry[]; caseSelected: boolean }>()
       <tbody>
         <tr v-for="entry in entries" :key="entry.id">
           <td>{{ formatRecordTime(entry.createdAt) }}</td>
-          <td>{{ entry.actorId || '—' }}</td>
-          <td>{{ auditActionLabel(entry.action) }}</td>
-          <td>{{ entry.targetType }} · {{ entry.targetId }}</td>
+          <td :class="{ 'is-system': !entry.actorId.trim() }">{{ auditActorLabel(entry.actorId) }}</td>
+          <td :title="entry.action">{{ auditActionLabel(entry.action) }}</td>
+          <td :title="`${entry.targetType} · ${entry.targetId}`">{{ auditTargetLabel(entry) }}</td>
         </tr>
       </tbody>
     </table>
@@ -32,4 +32,5 @@ defineProps<{ entries: AuditEntry[]; caseSelected: boolean }>()
 table { width: 100%; border-collapse: collapse; border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; font-size: var(--text-sm); }
 th { padding: var(--space-3) var(--space-4); background: var(--primary-50); color: var(--ink-500); font-size: var(--text-xs); font-weight: 600; text-align: left; }
 td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line-100); color: var(--ink-700); overflow-wrap: anywhere; }
+td.is-system { color: var(--ink-400); }
 </style>

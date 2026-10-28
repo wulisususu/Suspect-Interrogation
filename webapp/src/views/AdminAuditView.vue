@@ -53,4 +53,9 @@ onMounted(loadCases)
 .audit-page header h1 { margin: 0; color: var(--ink-900); font-size: var(--text-2xl); font-weight: 600; }
 .audit-page header p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-xs); }
 .audit-filter { display: flex; align-items: center; gap: var(--space-3); color: var(--ink-500); font-size: var(--text-sm); }
+/* 触发器与展开浮层同宽（走查 D31） */
+.audit-filter :deep(.filter-select) { width: 420px; }
+.audit-filter :deep(.filter-trigger) { width: 100%; min-height: 44px; }
+.audit-filter :deep(.filter-chevron) { margin-left: auto; }
+.audit-filter :deep(.filter-panel) { width: 100%; }
 </style>
