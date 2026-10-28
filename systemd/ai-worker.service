@@ -11,11 +11,10 @@ WorkingDirectory=/opt/suspect-interrogation/current/linux/backend
 EnvironmentFile=/etc/suspect-interrogation/runtime.env
 EnvironmentFile=-/etc/suspect-interrogation/ai-worker.env
 Environment=SUSPECT_SPEECH_SOCKET=/run/suspect-interrogation/speech.sock
-# No runtime directory declaration here on purpose: /run/suspect-interrogation
-# is shared with moss-worker.service, and systemd GCs the directory whenever a
-# declaring unit stops, orphaning the other service's bound socket (this
-# removed moss.sock on every redeploy). The directory is created by
-# /etc/tmpfiles.d/suspect-interrogation-moss.conf instead.
+# No runtime directory declaration here on purpose: systemd GCs a declared
+# directory whenever the unit stops, which would drop the bound speech.sock
+# during restarts. The directory is created by
+# /etc/tmpfiles.d/suspect-interrogation.conf (deploy/tmpfiles-suspect-interrogation.conf).
 ExecStart=/opt/suspect-interrogation/current/scripts/ai-worker-start.sh
 # Model loading on the RK3588 can exceed the 90s systemd defaults during a cold
 # start, and a busy worker may linger past it while unloading; give both paths a

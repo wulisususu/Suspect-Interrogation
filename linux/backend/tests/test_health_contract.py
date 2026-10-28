@@ -29,7 +29,6 @@ def test_readiness_reports_required_checks_and_capabilities():
         "speaker",
         "voiceprintCalibration",
         "audioCapture",
-        "moss",
     }
     assert payload["checks"]["storage"]["required"] is True
     assert payload["checks"]["database"]["required"] is True
@@ -166,65 +165,3 @@ def test_speech_capability_prefers_ready_worker_over_stopped_registry_worker():
     result = _speech_capability("asr", supervisor=Supervisor(), calibration={"state": "NOT_CONFIGURED"})
     assert result["state"] == "AVAILABLE"
     assert result["speech_state"] == "AVAILABLE"
-
-
-def test_readiness_exposes_optional_moss_capability_disabled_by_default(monkeypatch):
-    monkeypatch.delenv("MOSS_ENABLED", raising=False)
-    baseline_status = client.get("/health/ready").json()["status"]
-
-    payload = client.get("/health/ready").json()
-    moss = payload["capabilities"]["moss"]
-
-    assert moss["required"] is False
-    assert moss["state"] == "DISABLED"
-    assert payload["status"] == baseline_status
-
-
-def test_enabled_moss_capability_reports_worker_state_without_touching_readiness(monkeypatch):
-    from types import SimpleNamespace
-
-    class StubService:
-        def __init__(self, snapshot):
-            self._snapshot = snapshot
-
-        def health(self):
-            return dict(self._snapshot)
-
-    snapshot = {
-        "worker": "AVAILABLE",
-        "model": "NOT_INSTALLED",
-        "manifest_sha256": "a50ce60b04e3715a4ce9d05381336fd95072f359c7883115e946d55321657e69",
-        "runtime_versions": {"rknn": "2.3.2", "rkllm": "1.3.0"},
-        "queue_depth": None,
-        "active_job": None,
-        "last_error": None,
-    }
-    monkeypatch.delenv("MOSS_ENABLED", raising=False)
-    baseline = client.get("/health/ready").json()
-    monkeypatch.setenv("MOSS_ENABLED", "1")
-    monkeypatch.setattr(
-        "app.health.MossTranscriptionService",
-        SimpleNamespace(from_settings=lambda settings: StubService(snapshot)),
-    )
-
-    payload = client.get("/health/ready").json()
-    moss = payload["capabilities"]["moss"]
-
-    # Worker reachable but bundle absent maps onto the shared runtime
-    # capability vocabulary while still reporting the full worker payload.
-    assert moss["required"] is False
-    assert moss["state"] == "MODEL_NOT_INSTALLED"
-    assert moss["worker"] == "AVAILABLE"
-    assert moss["model"] == "NOT_INSTALLED"
-    assert (
-        moss["manifestSha256"]
-        == "a50ce60b04e3715a4ce9d05381336fd95072f359c7883115e946d55321657e69"
-    )
-    assert moss["runtimeVersions"] == {"rknn": "2.3.2", "rkllm": "1.3.0"}
-    assert moss["queueDepth"] is None
-    assert moss["activeJob"] is None
-    assert moss["lastError"] is None
-
-    # Optional capability: readiness and realtime ASR stay untouched.
-    assert payload["status"] == baseline["status"]
-    assert payload["capabilities"]["asr"] == baseline["capabilities"]["asr"]

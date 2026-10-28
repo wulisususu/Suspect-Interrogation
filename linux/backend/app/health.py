@@ -8,9 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
-from .ai.settings import AISettings
 from .runtime_settings import RuntimeSettings
-from .services.moss_transcription import MossTranscriptionService
 from .services.speaker_mode import SpeakerModeConfig, resolve_runtime_speaker_mode
 
 
@@ -183,56 +181,6 @@ def _speech_capability(
     return _result(state, required=False, detail=detail, **capability)
 
 
-def _moss_capability(ai_settings: AISettings | None = None) -> dict[str, Any]:
-    """Optional MOSS long-audio capability; disabled by default (MOSS_ENABLED=0).
-
-    Disabled or degraded MOSS never changes readiness: the capability is
-    reported with ``required=False`` and realtime ASR stays independent.
-    """
-    try:
-        settings = ai_settings or AISettings.from_env()
-    except Exception as exc:
-        return _result(
-            "ERROR", required=False, detail=f"moss settings are invalid: {exc.__class__.__name__}"
-        )
-    if not settings.moss_enabled:
-        return _result(
-            "DISABLED",
-            required=False,
-            detail="MOSS long-audio transcription is disabled (MOSS_ENABLED=0)",
-        )
-
-    try:
-        snapshot = MossTranscriptionService.from_settings(settings).health()
-    except Exception as exc:  # capability failure must not kill API readiness
-        return _result(
-            "ERROR", required=False, detail=f"moss capability check failed: {exc.__class__.__name__}"
-        )
-
-    if snapshot["worker"] != "AVAILABLE":
-        state = "UNAVAILABLE"
-        detail = f"MOSS worker socket is unreachable: {snapshot['last_error']}"
-    elif snapshot["model"] == "NOT_INSTALLED":
-        state = "MODEL_NOT_INSTALLED"
-        detail = "MOSS worker is reachable but the model bundle is not installed"
-    else:
-        state = "AVAILABLE"
-        detail = "MOSS worker socket answered"
-
-    return _result(
-        state,
-        required=False,
-        detail=detail,
-        worker=snapshot["worker"],
-        model=snapshot["model"],
-        manifestSha256=snapshot["manifest_sha256"],
-        runtimeVersions=snapshot["runtime_versions"],
-        queueDepth=snapshot["queue_depth"],
-        activeJob=snapshot["active_job"],
-        lastError=snapshot["last_error"],
-    )
-
-
 def readiness_snapshot(request: Request | None = None) -> dict[str, Any]:
     settings = RuntimeSettings()
     supervisor = None
@@ -257,7 +205,6 @@ def readiness_snapshot(request: Request | None = None) -> dict[str, Any]:
         "speaker": _speech_capability("speaker", supervisor=supervisor, calibration=calibration),
         "voiceprintCalibration": calibration,
         "audioCapture": _audio_capture_capability(manager),
-        "moss": _moss_capability(),
     }
     required_ok = all(item["state"] == "READY" for item in checks.values() if item["required"])
     return {

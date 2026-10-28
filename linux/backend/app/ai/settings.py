@@ -6,10 +6,6 @@ from pathlib import Path
 
 from .speech.calibration import SpeakerCalibration
 
-_MOSS_ENABLED_VALUES = {"1", "true", "yes", "on"}
-_MOSS_DEFAULT_SOCKET = "/run/suspect-interrogation/moss.sock"
-_MOSS_DEFAULT_SPOOL_ROOT = "/var/lib/suspect-interrogation/moss"
-
 
 @dataclass(frozen=True)
 class AISettings:
@@ -29,12 +25,6 @@ class AISettings:
     llm_backend: str | None
     llamapi_base_url: str
     llamapi_model_hint: str
-    moss_enabled: bool = False
-    moss_socket: Path = Path(_MOSS_DEFAULT_SOCKET)
-    moss_spool_root: Path = Path(_MOSS_DEFAULT_SPOOL_ROOT)
-    moss_model_id: str = "moss.default"
-    moss_request_timeout: float = 5.0
-    moss_submit_timeout: float = 1800.0
 
     @classmethod
     def from_env(cls) -> "AISettings":
@@ -63,13 +53,4 @@ class AISettings:
             llm_backend=os.getenv("LLM_BACKEND"),
             llamapi_base_url=os.getenv("LLAMAPI_BASE_URL", "http://127.0.0.1:9265/v1").strip().rstrip("/"),
             llamapi_model_hint=os.getenv("LLAMAPI_MODEL_HINT", "qwen3:4b").strip(),
-            moss_enabled=os.getenv("MOSS_ENABLED", "0").strip().lower() in _MOSS_ENABLED_VALUES,
-            moss_socket=Path(os.getenv("SUSPECT_MOSS_SOCKET", _MOSS_DEFAULT_SOCKET)).expanduser(),
-            moss_spool_root=Path(os.getenv("MOSS_SPOOL_ROOT", _MOSS_DEFAULT_SPOOL_ROOT)).expanduser(),
-            moss_model_id=os.getenv("MOSS_MODEL_ID", "moss.default").strip() or "moss.default",
-            # submit_job is server-side expensive (serial accept, whole-file
-            # SHA-256, token/context budgeting), so it carries its own long
-            # budget instead of reusing the short RPC timeout.
-            moss_request_timeout=max(0.05, float(os.getenv("MOSS_REQUEST_TIMEOUT", "5"))),
-            moss_submit_timeout=max(0.05, float(os.getenv("MOSS_SUBMIT_TIMEOUT", "1800"))),
         )

@@ -87,29 +87,30 @@
 `QuestionPreparationPanel`、`CasePreparationPage`、`VoiceprintSetupPage`、`AiSettingsPanel`。
 AI 设置是否需要新的入口待定。前端 MOSS 转写代码已删除（见第 11 项）。
 
-## 11. MOSS 转写下线（待办，已决定不再使用）
+## 11. MOSS 转写下线（已完成 2026-10-27）
 
-前端 MOSS 面板、接口、类型与测试已于 2026-10-27 删除。后端与板端仍在运行：生产板 `moss-worker.service`
-处于启用状态并占用 NPU，生产部署工作流每次都会重启它（`python -m moss_worker.main`），因此后端代码不能单独删。
-需要按顺序：
+已决定不再使用 MOSS，前后端与部署链路一并移除：
 
-1. 部署流水线：`rk3588-production-redeploy.yml` 的「Restart MOSS worker」步骤改为停用并移除
-   `moss-worker.service`；`rk3588-service-bootstrap.yml` 去掉 MOSS 引导；删除 `rk3588-moss-embed-probe.yml`
-   以及 `linux-ai-runtime-rk3588.yml` 中的 MOSS 相关检查（修改 `.github/workflows` 需要带 `workflow` 权限的令牌）。
-2. 板端：停用并禁用 `moss-worker.service`。模型包 `/opt/suspect-interrogation/models/moss-rk3588`、
-   运行时 `/opt/suspect-interrogation/runtime/moss-env`、任务目录 `/var/lib/suspect-interrogation/moss` 是否删除待定。
-3. 后端代码：`app/api/moss_transcription.py`、`app/services/moss_transcription*.py`、`app/ai/moss/`、
-   `app/repositories/moss_transcriptions.py`、`app/database/moss_models.py`、`moss_worker/`、`app/main.py` 中的路由与协调器、
-   `app/health.py` 的 `moss` 能力、`app/ai/registry.py` / `settings.py` / `config/model-registry.yaml` 的 MOSS 配置、
-   `requirements-moss-rk3588.txt`，以及约 20 个 `tests/test_moss_*.py`。
-4. 数据库：MOSS 相关表（`0013_moss_transcription_integration`）是保留还是新增迁移删除，待定（删表不可恢复）。
-5. 其他：`systemd/moss-worker.service`、`deploy/rebuild_moss_manifest.py`、`deploy/tmpfiles-suspect-interrogation.conf`、
-   `tools/moss_rk3588/`、`scripts/ci/probe-moss-rk3588.py`、`tests/release` 与 `tests/tools` 中的 MOSS 测试、相关文档。
+- 前端：MOSS 面板、接口、类型、样式与测试。
+- 后端：MOSS API 路由、转写服务与协调器、`app/ai/moss`、`moss_worker`、仓储与 ORM 模型、健康检查 `moss`
+  能力、AI 设置与模型注册表条目、`requirements-moss-rk3588.txt`、相关测试。
+- 数据库：新增迁移 `0020_drop_moss_transcription` 删除 `moss_transcriptions` /
+  `moss_transcription_revisions` / `moss_speaker_mappings`（历史 MOSS 转写数据不可恢复；降级只重建空表）。
+- 部署：生产部署工作流的「Restart MOSS worker」改为「Retire the MOSS worker」——停用并删除
+  `moss-worker.service`，删除板上 `/opt/suspect-interrogation/models/moss-rk3588`、
+  `/opt/suspect-interrogation/runtime/moss-env`、`/var/lib/suspect-interrogation/moss`、
+  `/etc/suspect-interrogation/moss-worker.env`；共享的 `/run/suspect-interrogation`（ai-worker 的 speech.sock）
+  改由 `/etc/tmpfiles.d/suspect-interrogation.conf` 创建。删除 `rk3588-moss-embed-probe.yml`、
+  `tools/moss_rk3588`、`scripts/ci/probe-moss-rk3588.py`、`systemd/moss-worker.service`、`deploy/README.md`（MOSS 部署说明）。
+- 保留：`tests/fixtures/speaker_turn_corpus` 中的 `mossGs` / `mossRole` 字段是历史标注数据；
+  `docs/superpowers` 下的 MOSS 设计与计划文档作为历史记录保留。
 
 ## 附：已知的预存测试失败
 
 以下 9 个后端测试在改版前的代码上即失败（本机缺语音 worker / 模型路径不同），与本次改版无关，
-Linux CI 的 Python tests 步骤因此失败：
+Linux CI 的 Python tests 步骤因此失败。`tests/release` 另有 4 个同样在改版前即失败的用例
+（`test_speech_worker_launcher.py::test_systemd_delegates_stale_socket_safety_to_worker_server` 与
+`test_rebuild_speaker_reference.py` 的 3 个）：
 
 ```text
 tests/test_asr_capture_service.py::test_audio_level_event_is_throttled_and_counts_suppressed_pcm

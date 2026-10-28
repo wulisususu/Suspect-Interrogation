@@ -12,7 +12,7 @@ webapp/.playwright-cli/
 __pycache__/
 *.py[cod]
 
-# MOSS conversion/runtime artifacts: never commit model or calibration tensors.
+# Model conversion/runtime artifacts: never commit model or calibration tensors.
 *.rknn
 *.rkllm
 *.safetensors

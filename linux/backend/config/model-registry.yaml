@@ -76,31 +76,6 @@
       "context": 4096,
       "memory_mb": 4096,
       "capabilities": ["generate", "stream", "cancel"]
-    },
-    "moss.default": {
-      "kind": "moss",
-      "backend": "moss-worker",
-      "path": "moss-rk3588",
-      "architecture": "moss-transcribe-diarize",
-      "required_files": [
-        "moss_audio_encoder_fp16_rk3588.rknn",
-        "moss_qwen3_0.6b_w8a8_rk3588.rkllm",
-        "moss_token_embedding_fp16.bin",
-        "token_embedding.json",
-        "tokenizer.json",
-        "tokenizer_config.json",
-        "special_tokens_map.json",
-        "generation_config.json",
-        "processor_config.json",
-        "selftest/encoder_input.npy",
-        "selftest/encoder_expected.json",
-        "selftest/decoder_input.f32",
-        "selftest/decoder_expected.json"
-      ],
-      "device": "npu",
-      "context": 16384,
-      "memory_mb": 8192,
-      "capabilities": ["transcription", "diarization", "timestamps", "long_audio"]
     }
   }
 }

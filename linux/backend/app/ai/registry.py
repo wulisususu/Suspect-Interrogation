@@ -68,7 +68,7 @@ class ModelRegistry:
             if not isinstance(required, list) or not all(isinstance(x, str) for x in required):
                 raise RegistryError(f"registry entry {model_id!r} required_files must be strings")
             kind = str(raw.get("kind", model_id.split(".", 1)[0])).lower()
-            if kind not in {"asr", "ocr", "llm", "vad", "speaker", "moss"}:
+            if kind not in {"asr", "ocr", "llm", "vad", "speaker"}:
                 raise RegistryError(f"registry entry {model_id!r} has invalid kind {kind!r}")
             specs[model_id] = ModelSpec(
                 model_id=model_id,

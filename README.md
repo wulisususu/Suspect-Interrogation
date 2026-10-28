@@ -21,7 +21,6 @@
 - 人工修订、版本记录、事实项与案件时间线；
 - 笔录冻结、SHA-256 快照、电子签名和报告状态；
 - 本地 LLM / OCR / ASR / Speaker 模型调度；
-- 可选的 MOSS 长音频转写与说话人聚类；
 - RK3588 本地部署、systemd 托管、备份恢复和健康检查。
 
 系统优先保证 **离线可用、设备可控、业务状态可恢复、模型缺失可降级、数据保留在本地**。
@@ -53,8 +52,7 @@
 │ ├── ALSA 音频                   ├── VAD            │
 │ ├── V4L2/UVC 摄像头             ├── Speaker        │
 │ └── 电子签名                    ├── OCR            │
-│                                 ├── Qwen / LLM     │
-│                                 └── MOSS（可选）    │
+│                                 └── Qwen / LLM     │
 │                                                     │
 │ Audit / Snapshot / Backup / Health / systemd       │
 └─────────────────────────────────────────────────────┘
@@ -73,7 +71,6 @@ RK3588
 ├── interrogation-api.service
 ├── ai-worker.service
 ├── kiosk.service
-├── moss-worker.service       # 可选
 ├── SQLite 数据库
 ├── 本地模型目录
 ├── USB / ALSA / V4L2 硬件
@@ -229,8 +226,7 @@ linux/backend/config/model-registry.yaml
 - VAD：FSMN-VAD；
 - Speaker：ERes2Net Large；
 - OCR：本地 OCR Runtime；
-- LLM：本地 Qwen / llama.cpp / NPU Runtime；
-- MOSS：RK3588 长音频转写与 diarization，可选启用。
+- LLM：本地 Qwen / llama.cpp / NPU Runtime。
 
 模型缺失时，系统返回类似：
 
@@ -241,38 +237,6 @@ ERROR
 ```
 
 而不是让整个业务服务直接崩溃。
-
----
-
-## MOSS 长音频转写
-
-MOSS 是独立的可选能力，默认可以关闭：
-
-```text
-MOSS_ENABLED=0
-```
-
-启用后：
-
-```text
-长音频 WAV
-   ↓
-SHA-256
-   ↓
-MOSS Worker
-   ↓
-窗口化处理
-   ↓
-转写 + diarization
-   ↓
-GSxx 匿名说话人
-   ↓
-案件级角色映射
-   ↓
-Append-only Transcript Revision
-```
-
-MOSS Worker、模型文件和 spool 均在设备本地运行，不依赖云端转写服务。
 
 ---
 
@@ -290,8 +254,7 @@ MOSS Worker、模型文件和 spool 均在设备本地运行，不依赖云端�
 - ASR Capture / Fragment；
 - Voiceprint；
 - DocumentSnapshot；
-- SignatureRecord；
-- MOSS Transcription / Revision。
+- SignatureRecord。
 
 笔录冻结时会生成 canonical JSON，并计算 SHA-256：
 
@@ -342,7 +305,7 @@ Hardware Driver / Vendor SDK
 ├── linux/backend/       # 唯一正式 Linux 后端
 ├── webapp/              # Vue 3 + TypeScript Kiosk
 ├── deploy/              # 安装、升级、原子发布、回滚
-├── systemd/             # API / AI / Kiosk / MOSS 服务
+├── systemd/             # API / AI / Kiosk 服务
 ├── scripts/             # 备份、恢复、健康检查、板端验收
 ├── tests/               # Release / E2E / Reliability 测试
 ├── docs/                # 架构、发布、安全与任务文档
@@ -399,7 +362,6 @@ npm run dev
 interrogation-api.service
 ai-worker.service
 kiosk.service
-moss-worker.service
 ```
 
 正式部署采用 release 目录 + `current` 链接方式切换版本，并在部署过程中执行数据库迁移、前端构建和健康检查。

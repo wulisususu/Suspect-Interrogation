@@ -1,7 +1,0 @@
-numpy>=1.26,<3
-soundfile>=0.12,<1
-transformers>=5.0,<6
-torch>=2.5,<3
-safetensors>=0.4,<1
-onnx>=1.18,<2
-onnxruntime>=1.20,<2

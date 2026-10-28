@@ -11,20 +11,16 @@ on:
       - 'linux/backend/app/main.py'
       - 'linux/backend/config/model-registry.yaml'
       - 'linux/backend/models/**'
-      - 'linux/backend/moss_worker/**'
       - 'linux/backend/speech_worker/**'
       - 'linux/backend/tests/**'
       - 'linux/docs/AI_RUNTIME.md'
       - 'scripts/ci/probe-funasr-runtime.py'
       - 'scripts/ci/probe-eres2net-large.py'
-      - 'scripts/ci/probe-moss-rk3588.py'
       - 'scripts/ci/rk3588-speech-calibrate.py'
       - 'scripts/ci/rk3588-speech-smoke.py'
       - 'scripts/ai-worker-start.sh'
       - 'systemd/ai-worker.service'
-      - 'systemd/moss-worker.service'
       - 'deploy/tmpfiles-suspect-interrogation.conf'
-      - 'deploy/rebuild_moss_manifest.py'
   pull_request:
     branches:
       - linux-adaptation
@@ -35,20 +31,16 @@ on:
       - 'linux/backend/app/main.py'
       - 'linux/backend/config/model-registry.yaml'
       - 'linux/backend/models/**'
-      - 'linux/backend/moss_worker/**'
       - 'linux/backend/speech_worker/**'
       - 'linux/backend/tests/**'
       - 'linux/docs/AI_RUNTIME.md'
       - 'scripts/ci/probe-funasr-runtime.py'
       - 'scripts/ci/probe-eres2net-large.py'
-      - 'scripts/ci/probe-moss-rk3588.py'
       - 'scripts/ci/rk3588-speech-calibrate.py'
       - 'scripts/ci/rk3588-speech-smoke.py'
       - 'scripts/ai-worker-start.sh'
       - 'systemd/ai-worker.service'
-      - 'systemd/moss-worker.service'
       - 'deploy/tmpfiles-suspect-interrogation.conf'
-      - 'deploy/rebuild_moss_manifest.py'
   workflow_dispatch:
     inputs:
       suspect_wavs:
@@ -134,10 +126,8 @@ jobs:
           python3 -m py_compile \
             "$GITHUB_WORKSPACE/scripts/ci/probe-funasr-runtime.py" \
             "$GITHUB_WORKSPACE/scripts/ci/probe-eres2net-large.py" \
-            "$GITHUB_WORKSPACE/scripts/ci/probe-moss-rk3588.py" \
             "$GITHUB_WORKSPACE/scripts/ci/rk3588-speech-calibrate.py" \
             "$GITHUB_WORKSPACE/scripts/ci/rk3588-speech-smoke.py"
-          python3 -m compileall -q "$GITHUB_WORKSPACE/linux/backend/moss_worker"
 
       - name: Standard-library runtime smoke
         shell: bash
@@ -316,22 +306,3 @@ jobs:
             --suspect-wav "${SUSPECT_WAVS[0]}" \
             --interrogator-wav "${INTERROGATOR_WAVS[0]}" \
             --recorder-wav "${RECORDER_WAVS[0]}"
-
-      - name: Probe MOSS RK3588 worker when it is active
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Read-only MOSS worker probe: bundle hashes, pinned native library
-          # hashes and actual child-process selection, unit state, socket
-          # permissions, AF_UNIX health op, TCP/8000 listener. Never submits
-          # audio and never downloads anything.
-          if systemctl is-active --quiet moss-worker.service; then
-            # sudo strips the runner environment, so pass the probe's explicit
-            # output guard instead of relying on GITHUB_WORKSPACE/RUNNER_TEMP.
-            sudo -n python3 scripts/ci/probe-moss-rk3588.py \
-              --output "$RUNNER_TEMP/moss-worker-probe.json" \
-              --allow-any-output
-          else
-            echo 'moss_worker=not_active (read-only probe skipped; no MOSS mutation performed)'
-            sudo -n ss -ltnp 'sport = :8000' || true
-          fi

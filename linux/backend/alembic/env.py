@@ -8,7 +8,6 @@ from sqlalchemy import engine_from_config, pool
 
 from app.database.base import Base
 import app.database.models  # noqa: F401 - registers core ORM tables
-import app.database.moss_models  # noqa: F401 - registers MOSS interrogation tables
 import app.database.recognition_models  # noqa: F401 - registers recognition evidence tables
 import app.database.voiceprint_models  # noqa: F401 - registers global voiceprint/calibration tables
 

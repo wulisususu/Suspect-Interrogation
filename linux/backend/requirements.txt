@@ -8,10 +8,4 @@ python-multipart>=0.0.9
 websockets>=12,<17
 httpx>=0.27,<1.0
 pytest>=8,<10
-# MOSS RK3588 worker: the supervisor's in-process window counter and prompt
-# renderer need the same runtime deps as the isolated child env
-# (requirements-moss-rk3588.txt). Task 14 phase-2 board finding: without these
-# the deployed worker fails submit_job with WORKER_CRASHED.
 numpy>=1.26,<3
-tokenizers>=0.20,<1
-jinja2>=3.1,<4

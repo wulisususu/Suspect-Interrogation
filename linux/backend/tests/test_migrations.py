@@ -32,7 +32,8 @@ RECOGNITION_EVIDENCE_TABLES = {
 QWEN_ROUTING_TABLES = {
     "qa_units", "qa_unit_fragments",
 }
-MOSS_TRANSCRIPTION_TABLES = {
+# MOSS 已下线：0020 删除了 0013 建的三张表，head 上不得再有。
+RETIRED_MOSS_TABLES = {
     "moss_transcriptions", "moss_transcription_revisions", "moss_speaker_mappings",
 }
 CASE_DRAFT_TABLES = {"case_voice_role_drafts"}
@@ -42,9 +43,9 @@ DURABLE_LIVE_SPEECH_TABLES = {
 REQUIRED_TABLES = (
     CORE_TABLES | VOICEPRINT_TABLES | TEMPLATE_TABLES | OFFICER_LIBRARY_TABLES |
     CALIBRATION_TABLES | RECOGNITION_EVIDENCE_TABLES | QWEN_ROUTING_TABLES |
-    MOSS_TRANSCRIPTION_TABLES | CASE_DRAFT_TABLES | DURABLE_LIVE_SPEECH_TABLES
+    CASE_DRAFT_TABLES | DURABLE_LIVE_SPEECH_TABLES
 )
-ALEMBIC_HEAD = "0019_deferred_speaker_analysis"
+ALEMBIC_HEAD = "0020_drop_moss_transcription"
 
 
 def _run_alembic(tmp_path, target: str):
@@ -169,17 +170,7 @@ def test_alembic_upgrade_head_builds_required_schema(tmp_path):
         assert "speaker_backend_key" in snapshot_columns
         formal_columns = {item["name"] for item in inspector.get_columns("case_questions")}
         assert {"section_type", "template_key", "template_item_key", "locked", "formal_answer_text", "first_asked_at"} <= formal_columns
-        moss_columns = {item["name"] for item in inspector.get_columns("moss_transcriptions")}
-        assert {
-            "case_id", "audio_path", "audio_sha256", "job_id",
-            "model_manifest_sha256", "state", "error", "windows_json",
-        } <= moss_columns
-        moss_revision_columns = {item["name"] for item in inspector.get_columns("moss_transcription_revisions")}
-        assert {
-            "transcription_id", "revision_no", "segments_json", "provenance_json", "mapping_snapshot_json",
-        } <= moss_revision_columns
-        moss_mapping_columns = {item["name"] for item in inspector.get_columns("moss_speaker_mappings")}
-        assert {"case_id", "global_speaker", "role"} <= moss_mapping_columns
+        assert RETIRED_MOSS_TABLES.isdisjoint(inspector.get_table_names())
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
         assert revision == ALEMBIC_HEAD
@@ -433,3 +424,29 @@ def test_0004_migrates_legacy_officer_reference_and_freezes_existing_assignment(
         assert snapshot["aggregate_version"] == 1
     finally:
         engine.dispose()
+
+
+def test_moss_tables_are_dropped_at_head_and_restored_on_downgrade(tmp_path):
+    db_file, env, result = _run_alembic(tmp_path, "0019_deferred_speaker_analysis")
+    assert result.returncode == 0, result.stdout + result.stderr
+    engine = create_engine(f"sqlite:///{db_file}")
+    try:
+        assert RETIRED_MOSS_TABLES <= set(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+    cwd = os.path.dirname(os.path.dirname(__file__))
+    for target, present in (("head", False), ("0019_deferred_speaker_analysis", True)):
+        command = "upgrade" if target == "head" else "downgrade"
+        step = subprocess.run(
+            [sys.executable, "-m", "alembic", "-c", "alembic.ini", command, target],
+            cwd=cwd, env=env, text=True, capture_output=True, check=False,
+        )
+        assert step.returncode == 0, step.stdout + step.stderr
+        engine = create_engine(f"sqlite:///{db_file}")
+        try:
+            tables = set(inspect(engine).get_table_names())
+        finally:
+            engine.dispose()
+        assert (RETIRED_MOSS_TABLES <= tables) is present
+        assert RETIRED_MOSS_TABLES.isdisjoint(tables) is (not present)

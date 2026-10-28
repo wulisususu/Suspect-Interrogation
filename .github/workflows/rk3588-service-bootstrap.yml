@@ -292,55 +292,15 @@ jobs:
           echo 'TCP/8000 remains preserved after speech-worker activation:'
           sudo -n ss -ltnp 'sport = :8000' || true
 
-      - name: Bootstrap MOSS RK3588 worker layout (spool, unit, tmpfiles, offline deps)
+      - name: Keep the shared runtime directory across reboots
         shell: bash
         run: |
           set -euo pipefail
-          MOSS_ENV=/etc/suspect-interrogation/moss-worker.env
-          MOSS_SPOOL=/var/lib/suspect-interrogation/moss
-          MOSS_RUNTIME=/opt/suspect-interrogation/runtime/moss-env
-
-          # Durable spool with the exact service identity; shared across redeploys and never rebuilt.
-          sudo -n install -d -o suspect-interrogation -g suspect-interrogation -m 0750 "$MOSS_SPOOL"
-
-          # Unit and tmpfiles fragment from this exact commit; daemon-reload before any start.
-          sudo -n install -m 0644 systemd/moss-worker.service /etc/systemd/system/moss-worker.service
-          sudo -n install -m 0644 deploy/tmpfiles-suspect-interrogation.conf /etc/tmpfiles.d/suspect-interrogation-moss.conf
-          sudo -n systemd-tmpfiles --create /etc/tmpfiles.d/suspect-interrogation-moss.conf
-          sudo -n systemctl daemon-reload
-
-          # Isolated Python 3.10 child runtime: only ever installed from the pre-staged
-          # offline wheel source. No network package installation for MOSS, ever.
-          if [[ -d /home/youyeetoo/offline-wheels && -f linux/backend/requirements-moss-rk3588.txt && ! -x "$MOSS_RUNTIME/bin/python" ]]; then
-            sudo -n python3.10 -m venv "$MOSS_RUNTIME"
-            sudo -n "$MOSS_RUNTIME/bin/pip" install --no-index --find-links /home/youyeetoo/offline-wheels \
-              -r linux/backend/requirements-moss-rk3588.txt
-            sudo -n "$MOSS_RUNTIME/bin/pip" install --no-index --find-links /home/youyeetoo/offline-wheels \
-              rknn-toolkit-lite2==2.3.2
-            sudo -n chown -R root:root "$MOSS_RUNTIME"
-            sudo -n chmod -R go-w "$MOSS_RUNTIME"
-          fi
-          if [[ -x "$MOSS_RUNTIME/bin/python" ]]; then
-            "$MOSS_RUNTIME/bin/python" -c 'from importlib.metadata import version; assert version("rknn-toolkit-lite2") == "2.3.2"; print("moss_env_rknn_lite=2.3.2")'
-          else
-            echo 'moss_env=pending_offline_wheels (stage /home/youyeetoo/offline-wheels and rerun)'
-          fi
-
-          # Enable the worker only when the full contract exists: rebuilt bundle +
-          # pinned env file. ConditionPathExists must never be the thing that
-          # silently skips the unit, so the state is asserted explicitly here.
-          if [[ -f /opt/suspect-interrogation/models/moss-rk3588/manifest.json && -s "$MOSS_ENV" ]]; then
-            sudo -n systemctl enable --now moss-worker.service
-            sudo -n systemctl restart moss-worker.service
-            systemctl is-active moss-worker.service
-            sudo -n test -S /run/suspect-interrogation/moss.sock
-            echo 'moss_worker=enabled_and_active'
-            sudo -n stat -c 'moss_sock_mode=%a owner=%U:%G' /run/suspect-interrogation/moss.sock
-          else
-            echo 'moss_worker=installed_not_enabled (requires bundle-v3 manifest and /etc/suspect-interrogation/moss-worker.env)'
-          fi
-          echo 'TCP/8000 is untouched by MOSS bootstrap:'
-          sudo -n ss -ltnp 'sport = :8000' || true
+          # /run/suspect-interrogation holds ai-worker's speech.sock; ai-worker does not
+          # declare it as a RuntimeDirectory, so a tmpfiles fragment creates it at boot.
+          sudo -n install -m 0644 deploy/tmpfiles-suspect-interrogation.conf /etc/tmpfiles.d/suspect-interrogation.conf
+          sudo -n systemd-tmpfiles --create /etc/tmpfiles.d/suspect-interrogation.conf
+          sudo -n test -d /run/suspect-interrogation
 
       - name: Apply protected local calibration when available
         shell: bash
@@ -476,11 +436,6 @@ jobs:
           systemctl is-enabled ai-worker.service || true
           systemctl is-active ai-worker.service || true
           ls -l /run/suspect-interrogation/speech.sock 2>/dev/null || true
-          echo '--- MOSS worker enabled/active/socket ---'
-          systemctl is-enabled moss-worker.service 2>/dev/null || true
-          systemctl is-active moss-worker.service 2>/dev/null || true
-          ls -l /run/suspect-interrogation/moss.sock 2>/dev/null || true
-          sudo -n test -f /etc/suspect-interrogation/moss-worker.env && echo 'moss-worker.env=present' || echo 'moss-worker.env=absent'
           echo '--- kiosk enabled/active ---'
           systemctl is-enabled kiosk.service || true
           systemctl is-active kiosk.service || true
