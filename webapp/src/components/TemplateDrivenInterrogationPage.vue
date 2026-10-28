@@ -25,6 +25,7 @@ import type {
   TemplateWorkspace,
 } from '../types/templateInterrogation'
 import FormalTemplatePanel from './FormalTemplatePanel.vue'
+import DictationRecordPreview from './DictationRecordPreview.vue'
 import DraftQuestionRail from './DraftQuestionRail.vue'
 import FactCoverageBar from './FactCoverageBar.vue'
 import RecordArchivePage from './RecordArchivePage.vue'
@@ -452,7 +453,18 @@ async function confirmSignature() {
         <header v-if="mode === 'review'" class="review-formal-heading record-no-print"><strong>询问笔录 · 复核中</strong><span>修改内容离开输入框后保存</span></header>
         <FactCoverageBar v-if="mode === 'interrogation'" :facts="facts" @fill="mode = 'review'" />
 
+        <DictationRecordPreview
+          v-if="mode === 'interrogation'"
+          :summary="summary"
+          :facts="facts"
+          :session="session"
+          :questions="workspace.questions"
+          :busy="templateBusy"
+          :locked="documentFrozen"
+          @commit="(questionId, text) => emit('updateAnswer', questionId, text)"
+        />
         <FormalTemplatePanel
+          v-else
           :summary="summary"
           :facts="facts"
           :session="session"

@@ -20,10 +20,6 @@ describe('formal record editor source contract', () => {
     expect(formal).not.toContain('结束并冻结笔录')
   })
 
-  it('previews recorded-but-not-committed answers with a 摘入正本 action', () => {
-    expect(formal).toContain('record-draft-preview')
-    expect(formal).toContain("emit('updateAnswer', q.id, draftOf(q))")
-  })
 
   it('keeps printing wired through the workspace', () => {
     expect(workspace).toContain('window.print()')

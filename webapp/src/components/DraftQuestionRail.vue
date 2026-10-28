@@ -171,7 +171,6 @@ function submitQuestion() {
         <article
           class="draft-card"
           :class="[`is-${card.state}`, { 'is-selected': selectedId === card.id && card.state !== 'recording' }]"
-          :data-question-id="card.id"
           @click="select(card.id)"
         >
           <header class="draft-card-head">
