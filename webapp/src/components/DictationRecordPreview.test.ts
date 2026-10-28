@@ -44,3 +44,23 @@ describe('DictationRecordPreview (design P07 right column)', () => {
     expect(html).toContain('另有 1 题未作答')
   })
 })
+
+describe('DictationRecordPreview grouped by template element', () => {
+  it('groups answers under their core element once questions carry an element key', async () => {
+    const coreFactsList = [
+      { key: 'time', label: '时间', value: '', status: 'confirmed' },
+      { key: 'place', label: '地点', value: '', status: 'pending' },
+    ]
+    const keyed = [
+      { ...questions[0], elementKey: 'time' },
+      { ...questions[1], elementKey: 'place' },
+      { ...questions[2], formalAnswerText: '没有看到。' },
+    ]
+    const html = await render({ facts: [...facts, ...coreFactsList], questions: keyed })
+    expect(html).toContain('① 时间')
+    expect(html).toContain('② 地点')
+    expect(html).toContain('待补（模板要素 · 以下待摘入）')
+    expect(html).toContain('其他问答')
+    expect(html).not.toContain('Q1 · ')
+  })
+})

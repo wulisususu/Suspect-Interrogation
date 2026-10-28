@@ -3,11 +3,14 @@ import { computed } from 'vue'
 import { ArrowRight, Check } from '@lucide/vue'
 import type { CaseSummary, FactItem, SessionState } from '../types/interrogation'
 import type { FormalQuestion } from '../types/templateInterrogation'
+import { coreFacts } from '../utils/factCoverage'
 
 /**
  * ③ 问答录入 · 正本实时预览（样板 P07 右栏）
  *
  * 只读：抬头机关名与「询问笔录」，紧凑的身份与询问信息行，正文只排已作答与待摘入的问答。
+ * 题目带有要素归属（elementKey）时按模板要素分段（「① 案发时间与地点 ✓已入正本」），
+ * 否则按题号标注。
  * 编辑在左栏题卡与②建档完成；④定稿校验仍使用可编辑的纸面。
  */
 const props = defineProps<{
@@ -67,9 +70,28 @@ const entries = computed(() => [...props.questions]
     const answer = question.formalAnswerText?.trim() || ''
     const round = [...(question.rounds ?? [])].reverse().find((item) => item.status !== 'DETACHED')
     const draft = answer ? '' : round?.answerText?.trim() || ''
-    return { id: question.id, ordinal: index + 1, text: question.text, answer, draft }
+    return { id: question.id, ordinal: index + 1, text: question.text, answer, draft, elementKey: question.elementKey || '' }
   }))
 const shown = computed(() => entries.value.filter((entry) => entry.answer || entry.draft))
+
+type Entry = (typeof shown.value)[number]
+interface Section { key: string; title: string; done: boolean; entries: Entry[] }
+
+/** 按模板要素分段；没有任何题目带要素归属时返回 null，正文退回按题号标注。 */
+const sections = computed<Section[] | null>(() => {
+  if (!shown.value.some((entry) => entry.elementKey)) return null
+  const circled = (index: number) => String.fromCharCode(0x2460 + index)
+  const elements = coreFacts(props.facts)
+  const result: Section[] = []
+  elements.forEach((element, index) => {
+    const items = shown.value.filter((entry) => entry.elementKey === element.key)
+    if (items.length) result.push({ key: element.key, title: `${circled(index)} ${element.label}`, done: items.every((item) => item.answer), entries: items })
+  })
+  const known = new Set(elements.map((element) => element.key))
+  const rest = shown.value.filter((entry) => !known.has(entry.elementKey))
+  if (rest.length) result.push({ key: 'other', title: '其他问答', done: rest.every((item) => item.answer), entries: rest })
+  return result
+})
 const unanswered = computed(() => entries.value.length - shown.value.length)
 </script>
 
@@ -86,7 +108,25 @@ const unanswered = computed(() => entries.value.length - shown.value.length)
       </p>
     </div>
 
-    <ol class="record-preview-body">
+    <div v-if="sections" class="record-preview-body">
+      <section v-for="section in sections" :key="section.key" class="record-preview-section" :class="section.done ? 'is-recorded' : 'is-draft'">
+        <p class="record-preview-tag">
+          {{ section.title }}
+          <template v-if="section.done"><Check :size="13" aria-hidden="true" />已入正本</template>
+          <template v-else>待补（模板要素 · 以下待摘入）</template>
+        </p>
+        <div v-for="entry in section.entries" :key="entry.id" :data-question-id="entry.id">
+          <p class="record-preview-q"><b>问：</b>{{ entry.text }}</p>
+          <p v-if="entry.answer" class="record-preview-a"><b>答：</b>{{ entry.answer }}</p>
+          <div v-else class="record-preview-draft">
+            <small>← 来自 Q{{ entry.ordinal }} · 录音转写草稿，可在左栏修改 · 摘入即落位本段</small>
+            <p class="record-preview-a"><b>答：</b>{{ entry.draft }}</p>
+            <button type="button" :disabled="busy || locked" @click="emit('commit', entry.id, entry.draft)">摘入正本<ArrowRight :size="15" aria-hidden="true" /></button>
+          </div>
+        </div>
+      </section>
+    </div>
+    <ol v-else class="record-preview-body">
       <li v-for="entry in shown" :key="entry.id" :data-question-id="entry.id" :class="entry.answer ? 'is-recorded' : 'is-draft'">
         <p class="record-preview-tag">
           <template v-if="entry.answer">Q{{ entry.ordinal }} · <Check :size="13" aria-hidden="true" />已入正本</template>
@@ -116,7 +156,8 @@ const unanswered = computed(() => entries.value.length - shown.value.length)
 .record-preview-meta em { font-style: normal; }
 .record-preview-meta em.is-empty { color: var(--paper-muted); }
 .record-preview-body { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
-.record-preview-body li { border-radius: var(--radius-sm); }
+.record-preview-body li, .record-preview-section > div { border-radius: var(--radius-sm); }
+.record-preview-section { display: flex; flex-direction: column; gap: var(--space-2); }
 .record-preview-tag { display: flex; align-items: center; gap: var(--space-1); margin: 0; font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 600; }
 .is-recorded .record-preview-tag { color: var(--primary-600); }
 .is-draft .record-preview-tag { color: var(--warning-700); }

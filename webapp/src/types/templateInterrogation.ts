@@ -28,6 +28,8 @@ export interface FormalQuestion {
   templateItemKey: string | null; locked: boolean; formalAnswerText: string; firstAskedAt: string | null
   sortOrder: number; active: boolean; rounds: FormalQuestionRound[]
   createdAt: string | null; updatedAt: string | null
+  /** 该题归属的模板核心要素（facts 的 key，如 time / place）；后端尚未提供时为空，见 docs/backend-todo.md */
+  elementKey?: string | null
 }
 
 export interface PendingFormalQuestion {
