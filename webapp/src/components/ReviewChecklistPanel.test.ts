@@ -37,16 +37,18 @@ describe('ReviewChecklistPanel (design P13 / state C)', () => {
   it('lists pre-finalise checks as hints only, with no manual acknowledgement boxes', async () => {
     const html = await render()
     expect(html).toContain('定稿前检查')
-    expect(html).toContain('笔录格式与《盗窃（电动车）》模板一致')
+    expect(html).toContain('笔录格式与模板一致 · 《盗窃（电动车）》')
     expect(html).toContain('签署人数与身份 · 被询问人 王某某')
-    expect(html).toContain('时间线一致（待接入）')
-    expect(html).toContain('1 条录音回答尚未摘入正本')
+    expect(html).toContain('录音回答未摘入正本 · 1 条')
+    // 尚未接入的时间线 / 同音字校验不列入正式清单（走查 D11）
+    expect(html).not.toContain('时间线一致')
+    expect(html).not.toContain('同音字纠错')
     expect(html).not.toContain('type="checkbox"')
   })
 
   it('surfaces only the blockers the backend would reject', async () => {
     const html = await render({ unresolvedFragments: 3, blockReason: '还有 3 条转写片段待确认或丢弃' })
-    expect(html).toContain('3 条转写片段未处理')
+    expect(html).toContain('转写片段未处理 · 3 条，需确认或丢弃后才能定稿')
     expect(html).toContain('还有 3 条转写片段待确认或丢弃')
   })
 })

@@ -106,6 +106,38 @@ function record(cardId: string, replace = false) {
   emit('record', cardId, replace)
 }
 
+/**
+ * 答区编辑态（样板 P06 · 交互状态 A）：点答区即进入编辑，显示「编辑中」、字数与撤销 / 清空重说 / 完成。
+ * 离开答区即保存；待摘入改的是草稿，已入正本改的是正本。
+ */
+const editingId = ref<string | null>(null)
+const editOrigin = reactive<Record<string, string>>({})
+let skipNextSave = false
+
+function startEdit(cardId: string) {
+  if (props.locked) return
+  editingId.value = cardId
+  editOrigin[cardId] = edits[cardId] ?? ''
+  selectedId.value = cardId
+}
+function undoEdit(cardId: string) {
+  edits[cardId] = editOrigin[cardId] ?? ''
+}
+function finishEdit(event: Event) {
+  ;(event.currentTarget as HTMLElement | null)?.closest('.draft-card')?.querySelector('textarea')?.blur()
+}
+function clearAndRerecord(cardId: string) {
+  skipNextSave = true
+  edits[cardId] = editOrigin[cardId] ?? ''
+  editingId.value = null
+  record(cardId, true)
+}
+function onEditBlur(cardId: string) {
+  editingId.value = null
+  if (skipNextSave) { skipNextSave = false; return }
+  saveEdit(cardId)
+}
+
 function saveEdit(cardId: string) {
   if (props.locked) return
   const card = cards.value.find((item) => item.id === cardId)
@@ -171,12 +203,13 @@ function submitQuestion() {
         <article
           class="draft-card"
           :class="[`is-${card.state}`, { 'is-selected': selectedId === card.id && card.state !== 'recording' }]"
+          :data-card-id="card.id"
           @click="select(card.id)"
         >
           <header class="draft-card-head">
             <span class="draft-ordinal">Q{{ card.ordinal }}</span>
             <p class="draft-question">{{ card.text }}</p>
-            <span class="draft-state">{{ STATE_LABEL[card.state] }}<template v-if="card.state === 'draft' && selectedId === card.id"> · 已选中</template></span>
+            <span class="draft-state">{{ editingId === card.id ? '编辑中' : STATE_LABEL[card.state] }}<template v-if="card.state === 'draft' && selectedId === card.id && editingId !== card.id"> · 已选中</template></span>
           </header>
 
           <div v-if="card.state === 'recording'" class="draft-recording">
@@ -189,15 +222,26 @@ function submitQuestion() {
           </div>
 
           <template v-else-if="card.state === 'recorded' || card.state === 'draft'">
+            <p v-if="editingId === card.id" class="draft-edit-meta"><span>编辑中 · 光标在句末</span><span>{{ (edits[card.id] ?? '').length }} 字</span></p>
             <textarea
               v-model="edits[card.id]"
               class="draft-answer"
+              :class="{ 'is-editing': editingId === card.id }"
               rows="2"
               :aria-label="`第 ${card.ordinal} 题回答`"
               :disabled="locked"
-              @blur="saveEdit(card.id)"
+              @focus="startEdit(card.id)"
+              @blur="onEditBlur(card.id)"
             ></textarea>
-            <footer class="draft-actions">
+            <template v-if="editingId === card.id">
+              <small class="draft-edit-hint">{{ card.state === 'draft' ? '改完仍为待摘入 · 完成后可摘入正本' : '改动在离开答区时同步到正本' }}</small>
+              <footer class="draft-actions is-editing">
+                <button type="button" class="draft-action is-secondary" @mousedown.prevent @click.stop="undoEdit(card.id)">撤销</button>
+                <button type="button" class="draft-action is-secondary" :disabled="!canStartAnswer" @mousedown.prevent @click.stop="clearAndRerecord(card.id)">清空重说</button>
+                <button type="button" class="draft-action is-done" @mousedown.prevent @click.stop="finishEdit">完成 · 收起键盘</button>
+              </footer>
+            </template>
+            <footer v-else class="draft-actions">
               <button type="button" class="draft-action is-secondary" :disabled="!canStartAnswer" @click.stop="record(card.id, true)"><RotateCcw :size="15" aria-hidden="true" />重录这题</button>
               <button v-if="card.state === 'recorded'" type="button" class="draft-action is-link" @click.stop="emit('locate', card.id)"><FileText :size="15" aria-hidden="true" />在正本中查看<ChevronRight :size="15" aria-hidden="true" /></button>
               <button v-else type="button" class="draft-action is-commit" :disabled="locked" @click.stop="commit(card.id)">摘入正本<ArrowRight :size="16" aria-hidden="true" /></button>
@@ -264,6 +308,12 @@ function submitQuestion() {
 
 .draft-answer { width: 100%; min-height: 64px; padding: var(--space-3) var(--space-4); border: 1px solid var(--line-300); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink-900); font: inherit; font-size: var(--text-md); line-height: 1.7; resize: vertical; }
 .draft-card.is-selected .draft-answer { border-color: var(--primary-500); }
+.draft-answer.is-editing { border: 2px solid var(--primary-600); background: var(--primary-50); }
+.draft-edit-meta { display: flex; justify-content: space-between; margin: 0; color: var(--primary-600); font-size: var(--text-xs); font-weight: 600; }
+.draft-edit-meta span:last-child { color: var(--ink-400); font-weight: 400; }
+.draft-edit-hint { color: var(--ink-400); font-size: var(--text-xs); }
+.draft-actions.is-editing { justify-content: flex-start; }
+.draft-action.is-done { margin-left: auto; background: var(--primary-600); color: var(--surface); }
 .draft-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 .draft-action { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 44px; padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); font-size: var(--text-sm); font-weight: 600; }
 .draft-action.is-secondary { background: var(--primary-50); color: var(--primary-600); }

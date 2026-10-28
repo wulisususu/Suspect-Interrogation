@@ -28,6 +28,7 @@ import LongPressButton from './LongPressButton.vue'
 import DictationRecordPreview from './DictationRecordPreview.vue'
 import DraftQuestionRail from './DraftQuestionRail.vue'
 import FactCoverageBar from './FactCoverageBar.vue'
+import FinalizeDrawer from './FinalizeDrawer.vue'
 import RecordArchivePage from './RecordArchivePage.vue'
 import RecordReviewPanel from './RecordReviewPanel.vue'
 import ReviewChecklistPanel from './ReviewChecklistPanel.vue'
@@ -35,7 +36,7 @@ import ReviewRecordPreview from './ReviewRecordPreview.vue'
 import RecordSigningPage from './RecordSigningPage.vue'
 import type { RecordMode } from '../flow/steps'
 import { cssToken } from '../utils/cssToken'
-import { reviewAutoChecks } from '../utils/reviewChecks'
+import { draftAnswerCount, finalizeChecks, reviewAutoChecks } from '../utils/reviewChecks'
 import { factCoverage } from '../utils/factCoverage'
 import { TEMPLATE_CATALOG } from '../config/templateCatalog'
 import { freezeBlockReason, orderedReviewFragments } from '../utils/recordCompletion'
@@ -103,6 +104,40 @@ const emit = defineEmits<{
 }>()
 
 const missingElements = computed(() => factCoverage(props.facts).missing.length)
+
+/** ③ 定稿校验抽屉（样板 P08 · 状态 C）。 */
+const drawerOpen = ref(false)
+const drawerChecks = computed(() => finalizeChecks({
+  summary: props.summary,
+  templateTitle: templateTitle.value,
+  autoChecks: autoChecks.value,
+  draftAnswers: draftAnswerCount(props.workspace.questions),
+  unresolvedFragments: unresolvedFragments.value,
+  unresolvedQa: unresolvedQa.value,
+}))
+const drawerCoverage = computed(() => {
+  const coverage = factCoverage(props.facts)
+  return { covered: coverage.covered, total: coverage.total }
+})
+async function confirmFromDrawer() {
+  await finishAndFreeze()
+  if (mode.value === 'sign') drawerOpen.value = false
+}
+
+/** 补齐缺项：回到左栏对应题卡（有要素归属时取该要素的题，否则取第一道未作答的题）。 */
+function focusMissingCard() {
+  const missingKeys = new Set(factCoverage(props.facts).missing.map((item) => item.key))
+  const active = [...props.workspace.questions].filter((question) => question.active !== false).sort((a, b) => a.sortOrder - b.sortOrder)
+  const unanswered = (question: (typeof active)[number]) => !question.formalAnswerText?.trim()
+  const target = active.find((question) => question.elementKey && missingKeys.has(question.elementKey) && unanswered(question))
+    ?? active.find(unanswered)
+  if (!target) { drawerOpen.value = true; return }
+  const card = document.querySelector<HTMLElement>(`[data-card-id="${target.id}"]`)
+  if (!card) return
+  card.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  card.classList.add('record-qa-located')
+  window.setTimeout(() => card.classList.remove('record-qa-located'), 1600)
+}
 const templateTitle = computed(() => TEMPLATE_CATALOG.find((item) => item.backendKey === props.workspace.templateKey)?.title || '嫌疑人询问')
 /** 正本的最近保存时间：取问题与问答轮次的最新更新时间。 */
 const savedAtText = computed(() => {
@@ -426,7 +461,7 @@ async function confirmSignature() {
         <p>左栏操作作答与归纳 · 右栏实时预览正本 · 整理定稿由民警完成</p>
       </div>
       <span class="dictation-mode">人工操作模式 · 正式询问</span>
-      <button type="button" class="dictation-finalize" :disabled="!!recordingQuestionId || questionRecording" @click="mode = 'review'">{{ missingElements ? `定稿并校验 · 缺 ${missingElements} 项` : '定稿并校验' }}</button>
+      <button type="button" class="dictation-finalize" :disabled="!!recordingQuestionId || questionRecording" @click="drawerOpen = true">{{ missingElements ? `定稿并校验 · 缺 ${missingElements} 项` : '定稿并校验' }}</button>
     </header>
 
     <div v-if="mode === 'interrogation'" class="template-interrogation-grid draft-first">
@@ -436,7 +471,7 @@ async function confirmSignature() {
           <span class="formal-template-chip">模板 · {{ templateTitle }}</span>
           <small v-if="savedAtText">已自动保存 · {{ savedAtText }}</small>
         </header>
-        <FactCoverageBar :facts="facts" @fill="mode = 'review'" />
+        <FactCoverageBar :facts="facts" @fill="focusMissingCard" />
         <DictationRecordPreview
           :summary="summary"
           :facts="facts"
@@ -445,6 +480,16 @@ async function confirmSignature() {
           :busy="templateBusy"
           :locked="documentFrozen"
           @commit="(questionId, text) => emit('updateAnswer', questionId, text)"
+        />
+        <FinalizeDrawer
+          v-if="drawerOpen"
+          :checks="drawerChecks"
+          :coverage="drawerCoverage"
+          :block-reason="freezeReason"
+          :busy="signingBusy === 'freeze'"
+          @close="drawerOpen = false"
+          @confirm="confirmFromDrawer"
+          @full-page="drawerOpen = false; mode = 'review'"
         />
       </div>
 

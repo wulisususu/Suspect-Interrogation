@@ -68,4 +68,13 @@ describe('DraftQuestionRail cards (design P07, states A/B)', () => {
     expect(html).toContain('追加一问 · 按住说话，说完自动成卡')
     expect(html).toContain('手动输入')
   })
+
+  it('offers undo / clear-and-rerecord / done while an answer is being edited (design P06)', async () => {
+    const source = (await import('./DraftQuestionRail.vue?raw')).default
+    expect(source).toContain('编辑中 · 光标在句末')
+    expect(source).toContain('撤销')
+    expect(source).toContain('清空重说')
+    expect(source).toContain('完成 · 收起键盘')
+    expect(source).toContain('@focus="startEdit(card.id)"')
+  })
 })

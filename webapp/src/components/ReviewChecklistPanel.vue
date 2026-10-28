@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import type { CaseSummary, FactItem } from '../types/interrogation'
 import type { FormalQuestion } from '../types/templateInterrogation'
 import { coreFacts } from '../utils/factCoverage'
-import type { ReviewAutoCheck } from '../utils/reviewChecks'
+import { draftAnswerCount, finalizeChecks, type ReviewAutoCheck } from '../utils/reviewChecks'
 
 /**
  * ④ 定稿校验 · 左栏（样板 P13 / 状态 C）
@@ -43,31 +43,15 @@ const counts = computed(() => ({
   missing: elements.value.filter((item) => item.state === 'missing').length,
 }))
 
-const drafts = computed(() => props.questions.filter((question) => question.active !== false && !question.formalAnswerText?.trim()
-  && question.rounds?.some((round) => round.status !== 'DETACHED' && round.answerText?.trim())).length)
-
-type CheckState = 'pass' | 'pending' | 'unavailable'
-const checks = computed<{ key: string; state: CheckState; text: string }[]>(() => {
-  const auto = props.autoChecks ?? []
-  const find = (key: string) => auto.find((item) => item.key === key)
-  const elementsCheck = find('elements')
-  const signers = find('signers')
-  const list: { key: string; state: CheckState; text: string }[] = [
-    { key: 'template', state: 'pass', text: `笔录格式与《${props.templateTitle}》模板一致` },
-    { key: 'identity', state: props.summary.idNumber && props.summary.suspectName ? 'pass' : 'pending', text: '身份信息与建档核对一致' },
-  ]
-  if (elementsCheck) list.push({ key: 'elements', state: elementsCheck.state, text: `模板要素 · ${elementsCheck.detail}` })
-  if (signers) list.push({ key: 'signers', state: signers.state, text: `签署人数与身份 · ${signers.detail}` })
-  for (const key of ['timeline', 'homophone']) {
-    const item = find(key)
-    if (item) list.push({ key, state: item.state, text: `${item.title}${item.state === 'unavailable' ? '（待接入）' : ''}` })
-  }
-  if (drafts.value) list.push({ key: 'drafts', state: 'pending', text: `${drafts.value} 条录音回答尚未摘入正本，未摘入的不会进入笔录` })
-  if (props.unresolvedFragments) list.push({ key: 'fragments', state: 'pending', text: `${props.unresolvedFragments} 条转写片段未处理（需确认或丢弃后才能定稿）` })
-  if (props.unresolvedQa) list.push({ key: 'qa', state: 'pending', text: `${props.unresolvedQa} 组问答待处置（需处置后才能定稿）` })
-  return list
-})
-const CHECK_MARK: Record<CheckState, string> = { pass: '✓', pending: '!', unavailable: '○' }
+const checks = computed(() => finalizeChecks({
+  summary: props.summary,
+  templateTitle: props.templateTitle,
+  autoChecks: props.autoChecks ?? [],
+  draftAnswers: draftAnswerCount(props.questions),
+  unresolvedFragments: props.unresolvedFragments,
+  unresolvedQa: props.unresolvedQa,
+}))
+const CHECK_MARK = { pass: '✓', pending: '!', block: '!' } as const
 </script>
 
 <template>
@@ -85,7 +69,7 @@ const CHECK_MARK: Record<CheckState, string> = { pass: '✓', pending: '!', unav
 
     <h3>定稿前检查</h3>
     <ul class="review-checks">
-      <li v-for="item in checks" :key="item.key" :class="`is-${item.state}`"><b aria-hidden="true">{{ CHECK_MARK[item.state] }}</b><span>{{ item.text }}</span></li>
+      <li v-for="item in checks" :key="item.key" :class="`is-${item.state}`"><b aria-hidden="true">{{ CHECK_MARK[item.state] }}</b><span>{{ item.detail ? `${item.title} · ${item.detail}` : item.title }}</span></li>
     </ul>
 
     <p v-if="frozen" class="review-block is-done">笔录已冻结，可进入 ⑤ 签署归档</p>
@@ -110,7 +94,7 @@ const CHECK_MARK: Record<CheckState, string> = { pass: '✓', pending: '!', unav
 .review-checks b { flex: 0 0 16px; font-weight: 600; }
 .review-checks .is-pass { color: var(--success-700); }
 .review-checks .is-pending { color: var(--warning-700); }
-.review-checks .is-unavailable { color: var(--ink-400); }
+.review-checks .is-block { color: var(--danger-600); }
 .review-block { margin: var(--space-2) 0 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); background: var(--warning-100); color: var(--warning-700); font-size: var(--text-sm); }
 .review-block.is-done { background: var(--success-100); color: var(--success-700); }
 </style>

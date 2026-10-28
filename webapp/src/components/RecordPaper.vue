@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { CaseSummary, FactItem, SessionState } from '../types/interrogation'
 import type { FormalQuestion } from '../types/templateInterrogation'
+import { branding } from '../config/branding'
 import { factValue, formatRecordTime } from '../utils/recordPaper'
 
 /**
@@ -29,8 +30,8 @@ const fact = (key: string, fallback?: string) => factValue(props.facts, key, fal
     <section class="record-paper-meta">
       <p>询问时间：{{ formatRecordTime(session.startedAt || summary.createdAt) }} 至 {{ formatRecordTime(session.endedAt) }}</p>
       <p>询问地点：{{ fact('interrogation_place') }}</p>
-      <p>询问人：{{ summary.officerName || '未填写' }}　工作单位：{{ fact('officer_unit') }}</p>
-      <p>记录人：{{ fact('recorder_name') }}　工作单位：{{ fact('recorder_unit') }}</p>
+      <p>询问人：{{ summary.officerName || '未填写' }}　工作单位：{{ fact('officer_unit', branding.unitName || undefined) }}</p>
+      <p>记录人：{{ fact('recorder_name') }}　工作单位：{{ fact('recorder_unit', fact('officer_unit', branding.unitName || undefined)) }}</p>
       <p>被询问人：{{ summary.suspectName || '未填写' }}　性别：{{ summary.gender || '未填写' }}　出生日期：{{ summary.birthDate || '未填写' }}</p>
       <p>证件类型：{{ fact('id_document_type', '身份证') }}　证件号码：{{ summary.idNumber || '未填写' }}</p>
       <p>联系方式：{{ fact('contact') }}　现住址：{{ fact('current_address') }}</p>

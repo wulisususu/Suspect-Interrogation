@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { backendErrorMessage } from '../api/interrogation'
 import { saveIdentityProfileFacts, updateCaseProfile } from '../api/caseProfile'
+import { branding } from '../config/branding'
 import { TEMPLATE_CATALOG } from '../config/templateCatalog'
 import type { CaseSummary, FactItem } from '../types/interrogation'
 import { calculateAge } from '../utils/identityOcr'
@@ -79,7 +80,7 @@ function syncFromProps() {
   form.interrogationRound = factText('interrogation_round', '1')
   form.interrogationPlace = factText('interrogation_place')
   form.officerName = props.summary.officerName && props.summary.officerName !== '当前警官' ? props.summary.officerName : ''
-  form.officerUnit = factText('officer_unit')
+  form.officerUnit = factText('officer_unit', branding.unitName)
   form.recorderName = factText('recorder_name')
   form.recorderUnit = factText('recorder_unit', form.officerUnit)
 }
@@ -193,9 +194,15 @@ onMounted(syncFromProps)
               </select>
             </IdentityFieldRow>
             <IdentityFieldRow label="询问地点" source="MANUAL" source-text="可修改"><input v-model="form.interrogationPlace" placeholder="如：一楼报案大厅" :disabled="!!busy || locked" /></IdentityFieldRow>
-            <IdentityFieldRow label="询问人" source="MANUAL" source-text="默认当前 · 可改" required><input v-model="form.officerName" placeholder="填写询问人" :disabled="!!busy || locked" /></IdentityFieldRow>
+            <IdentityFieldRow label="询问人" source="MANUAL" source-text="默认当前 · 可改" required>
+              <input v-model="form.officerName" class="person-name" placeholder="填写询问人" :disabled="!!busy || locked" />
+              <input v-model="form.officerUnit" aria-label="询问人工作单位" placeholder="工作单位" :disabled="!!busy || locked" />
+            </IdentityFieldRow>
             <IdentityFieldRow label="询问时间" source="MANUAL" source-text="自动记录" required><input value="开始询问后由系统自动记录" readonly disabled /></IdentityFieldRow>
-            <IdentityFieldRow label="记录员" source="MANUAL" source-text="手工填写" required><input v-model="form.recorderName" placeholder="填写记录员" :disabled="!!busy || locked" /></IdentityFieldRow>
+            <IdentityFieldRow label="记录员" source="MANUAL" source-text="手工填写" required>
+              <input v-model="form.recorderName" class="person-name" placeholder="填写记录员" :disabled="!!busy || locked" />
+              <input v-model="form.recorderUnit" aria-label="记录员工作单位" placeholder="工作单位（同询问人可留空）" :disabled="!!busy || locked" />
+            </IdentityFieldRow>
             <IdentityFieldRow label="询问次数 / 人大代表" source="MANUAL" source-text="下拉选择">
               <select v-model="form.interrogationRound" :disabled="!!busy || locked">
                 <option v-for="round in ROUND_OPTIONS" :key="round" :value="round">第 {{ round }} 次</option>
@@ -261,6 +268,7 @@ onMounted(syncFromProps)
 .inquiry-grid select.wide-select { flex: 1 1 auto; width: auto; }
 .birth-input { flex: 0 0 180px; max-width: 180px; }
 .age-text { color: var(--ink-900); font-size: var(--text-base); white-space: nowrap; }
+.person-name { flex: 0 0 7em; max-width: 7em; }
 
 .profile-progress { flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-5) var(--space-10); }
 .progress-score { display: flex; flex-direction: column; gap: var(--space-2); }

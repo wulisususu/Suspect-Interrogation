@@ -4,7 +4,7 @@ import { ArrowRight } from '@lucide/vue'
 import type { FactItem } from '../types/interrogation'
 import { factCoverage } from '../utils/factCoverage'
 
-/** 正本上方的要素覆盖条（样板 P08）：覆盖进度 + 最多 3 个缺项，点「补齐缺项」进入定稿校验。 */
+/** 正本上方的要素覆盖条（样板 P07）：覆盖进度 + 最多 3 个缺项，点「补齐缺项」回到左栏对应题卡。 */
 const props = defineProps<{ facts: FactItem[] }>()
 const emit = defineEmits<{ fill: [] }>()
 

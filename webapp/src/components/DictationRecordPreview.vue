@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { ArrowRight, Check } from '@lucide/vue'
 import type { CaseSummary, FactItem, SessionState } from '../types/interrogation'
 import type { FormalQuestion } from '../types/templateInterrogation'
+import { branding } from '../config/branding'
 import { coreFacts } from '../utils/factCoverage'
 
 /**
@@ -44,7 +45,8 @@ function maskId(value?: string) {
   return id.length > 8 ? `${id.slice(0, 4)}${'*'.repeat(id.length - 8)}${id.slice(-4)}` : id
 }
 
-const unit = computed(() => fact('officer_unit'))
+/** 机关名：本案填写的询问人工作单位优先，其次是部署配置的单位名。 */
+const unit = computed(() => fact('officer_unit') || branding.unitName)
 const officer = computed(() => text(props.summary.officerName))
 const recorder = computed(() => fact('recorder_name'))
 const meta = computed(() => {
@@ -98,7 +100,7 @@ const unanswered = computed(() => entries.value.length - shown.value.length)
 <template>
   <section class="record-preview" aria-label="正本实时预览">
     <header class="record-preview-head">
-      <p v-if="unit" class="record-preview-unit">{{ unit }}</p>
+      <p class="record-preview-unit" :class="{ 'is-empty': !unit }">{{ unit || '机关名称未填写 · 可在②建档「询问人 · 工作单位」补填' }}</p>
       <h1>询问笔录</h1>
     </header>
 
@@ -150,6 +152,7 @@ const unanswered = computed(() => entries.value.length - shown.value.length)
 .record-preview { display: flex; flex-direction: column; gap: var(--space-4); min-height: 0; padding: var(--space-5) var(--space-6) var(--space-8); overflow: auto; background: var(--paper-bg); color: var(--paper-ink); font-family: var(--font-serif); }
 .record-preview-head { padding-bottom: var(--space-2); border-bottom: 2px solid var(--paper-ink); }
 .record-preview-unit { margin: 0; font-size: var(--text-lg); }
+.record-preview-unit.is-empty { color: var(--paper-muted); font-family: var(--font-sans); font-size: var(--text-sm); }
 .record-preview-head h1 { margin: var(--space-1) 0 0; font-size: var(--text-3xl); font-weight: 600; letter-spacing: 8px; }
 .record-preview-meta { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding-bottom: var(--space-3); border-bottom: 1px solid var(--paper-rule); font-size: var(--text-base); line-height: 1.7; }
 .record-preview-meta p { display: flex; flex-wrap: wrap; column-gap: var(--space-6); margin: 0; }

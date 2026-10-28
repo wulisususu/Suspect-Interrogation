@@ -849,7 +849,7 @@ button:disabled {
 .template-interrogation-grid.draft-first { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-6); padding: var(--space-5) var(--space-6); background: var(--surface-sunken); }
 .template-interrogation-grid.draft-first .dialogue-column { padding: 0; background: transparent; }
 .template-interrogation-grid.draft-first .dialogue-column > .draft-rail { flex: 1 1 auto; min-height: 0; }
-.formal-column.is-dictation { grid-template-rows: auto auto minmax(0, 1fr); border-radius: var(--radius-lg); background: var(--surface); }
+.formal-column.is-dictation { position: relative; grid-template-rows: auto auto minmax(0, 1fr); border-radius: var(--radius-lg); background: var(--surface); }
 .formal-heading { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--line-200); }
 .formal-heading strong { color: var(--ink-900); font-size: var(--text-lg); font-weight: 650; }
 .formal-template-chip { padding: 2px var(--space-3); border-radius: var(--radius-pill); background: var(--primary-100); color: var(--primary-600); font-size: var(--text-xs); }
