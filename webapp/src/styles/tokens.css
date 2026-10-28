@@ -6,14 +6,14 @@
 
 :root {
   /* 主色 · 深海军蓝（顶栏、标题） */
-  --navy-900: #16263f;
-  --navy-800: #1c2f4d;
-  --navy-700: #22395c;
+  --navy-900: #0e2144;
+  --navy-800: #15305a;
+  --navy-700: #1d3d6e;
 
   /* 主色 · 警务蓝（主按钮、选中态、链接） */
-  --primary-700: #1a457d;
-  --primary-600: #205293;
-  --primary-500: #2f68ad;
+  --primary-700: #174fae;
+  --primary-600: #1d5fd0;
+  --primary-500: #3a76dc;
   --primary-200: #cddff2;
   --primary-100: #e8f0fa;
   --primary-50: #f2f7fd;
@@ -30,9 +30,11 @@
   --line-200: #e3e9f2;
   --line-100: #eef2f8;
   --surface: #ffffff;
-  --surface-sunken: #f5f7fb;
+  --surface-sunken: #f4f6f9;
+  /* 步骤条等横向分区带（样板取样 #E9EEF7） */
+  --surface-band: #e9eef7;
   --surface-muted: #eef2f7;
-  --canvas: #edf2f6;
+  --canvas: #f4f6f9;
 
   /* 语义色 */
   --success-700: #26663f;
@@ -58,11 +60,11 @@
   --font-serif: "FangSong", "STFangsong", "SimSun", serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
 
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-base: 14px;
-  --text-md: 15px;
-  --text-lg: 17px;
+  --text-xs: 13px;
+  --text-sm: 14px;
+  --text-base: 15px;
+  --text-md: 16px;
+  --text-lg: 18px;
   --text-xl: 20px;
   --text-2xl: 24px;
   --text-3xl: 30px;
@@ -87,7 +89,9 @@
   /* 阴影 · 只用于浮层与卡片受光 */
   --shadow-card: 0 1px 2px rgba(23, 38, 64, 0.04), 0 8px 24px -12px rgba(23, 38, 64, 0.12);
   --shadow-pop: 0 12px 32px -8px rgba(23, 38, 64, 0.22);
-  --shadow-focus: 0 0 0 3px rgba(47, 104, 173, 0.28);
+  --shadow-focus: 0 0 0 3px rgba(29, 95, 208, 0.28);
+  /* 主色实心按钮 / 当前步骤的轻投影 */
+  --shadow-active: 0 4px 12px -4px rgba(29, 95, 208, 0.55);
 
   /* 结构尺寸 */
   --height-topbar: 56px;

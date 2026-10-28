@@ -71,7 +71,7 @@ function select(key: FlowStepKey) {
   gap: var(--space-4);
   min-height: var(--height-stepbar);
   padding: 0 var(--space-8);
-  background: var(--line-100);
+  background: var(--surface-band);
   flex: 0 0 auto;
 }
 
@@ -113,6 +113,7 @@ function select(key: FlowStepKey) {
 .step-button.is-active {
   background: var(--primary-600);
   color: var(--surface);
+  box-shadow: var(--shadow-active);
 }
 
 .step-button.is-done,

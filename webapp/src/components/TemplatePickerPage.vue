@@ -185,7 +185,7 @@ const circled = (index: number) => String.fromCharCode(0x2460 + index)
 .picker-new { display: inline-flex; align-items: center; gap: var(--space-1); margin-left: auto; min-height: 44px; padding: 0 var(--space-5); border: 1px solid var(--primary-600); border-radius: var(--radius-sm); background: var(--surface); color: var(--primary-600); font-size: var(--text-md); font-weight: 600; }
 
 .picker-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
-.template-card { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); border: 2px solid transparent; border-radius: var(--radius-md); background: var(--surface); }
+.template-card { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); border: 2px solid transparent; border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-card); }
 .template-card.is-selected { border-color: var(--primary-600); }
 .template-card > header { display: flex; align-items: center; gap: var(--space-2); }
 .template-tag, .template-badge { padding: 2px var(--space-3); border-radius: var(--radius-pill); font-size: var(--text-xs); }
