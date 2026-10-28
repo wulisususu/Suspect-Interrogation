@@ -10,7 +10,7 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def tls_env(tmp_path: Path, lan_ip: str) -> dict[str, str]:
+def tls_env(tmp_path: Path, lan_ip: str, extra_san: str | None = None) -> dict[str, str]:
     env = os.environ.copy()
     env.update({
         "SUSPECT_ETC_DIR": str(tmp_path / "etc"),
@@ -19,11 +19,13 @@ def tls_env(tmp_path: Path, lan_ip: str) -> dict[str, str]:
         "SUSPECT_SERVICE_GROUP": env.get("USER", "root"),
         "SUSPECT_DRY_RUN": "1",
     })
+    if extra_san is not None:
+        env["SUSPECT_TLS_EXTRA_SAN"] = extra_san
     return env
 
 
-def run_tls_helper(tmp_path: Path, lan_ip: str) -> tuple[str, str]:
-    env = tls_env(tmp_path, lan_ip)
+def run_tls_helper(tmp_path: Path, lan_ip: str, extra_san: str | None = None) -> tuple[str, str]:
+    env = tls_env(tmp_path, lan_ip, extra_san)
     command = f'''
 set -euo pipefail
 source "{ROOT}/deploy/lib/common.sh"
@@ -60,6 +62,29 @@ def test_tls_helper_reuses_ca_and_renews_leaf_when_lan_ip_changes(tmp_path: Path
     assert "IP Address:127.0.0.1" in second_san
     assert "DNS:localhost" in second_san
     assert "IP Address:192.168.0.9," not in second_san
+
+
+def test_tls_helper_appends_extra_sans_and_renews_when_the_list_changes(tmp_path: Path):
+    first_ca, first_san = run_tls_helper(
+        tmp_path, "192.168.2.109", "IP:192.168.0.26, IP:192.168.0.4, IP:124.223.176.99"
+    )
+    assert "IP Address:192.168.0.26," in first_san
+    assert "IP Address:192.168.0.4," in first_san
+    assert "IP Address:124.223.176.99" in first_san
+
+    # CA 必须复用：SAN 列表变化只重签叶子证书，根不能换（否则所有客户端要重装 CA）
+    second_ca, second_san = run_tls_helper(tmp_path, "192.168.2.109", "IP:192.168.0.26, IP:124.223.176.99")
+    assert second_ca == first_ca
+    assert "IP Address:124.223.176.99" in second_san
+    # 从列表里删掉的地址必须从证书上消失，而不是继续带着废弃 SAN
+    assert "IP Address:192.168.0.4" not in second_san
+
+
+def test_tls_helper_without_extra_san_keeps_the_three_default_entries(tmp_path: Path):
+    _, san = run_tls_helper(tmp_path, "192.168.2.109")
+    assert "IP Address:192.168.2.109," in san
+    assert "IP Address:127.0.0.1" in san
+    assert "DNS:localhost" in san
 
 
 def test_tls_helper_refuses_to_silently_replace_an_existing_broken_ca(tmp_path: Path):

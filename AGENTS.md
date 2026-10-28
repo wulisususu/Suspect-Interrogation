@@ -44,6 +44,14 @@ The deployed frontend under `/opt/suspect-interrogation/current/webapp/dist` and
 
 The canonical production URL is `https://192.168.2.109:18080`.
 
+Additional access points served by the same certificate (kept in
+`SUSPECT_TLS_EXTRA_SAN`, see `deploy/lib/tls.sh`): the board's current LAN
+addresses `https://192.168.0.26:18080` / `https://192.168.0.4:18080` and the
+frp public entry `https://124.223.176.99:18080`. Any new access address must be
+added to that list before clients can open WebSocket audio channels: browsers
+do not extend a "proceed anyway" certificate exception to `new WebSocket`, so a
+missing SAN fails silently on the client with no server-side trace.
+
 The project LAN CA and server private keys live under `/etc/suspect-interrogation/tls/` on the RK3588 and must never be committed to GitHub. Production checks must trust the project CA explicitly or through the operating-system trust store. Browser ASR and voiceprint audio must use WSS under the HTTPS origin.
 
 ## Database migrations

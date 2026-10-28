@@ -21,6 +21,10 @@ jobs:
     env:
       SUSPECT_DEPLOY_PORT: '18080'
       SUSPECT_TLS_LAN_IP: '192.168.2.109'
+      # 一张证书服务多个入口：板子当前局域网地址（192.168.0.x）+ frp 公网入口
+      # （124.223.176.99）+ 保留旧网段 192.168.2.109。WebSocket 不吃"点了继续
+      # 访问"的证书例外，SAN 不含的地址上 WSS 必挂（2026-10-27 故障根因）。
+      SUSPECT_TLS_EXTRA_SAN: 'IP:192.168.0.26,IP:192.168.0.4,IP:192.168.2.109,IP:124.223.176.99'
       SUSPECT_TLS_CA_FILE: '/etc/suspect-interrogation/tls/ca.crt'
       SUSPECT_TLS_CERT_FILE: '/etc/suspect-interrogation/tls/server.crt'
       SUSPECT_TLS_KEY_FILE: '/etc/suspect-interrogation/tls/server.key'
@@ -132,6 +136,7 @@ jobs:
           sudo -n env \
             SUSPECT_DEPLOY_PORT="$SUSPECT_DEPLOY_PORT" \
             SUSPECT_TLS_LAN_IP="$SUSPECT_TLS_LAN_IP" \
+            SUSPECT_TLS_EXTRA_SAN="$SUSPECT_TLS_EXTRA_SAN" \
             bash deploy/control.sh install
           RUNTIME_ENV=/etc/suspect-interrogation/runtime.env
           upsert() {
@@ -173,6 +178,7 @@ jobs:
           grep -q "IP Address:${SUSPECT_TLS_LAN_IP}" /tmp/suspect-tls-san.txt
           grep -q 'IP Address:127.0.0.1' /tmp/suspect-tls-san.txt
           grep -q 'DNS:localhost' /tmp/suspect-tls-san.txt
+          grep -q 'IP Address:124.223.176.99' /tmp/suspect-tls-san.txt
 
       - name: Build migrate and atomically deploy frontend and backend
         shell: bash
@@ -181,6 +187,7 @@ jobs:
           sudo -n env \
             SUSPECT_DEPLOY_PORT="$SUSPECT_DEPLOY_PORT" \
             SUSPECT_TLS_LAN_IP="$SUSPECT_TLS_LAN_IP" \
+            SUSPECT_TLS_EXTRA_SAN="$SUSPECT_TLS_EXTRA_SAN" \
             SUSPECT_HEALTH_BASE_URL="https://127.0.0.1:${SUSPECT_DEPLOY_PORT}" \
             bash deploy/control.sh deploy "$GITHUB_WORKSPACE"
           sudo -n systemctl enable ai-worker.service
@@ -274,6 +281,7 @@ jobs:
           grep -q "IP Address:${SUSPECT_TLS_LAN_IP}" /tmp/suspect-tls-san.txt
           grep -q 'IP Address:127.0.0.1' /tmp/suspect-tls-san.txt
           grep -q 'DNS:localhost' /tmp/suspect-tls-san.txt
+          grep -q 'IP Address:124.223.176.99' /tmp/suspect-tls-san.txt
 
           grep -q "url.protocol === 'https:' ? 'wss:' : 'ws:'" /opt/suspect-interrogation/current/webapp/src/audio/browserAsrCapture.ts
           grep -q "base.protocol === 'https:' ? 'wss:' : 'ws:'" /opt/suspect-interrogation/current/webapp/src/audio/browserVoiceprintCapture.ts
