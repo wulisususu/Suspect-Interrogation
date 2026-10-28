@@ -19,8 +19,31 @@ class CaseService:
     def __init__(self, db: Session):
         self.db = db
 
+    def _bind_officers(self, row, payload: dict) -> None:
+        from app.services.recording_service import RecordingService
+        from app.services.officer_service import OfficerService
+
+        if "fullRecordingEnabled" in payload:
+            RecordingService(self.db, None).set_options(row.id, payload["fullRecordingEnabled"])
+        if not {"interrogatorBadgeNumber", "recorderBadgeNumber"}.intersection(payload):
+            return
+        service = OfficerService(self.db)
+        existing = service.case_officers(row.id)
+        service.bind_case_officers(
+            row.id,
+            interrogator_badge_number=payload.get("interrogatorBadgeNumber", (existing["interrogator"] or {}).get("badgeNumber")),
+            recorder_badge_number=payload.get("recorderBadgeNumber", (existing["recorder"] or {}).get("badgeNumber")),
+        )
+
     def _case_data(self, row) -> dict:
+        from app.services.case_management_service import case_management_fields
+        from app.services.officer_service import OfficerService
+        from app.services.recording_service import RecordingService
+
         data = case_dict(row)
+        data.update(case_management_fields(self.db, row.id))
+        data.update(OfficerService(self.db).case_officers(row.id))
+        data.update(RecordingService(self.db, None).options(row.id))
         persons = person_repo.list_for_case(self.db, row.id)
         if not persons:
             return data
@@ -39,14 +62,23 @@ class CaseService:
         return data
 
     def create(self, payload: dict) -> dict:
+        from app.auth.context import current_actor_id
+
+        if current_actor_id():
+            payload = {**payload, "operator_id": current_actor_id()}
         row = case_repo.create(self.db, payload)
         fact_repo.seed_defaults(self.db, row.id)
+        self._bind_officers(row, payload)
         data = self._case_data(row)
         audit_repo.add(self.db, case_id=row.id, actor_id=row.operator_id, action="CASE_CREATE", target_type="CASE", target_id=row.id, after=data)
         self.db.commit()
         return data
 
     def intake(self, payload: dict, identity: dict, actor_id: str | None = None) -> dict:
+        from app.auth.context import current_actor_id
+
+        if current_actor_id():
+            payload = {**payload, "operator_id": current_actor_id()}
         clean_identity = dict(identity)
         clean_identity["name"] = str(clean_identity.get("name") or "").strip()
         clean_identity["idNumber"] = str(clean_identity.get("idNumber") or "").strip()
@@ -58,6 +90,7 @@ class CaseService:
             begin_sqlite_immediate(self.db)
             row = case_repo.create(self.db, payload)
             fact_repo.seed_defaults(self.db, row.id)
+            self._bind_officers(row, payload)
             audit_repo.add(
                 self.db,
                 case_id=row.id,
@@ -102,6 +135,10 @@ class CaseService:
         return [self._case_data(row) for row in case_repo.list_all(self.db, limit, query)]
 
     def update(self, case_id: str, patch: dict, actor_id: str | None = None) -> dict:
+        from app.auth.context import current_actor_id
+
+        if current_actor_id():
+            patch = {key: value for key, value in patch.items() if key not in {"operator_id", "operatorId"}}
         row = assert_formal_record_mutable(self.db, case_id)
         before = self._case_data(row)
         if "stage" in patch:
@@ -110,6 +147,7 @@ class CaseService:
             except ValueError as exc:
                 raise DomainError("INVALID_STAGE", "无效审讯阶段", 400) from exc
         case_repo.update_fields(self.db, row, patch)
+        self._bind_officers(row, patch)
         identity_fields = {
             "suspectName": "name",
             "gender": "gender",

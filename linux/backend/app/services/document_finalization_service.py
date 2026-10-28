@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 import json
 
-from app.database.models import ASRCaptureSession, ASRFragment, QAUnit, QuestionRound
+from app.database.models import ASRCaptureSession, ASRFragment, QAUnit, QuestionRound, ProcessedSpeechFragment
 from app.database.session import begin_sqlite_immediate
 from app.domain.enums import WorkflowState
 from app.domain.errors import DomainError
@@ -44,7 +44,9 @@ class DocumentFinalizationService:
         if not case_id:
             raise DomainError("CASE_ID_REQUIRED", "案件编号不能为空", 400)
 
-        case = case_repo.get(self.db, case_id)
+        from app.services.case_management_service import assert_case_not_void
+
+        case = assert_case_not_void(self.db, case_id)
         if WorkflowState(case.workflow_state) in {
             WorkflowState.FROZEN,
             WorkflowState.SIGNED,
@@ -131,6 +133,10 @@ class DocumentFinalizationService:
             if capture_ids:
                 # 逐题录音挂到某道题回答上的片段已经有了去处，视为已处理。
                 attached_ids: set[str] = set()
+                attached_ids.update(self.db.scalars(select(ProcessedSpeechFragment.fragment_id).where(
+                    ProcessedSpeechFragment.case_id == case_id,
+                    ProcessedSpeechFragment.action == "LIVE_QUESTION",
+                )))
                 for raw in self.db.scalars(
                     select(QuestionRound.answer_fragment_ids_json).where(
                         QuestionRound.case_id == case_id,

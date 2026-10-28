@@ -36,7 +36,9 @@ class IdentityService:
         device_event: str,
         audit_action: str,
     ) -> dict:
-        case = case_repo.get(self.db, case_id)
+        from app.services.formal_record_policy import assert_formal_record_mutable
+
+        case = assert_formal_record_mutable(self.db, case_id)
         current = WorkflowState(case.workflow_state)
         if current == WorkflowState.IDENTITY_REQUIRED:
             next_state = StateMachine.transition(current, WorkflowState.IDENTITY_READY)
@@ -73,6 +75,10 @@ class IdentityService:
         return self._response(row, data)
 
     def read(self, case_id: str | None = None, actor_id: str | None = None) -> dict:
+        if case_id:
+            from app.services.formal_record_policy import assert_formal_record_mutable
+
+            assert_formal_record_mutable(self.db, case_id)
         data = self.hardware.read_identity()
         # The intake UI reads the physical card before a case exists. Treat that
         # as a preview only: do not create an orphan Person. Return the legacy

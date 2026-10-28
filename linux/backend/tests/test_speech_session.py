@@ -131,17 +131,20 @@ def test_start_then_end_decodes_utterance_once_with_shared_bounds():
 
 
 def test_active_utterance_emits_a_preview_without_waiting_for_vad_end():
-    runtime = FakeRuntime(vad_outputs=[[[0, -1]], []])
+    runtime = StreamingRuntime(vad_outputs=[[[0, -1]], []])
     session = SpeechSession("session-preview", 16000, runtime, chunk_size_ms=200)
 
     session.push_pcm(_pcm(200, value=1))
     events = session.push_pcm(_pcm(1500, value=2))
 
     assert [event.type for event in events] == [SpeechEventType.ASR_PARTIAL]
-    assert events[0].text == "测试口供"
+    assert events[0].text
     assert events[0].start_ms == 0
-    assert events[0].end_ms == 1700
-    assert events[0].details == {"preview": True}
+    # Only two complete 600ms streaming windows have been consumed.
+    assert events[0].end_ms == 1200
+    assert events[0].model_id == "paraformer-streaming"
+    assert events[0].details == {"preview": True, "cumulative": True}
+    assert runtime.transcribe_calls == []
     assert runtime.speaker_calls == []
 
 

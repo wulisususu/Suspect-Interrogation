@@ -1,8 +1,16 @@
+import base64
+
 from fastapi.testclient import TestClient
 
 from app.hardware_gateway.mock import MockHardwareGateway
 from app.main import create_app
 from app.repositories import persons as person_repo
+
+
+VALID_SIGNATURE_PNG = 'data:image/png;base64,' + base64.b64encode(bytes.fromhex(
+    '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489'
+    '0000000d49444154789c63606060f80f00010401005fe5c34b0000000049454e44ae426082'
+)).decode()
 
 
 def payload(response):
@@ -93,7 +101,7 @@ def test_canonical_api_full_case_flow(tmp_path, enroll_test_suspect_voiceprint):
         suspect_signed = payload(client.post(f"/api/v1/cases/{case_id}/document/sign", json={
             "signerRole": "SUSPECT",
             "signerName": "测试对象",
-            "imageDataUrl": "data:image/png;base64,AAA",
+            "imageDataUrl": VALID_SIGNATURE_PNG,
             "strokesJson": "[]",
             "actorId": "op-1",
         }))
@@ -103,7 +111,7 @@ def test_canonical_api_full_case_flow(tmp_path, enroll_test_suspect_voiceprint):
         officer_signed = payload(client.post(f"/api/v1/cases/{case_id}/document/sign", json={
             "signerRole": "OFFICER",
             "signerName": "测试警官",
-            "imageDataUrl": "data:image/png;base64,BBB",
+            "imageDataUrl": VALID_SIGNATURE_PNG,
             "strokesJson": "[]",
             "actorId": "op-1",
         }))

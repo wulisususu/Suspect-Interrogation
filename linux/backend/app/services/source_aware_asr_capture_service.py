@@ -212,7 +212,7 @@ class SourceAwareAsrCaptureService:
                 if self._capture_sources.get(case_id) == source:
                     self._capture_sources.pop(case_id, None)
 
-    def start(self, case_id: str, source: str | None = None) -> dict[str, Any]:
+    def start(self, case_id: str, source: str | None = None, *, target_question_id: str | None = None, replace: bool = False) -> dict[str, Any]:
         selected = self._source(source)
         with self._lock:
             for active_case in list(self._capture_sources):
@@ -221,7 +221,8 @@ class SourceAwareAsrCaptureService:
                 raise DomainError("ASR_AUDIO_RESOURCE_BUSY", "正式审讯录音正在占用麦克风", 409)
             if self._preparation_source is not None:
                 raise DomainError("ASR_AUDIO_RESOURCE_BUSY", "准备阶段语音输入正在占用麦克风", 409)
-            result = self._services[selected].start(case_id)
+            ownership = {"target_question_id": target_question_id, "replace": replace} if target_question_id is not None or replace else {}
+            result = self._services[selected].start(case_id, **ownership)
             if selected == "BROWSER" and self._live_speech_coordinator is not None:
                 try:
                     self._live_speech_coordinator.register_browser_capture(

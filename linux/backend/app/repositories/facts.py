@@ -29,8 +29,15 @@ DEFAULT_FACTS = [
 
 
 def seed_defaults(db: Session, case_id: str) -> None:
+    from app.services.template_catalog_service import get_case_elements
+
+    elements = get_case_elements(db, case_id)
+    core_keys = {item[0] for item in DEFAULT_FACTS[:7]}
+    selected_keys = None if elements is None else {item["key"] for item in elements}
     existing = set(db.scalars(select(Fact.fact_key).where(Fact.case_id == case_id)))
     for fact_key, label, value, status, suggestion in DEFAULT_FACTS:
+        if selected_keys is not None and fact_key in core_keys and fact_key not in selected_keys:
+            continue
         if fact_key in existing:
             continue
         db.add(Fact(

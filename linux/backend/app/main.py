@@ -18,6 +18,14 @@ from app.ai.supervisor import AISupervisor
 from app.api.ai_runtime import router as ai_router
 from app.api.asr import router as asr_router
 from app.api.cases import router as cases_router
+from app.api.case_management import router as case_management_router
+from app.api.document_marks import router as document_marks_router
+from app.api.document_exports import router as document_exports_router
+from app.api.recordings import router as recordings_router
+from app.api.knowledge import router as knowledge_router
+from app.api.officers import router as officers_router
+from app.api.template_catalog import router as template_catalog_router
+from app.auth.middleware import OfficerAuthMiddleware
 from app.api.client_context import router as client_context_router
 from app.api.compat import router as compat_router
 from app.api.device_events import router as device_router
@@ -303,6 +311,7 @@ def create_app(
 
     install_error_handlers(app)
     app.add_middleware(AudioSourceContextMiddleware)
+    app.add_middleware(OfficerAuthMiddleware, session_factory=app.state.session_factory)
     if settings.cors_origins_list:
         app.add_middleware(
             CORSMiddleware,
@@ -316,6 +325,13 @@ def create_app(
     app.include_router(capabilities_router)
     app.include_router(tls_router)
     app.include_router(cases_router, prefix="/api/v1")
+    app.include_router(case_management_router, prefix="/api/v1")
+    app.include_router(document_marks_router, prefix="/api/v1")
+    app.include_router(document_exports_router, prefix="/api/v1")
+    app.include_router(recordings_router, prefix="/api/v1")
+    app.include_router(knowledge_router, prefix="/api/v1")
+    app.include_router(officers_router, prefix="/api/v1")
+    app.include_router(template_catalog_router, prefix="/api/v1")
     app.include_router(identity_router, prefix="/api/v1")
     app.include_router(interrogation_router, prefix="/api/v1")
     app.include_router(template_workspace_router, prefix="/api/v1")

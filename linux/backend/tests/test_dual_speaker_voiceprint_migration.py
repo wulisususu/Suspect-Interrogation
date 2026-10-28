@@ -9,7 +9,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, inspect, text
 
 
-EXPECTED_HEAD = "0020_drop_moss_transcription"
+EXPECTED_HEAD = "0027_document_fingerprints"
 XVECTOR = "xvector"
 
 

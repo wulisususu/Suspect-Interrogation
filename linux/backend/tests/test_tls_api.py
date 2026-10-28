@@ -17,7 +17,7 @@ def test_public_ca_endpoint_returns_configured_certificate(tmp_path, monkeypatch
         response = client.get("/api/v1/tls/ca.crt")
 
     assert response.status_code == 200
-    assert response.text == ca.read_text(encoding="utf-8")
+    assert response.content == ca.read_bytes()
     assert response.headers["content-type"].startswith(("application/x-x509-ca-cert", "application/pkix-cert"))
 
 

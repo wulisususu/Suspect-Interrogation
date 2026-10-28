@@ -48,6 +48,13 @@ def test_protocol_uses_big_endian_length_prefixed_utf8_json():
     assert json.loads(frame[4:].decode("utf-8")) == payload
 
 
+def test_client_reports_unsupported_socket_platform_as_typed_capability_error(monkeypatch, tmp_path):
+    monkeypatch.delattr(socket, "AF_UNIX", raising=False)
+    with pytest.raises(BackendUnavailableError, match="AF_UNIX") as exc:
+        SpeechWorkerClient(tmp_path / "speech.sock").health()
+    assert exc.value.details["op"] == "health"
+
+
 def test_protocol_rejects_oversized_messages_before_body_read(tmp_path: Path):
     with pytest.raises(ProtocolMessageTooLarge):
         encode_frame({"payload": "x" * (MAX_MESSAGE_BYTES + 1)})
@@ -87,6 +94,7 @@ def test_speaker_result_protocol_preserves_backend_evidence_and_legacy_source_te
     assert encoded["model_id"] == payload["model_id"]
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="requires an AF_UNIX socket runtime")
 def test_client_operations_round_trip_through_deterministic_mock_worker(tmp_path: Path):
     socket_path = tmp_path / "speech.sock"
     pcm = b"\x00\x01\xfe\xff" * 32
@@ -156,6 +164,7 @@ def test_mock_worker_omits_final_event_for_zero_byte_session(tmp_path: Path):
     )
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="requires an AF_UNIX socket runtime")
 def test_worker_typed_errors_map_to_existing_ai_errors(tmp_path: Path):
     socket_path = tmp_path / "speech.sock"
     with MockSpeechWorker(socket_path) as worker:
@@ -172,6 +181,7 @@ def test_worker_typed_errors_map_to_existing_ai_errors(tmp_path: Path):
         assert exc_info.value.details == {"model": "xvector"}
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="requires an AF_UNIX socket runtime")
 def test_missing_socket_timeout_and_malformed_response_become_typed_errors(tmp_path: Path):
     missing = SpeechWorkerClient(tmp_path / "missing.sock", timeout=0.05)
     with pytest.raises(BackendUnavailableError):
@@ -202,6 +212,7 @@ def test_missing_socket_timeout_and_malformed_response_become_typed_errors(tmp_p
     thread.join(timeout=1)
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="requires an AF_UNIX socket runtime")
 def test_disconnect_then_restart_does_not_leak_session_state(tmp_path: Path):
     socket_path = tmp_path / "speech.sock"
     worker = MockSpeechWorker(socket_path)

@@ -51,7 +51,8 @@ class FakeEResModel:
 
 
 @pytest.fixture(autouse=True)
-def reset_fake_model():
+def reset_fake_model(monkeypatch):
+    monkeypatch.setenv("SUSPECT_LEGACY_VOICEPRINT_ENABLED", "true")
     FakeAutoModel.calls = []
     FakeAutoModel.fail_for = {}
     FakeAutoModel.outputs = {
@@ -79,14 +80,14 @@ def _loaded_runtime(tmp_path: Path) -> FunASRSpeechRuntime:
 
 
 def test_default_model_paths_are_stable_opt_layout(monkeypatch):
-    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+    monkeypatch.setattr(Path, "is_dir", lambda self: self.name in {"paraformer", "fsmn-vad"})
     runtime = FunASRSpeechRuntime(model_factory=FakeAutoModel)
     runtime.load()
 
     assert runtime.model_root == Path("/opt/suspect-interrogation/models/funasr")
-    assert [call["model"] for call in FakeAutoModel.calls] == [
-        "/opt/suspect-interrogation/models/funasr/paraformer",
-        "/opt/suspect-interrogation/models/funasr/fsmn-vad",
+    assert [Path(call["model"]) for call in FakeAutoModel.calls] == [
+        runtime.model_root / "paraformer",
+        runtime.model_root / "fsmn-vad",
     ]
     for call in FakeAutoModel.calls:
         assert call["device"] == "cpu"
@@ -273,7 +274,7 @@ def test_legacy_xvector_assets_are_not_loaded_by_the_eres_runtime(tmp_path: Path
     runtime.load()
 
     assert runtime.health()["status"] == "degraded"
-    assert runtime.health()["models"] == {"asr": True, "vad": True, "speaker": False}
+    assert runtime.health()["models"] == {"asr": True, "asr_streaming": False, "vad": True, "speaker": False}
     assert calls == []
     with pytest.raises(BackendUnavailableError):
         runtime.speaker_embedding(b"\x00\x00" * 1600, 16000)

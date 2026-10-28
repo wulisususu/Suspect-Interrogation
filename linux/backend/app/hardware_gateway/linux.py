@@ -92,3 +92,14 @@ class LinuxHardwareGateway:
         except HardwareError as exc:
             raise self._domain_error(exc) from exc
         raise DomainError("UNKNOWN_DEVICE", f"未知或不支持的设备操作：{device_type}", 400)
+
+    def capture_fingerprint(self) -> dict[str, Any]:
+        capture = getattr(self.manager, "capture_fingerprint", None)
+        if not callable(capture):
+            raise DomainError("FINGERPRINT_NOT_CONFIGURED", "尚未配置可输出图像的指纹设备驱动", 503)
+        try:
+            result = capture()
+        except HardwareError as exc:
+            raise self._domain_error(exc) from exc
+        payload = result.to_dict() if hasattr(result, "to_dict") else dict(result)
+        return {**payload, "simulated": self.manager.mode == "mock"}

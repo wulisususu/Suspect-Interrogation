@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import struct
 from pathlib import Path
+import pytest
 
 from app.ai.speech.types import SpeechEvent, SpeechEventType
 from app.database.models import ASRFragment, AuditLog
@@ -12,6 +13,11 @@ from app.repositories import cases as case_repo
 from app.repositories import sessions as session_repo
 from app.repositories import voiceprints as voiceprint_repo
 from app.services.asr_capture_service import AsrCaptureService, _CaptureRuntime
+
+
+@pytest.fixture(autouse=True)
+def legacy_speaker_enabled(monkeypatch):
+    monkeypatch.setenv("SUSPECT_LEGACY_VOICEPRINT_ENABLED", "true")
 
 
 def _embedding(*values: float) -> bytes:

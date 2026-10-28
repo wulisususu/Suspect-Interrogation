@@ -51,8 +51,6 @@ jobs:
           test -x "$FUNASR_RUNTIME/bin/python"
           test -d "$FUNASR_MODEL_ROOT/paraformer"
           test -d "$FUNASR_MODEL_ROOT/fsmn-vad"
-          test -d "$FUNASR_MODEL_ROOT/eres2net-large"
-          test -f "$FUNASR_MODEL_ROOT/eres2net-large/pretrained_eres2net.pt"
           echo '--- preserve TCP/8000 ---'
           tcp8000_before="$(sudo -n ss -H -ltnp 'sport = :8000' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//' || true)"
           printf '%s\n' "$tcp8000_before" | tee "$RUNNER_TEMP/tcp8000-before.txt"
@@ -94,8 +92,6 @@ jobs:
           bash -n deploy/control.sh deploy/lib/common.sh deploy/lib/release.sh deploy/lib/tls.sh
           test -f AGENTS.md
           test -f webapp/src/components/TemplateDrivenInterrogationPage.vue
-          test -f webapp/src/components/OfficerVoiceprintLibrary.vue
-          test -f webapp/src/components/SpeakerCalibrationCenter.vue
           test -f webapp/src/components/LiveDialoguePanel.vue
           test -f webapp/src/views/SystemSettingsView.vue
           test -f webapp/src/config/audioInput.ts
@@ -121,9 +117,7 @@ jobs:
           grep -q 'apply_database_migrations' deploy/control.sh
           grep -q 'apply_database_migrations' deploy/lib/release.sh
           grep -q 'TemplateDrivenInterrogationPage' webapp/src/views/InterrogationWorkspace.vue
-          grep -q 'required_usable_speech_ms=60000' linux/backend/app/main.py
           grep -q 'open_vad_session' linux/backend/app/ai/speech/client.py
-          grep -q '有效语音达到 60 秒后会自动停止并注册' webapp/src/components/VoiceprintPreparationPanel.vue
           echo 'production_source_contract=ok'
 
       - name: Install/update TLS production units and configuration
@@ -153,8 +147,7 @@ jobs:
           upsert SUSPECT_TLS_KEY_FILE "$SUSPECT_TLS_KEY_FILE"
           upsert SUSPECT_FUNASR_MODEL_ROOT "$FUNASR_MODEL_ROOT"
           upsert SUSPECT_FUNASR_PYTHON "$FUNASR_RUNTIME/bin/python"
-          upsert SUSPECT_ERES2NET_MODEL_DIR "$FUNASR_MODEL_ROOT/eres2net-large"
-          upsert SUSPECT_SPEAKER_BACKEND eres2net_large
+          upsert SUSPECT_LEGACY_VOICEPRINT_ENABLED false
           upsert MODELSCOPE_OFFLINE 1
           upsert HF_HUB_OFFLINE 1
           upsert TRANSFORMERS_OFFLINE 1
@@ -283,10 +276,9 @@ jobs:
           grep -q 'IP Address:124.223.176.99' /tmp/suspect-tls-san.txt
 
           grep -q "url.protocol === 'https:' ? 'wss:' : 'ws:'" /opt/suspect-interrogation/current/webapp/src/audio/browserAsrCapture.ts
-          grep -q "base.protocol === 'https:' ? 'wss:' : 'ws:'" /opt/suspect-interrogation/current/webapp/src/audio/browserVoiceprintCapture.ts
 
           sudo -n bash -c 'set -a; source /etc/suspect-interrogation/runtime.env; set +a; cd /opt/suspect-interrogation/current/linux/backend; PYTHONPATH=/opt/suspect-interrogation/current/linux/backend /opt/suspect-interrogation/current/.venv/bin/python -m alembic -c alembic.ini current' | tee /tmp/suspect-alembic-current.txt
-          grep -q '0020_drop_moss_transcription (head)' /tmp/suspect-alembic-current.txt
+          grep -q '0027_document_fingerprints (head)' /tmp/suspect-alembic-current.txt
 
           sudo -n -u suspect-interrogation env \
             PYTHONPATH=/opt/suspect-interrogation/current/linux/backend \
@@ -299,10 +291,6 @@ jobs:
           models = health.get('models') or {}
           assert models.get('asr') is True, health
           assert models.get('vad') is True, health
-          assert models.get('speaker') is True, health
-          backends = health.get('speaker_backends') or {}
-          assert set(backends) == {'eres2net_large'}, health
-          assert backends['eres2net_large'].get('ready') is True, health
           print('speech_worker_health=ok', health)
 
           wav_path = '/opt/suspect-interrogation/models/funasr/paraformer/example/asr_example.wav'

@@ -17,15 +17,16 @@ from app.repositories import question_rounds as round_repo
 from app.repositories import sessions as session_repo
 from app.repositories import template_questions as question_repo
 from app.services.serializers import (
-    case_dict,
     case_question_dict,
     fact_dict,
     message_dict,
     question_round_dict,
     signature_dict,
+    session_dict,
     snapshot_dict,
 )
 from app.workflow.state import StateMachine
+from app.services.case_management_service import assert_case_not_void
 
 
 _REQUIRED_SIGNER_ROLES = {"SUSPECT", "OFFICER"}
@@ -168,12 +169,15 @@ class DocumentService:
 
     def freeze(self, case_id: str, actor_id: str | None = None, *, commit: bool = True) -> dict:
         begin_sqlite_immediate(self.db)
-        case = case_repo.get(self.db, case_id)
+        case = assert_case_not_void(self.db, case_id)
         if WorkflowState(case.workflow_state) != WorkflowState.SUMMARY:
             raise DomainError("DOCUMENT_FREEZE_NOT_ALLOWED", "仅复核阶段可以冻结笔录", 409)
+        from app.services.case_service import CaseService
+
         latest_session = session_repo.latest_for_case(self.db, case_id)
         payload = {
-            "case": case_dict(case),
+            "case": CaseService(self.db).get(case_id),
+            "session": session_dict(latest_session, case),
             "transcript": self._transcript(case_id),
             "facts": [fact_dict(row) for row in fact_repo.list_for_case(self.db, case_id)],
         }
@@ -212,9 +216,10 @@ class DocumentService:
         image_data: str,
         strokes_json: str = "[]",
         actor_id: str | None = None,
+        commit: bool = True,
     ) -> dict:
         begin_sqlite_immediate(self.db)
-        case = case_repo.get(self.db, case_id)
+        case = assert_case_not_void(self.db, case_id)
         workflow_state = WorkflowState(case.workflow_state)
         if workflow_state not in {WorkflowState.FROZEN, WorkflowState.SIGNED}:
             raise DomainError("SIGNATURE_NOT_ALLOWED", "笔录冻结后才能签名", 409)
@@ -223,6 +228,16 @@ class DocumentService:
         if role not in _REQUIRED_SIGNER_ROLES:
             raise DomainError("INVALID_SIGNER_ROLE", "签名角色仅支持被讯问人或民警", 400)
         name = str(signer_name or "").strip()
+        from app.auth.context import current_actor
+
+        actor = current_actor()
+        if role == "OFFICER" and actor is not None:
+            from app.database.officer_models import CaseOfficerBinding
+
+            binding = self.db.get(CaseOfficerBinding, case_id)
+            if binding is None or actor.badge_number not in {binding.interrogator_badge_number, binding.recorder_badge_number}:
+                raise DomainError("OFFICER_SIGNATURE_FORBIDDEN", "签名民警必须是本案询问人或记录员", 403)
+            name = actor.name
         if not name:
             raise DomainError("SIGNER_NAME_REQUIRED", "签名人姓名不能为空", 400)
 
@@ -237,6 +252,9 @@ class DocumentService:
         if any(str(row.signer_role or "").strip().upper() == role for row in snapshot_signatures):
             raise DomainError("SIGNATURE_ALREADY_EXISTS", "该签名角色已完成签名", 409)
 
+        from app.services.officer_service import validate_signature_image
+
+        image_data = validate_signature_image(image_data)
         session = session_repo.latest_for_case(self.db, case_id)
         try:
             signature = document_repo.create_signature(
@@ -275,7 +293,8 @@ class DocumentService:
             target_id=signature.id,
             after={"signer_role": role, "signer_name": name, "snapshot_id": snapshot.id},
         )
-        self.db.commit()
+        if commit:
+            self.db.commit()
         state = self.signing_state(case_id)
         assert state is not None
         return state
@@ -285,7 +304,7 @@ class DocumentService:
         return [signature_dict(row) for row in document_repo.list_signatures(self.db, case_id)]
 
     def mark_report_generated(self, case_id: str, actor_id: str | None = None) -> dict:
-        case = case_repo.get(self.db, case_id)
+        case = assert_case_not_void(self.db, case_id)
         if WorkflowState(case.workflow_state) != WorkflowState.SIGNED:
             raise DomainError("REPORT_NOT_ALLOWED", "完成签名后才能生成报告", 409)
         case.workflow_state = StateMachine.transition(WorkflowState.SIGNED, WorkflowState.REPORT_GENERATED).value

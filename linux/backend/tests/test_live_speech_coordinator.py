@@ -1070,7 +1070,8 @@ def test_capture_persists_audio_while_asr_worker_is_blocked(tmp_path: Path):
         coordinator.shutdown()
 
 
-def test_startup_recovers_and_queues_unfinished_audio_before_speaker_work(tmp_path: Path):
+def test_startup_recovers_and_queues_unfinished_audio_before_speaker_work(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("SUSPECT_LEGACY_VOICEPRINT_ENABLED", "true")
     factory, case_id, session_id = _seed_database(tmp_path)
     with factory() as db:
         capture = asr_repo.create_capture_session(

@@ -35,6 +35,8 @@ def _json_list(value: str) -> list[str]:
 
 
 def legacy_case_state(workflow_state: str) -> str:
+    if workflow_state == WorkflowState.VOIDED.value:
+        return "VOIDED"
     if workflow_state in {WorkflowState.QUESTIONING.value, WorkflowState.PAUSED.value}:
         return "INTERROGATING"
     if workflow_state in {WorkflowState.SUMMARY.value, WorkflowState.FROZEN.value, WorkflowState.SIGNED.value, WorkflowState.REPORT_GENERATED.value}:
@@ -45,10 +47,11 @@ def legacy_case_state(workflow_state: str) -> str:
 def case_dict(row: Case) -> dict:
     return {
         "id": row.id, "case_id": row.id, "operator_id": row.operator_id,
+        "caseId": row.id, "operatorId": row.operator_id, "caseType": row.case_type,
         "case_type": row.case_type, "suspectName": row.suspect_name, "gender": row.gender or "",
         "age": row.age or "", "officerName": row.officer_name,
         "state": legacy_case_state(row.workflow_state), "workflowState": row.workflow_state,
-        "stage": row.stage, "status": "created" if row.workflow_state not in {"SUMMARY", "FROZEN", "SIGNED", "REPORT_GENERATED"} else "reviewing",
+        "stage": row.stage, "status": "voided" if row.workflow_state == "VOIDED" else ("created" if row.workflow_state not in {"SUMMARY", "FROZEN", "SIGNED", "REPORT_GENERATED"} else "reviewing"),
         "documentStatus": row.document_status, "reportStatus": row.report_status,
         "createdAt": _iso(row.created_at), "updatedAt": _iso(row.updated_at),
     }
@@ -183,6 +186,7 @@ def case_question_dict(row: CaseQuestion, *, rounds: list[QuestionRound] | None 
         "sectionType": row.section_type or "BODY",
         "templateKey": row.template_key,
         "templateItemKey": row.template_item_key,
+        "elementKey": row.element_key,
         "locked": bool(row.locked),
         "formalAnswerText": row.formal_answer_text,
         "firstAskedAt": _iso(row.first_asked_at),

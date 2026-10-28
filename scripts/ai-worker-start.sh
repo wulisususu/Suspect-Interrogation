@@ -11,7 +11,6 @@ require_env() {
 
 require_env SUSPECT_FUNASR_PYTHON
 require_env SUSPECT_FUNASR_MODEL_ROOT
-require_env SUSPECT_ERES2NET_MODEL_DIR
 require_env SUSPECT_SPEECH_SOCKET
 
 if [[ ! -x "$SUSPECT_FUNASR_PYTHON" ]]; then
@@ -38,15 +37,20 @@ else
   echo "optional FunASR streaming ASR model is not installed: $streaming_model_dir (offline ASR remains enabled)" >&2
 fi
 
-if [[ ! -d "$SUSPECT_ERES2NET_MODEL_DIR" ]]; then
-  echo "SUSPECT_ERES2NET_MODEL_DIR is not a directory: $SUSPECT_ERES2NET_MODEL_DIR" >&2
-  exit 78
-fi
-
-if [[ ! -f "$SUSPECT_ERES2NET_MODEL_DIR/pretrained_eres2net.pt" ]]; then
-  echo "ERes2Net-large checkpoint is missing: $SUSPECT_ERES2NET_MODEL_DIR/pretrained_eres2net.pt" >&2
-  exit 78
-fi
+legacy_voiceprint="${SUSPECT_LEGACY_VOICEPRINT_ENABLED:-false}"
+case "${legacy_voiceprint,,}" in
+  1|true|yes)
+    require_env SUSPECT_ERES2NET_MODEL_DIR
+    if [[ ! -d "$SUSPECT_ERES2NET_MODEL_DIR" ]]; then
+      echo "SUSPECT_ERES2NET_MODEL_DIR is not a directory: $SUSPECT_ERES2NET_MODEL_DIR" >&2
+      exit 78
+    fi
+    if [[ ! -f "$SUSPECT_ERES2NET_MODEL_DIR/pretrained_eres2net.pt" ]]; then
+      echo "ERes2Net-large checkpoint is missing: $SUSPECT_ERES2NET_MODEL_DIR/pretrained_eres2net.pt" >&2
+      exit 78
+    fi
+    ;;
+esac
 
 export PYTHONPATH=/opt/suspect-interrogation/current/linux/backend
 exec "$SUSPECT_FUNASR_PYTHON" -m speech_worker.main

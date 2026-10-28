@@ -12,6 +12,9 @@ class LegacyRequest(BaseModel):
 
 
 class CaseCreateRequest(FormalRequest):
+    fullRecordingEnabled: bool | None = None
+    interrogatorBadgeNumber: str | None = Field(default=None, min_length=1, max_length=32)
+    recorderBadgeNumber: str | None = Field(default=None, min_length=1, max_length=32)
     operator_id: str | None = None
     operatorId: str | None = None
     case_type: str = "suspect_interrogation"
@@ -37,6 +40,9 @@ class CaseIntakeRequest(CaseCreateRequest):
 
 
 class CaseUpdateRequest(FormalRequest):
+    fullRecordingEnabled: bool | None = None
+    interrogatorBadgeNumber: str | None = Field(default=None, min_length=1, max_length=32)
+    recorderBadgeNumber: str | None = Field(default=None, min_length=1, max_length=32)
     operator_id: str | None = None
     operatorId: str | None = None
     case_type: str | None = None
@@ -146,11 +152,13 @@ class CaseQuestionCreateRequest(FormalRequest):
     standard_question_id: str | None = Field(default=None, alias="standardQuestionId")
     regex_patterns: list[str] = Field(default_factory=list, alias="regexPatterns")
     after_question_id: str | None = Field(default=None, alias="afterQuestionId")
+    element_key: str | None = Field(default=None, alias="elementKey", max_length=64)
 
 
 class CaseQuestionUpdateRequest(FormalRequest):
     text: str | None = None
     regex_patterns: list[str] | None = Field(default=None, alias="regexPatterns")
+    element_key: str | None = Field(default=None, alias="elementKey", max_length=64)
 
 
 class QuestionReorderRequest(FormalRequest):
@@ -184,6 +192,11 @@ class FragmentAnswerRequest(FormalRequest):
 
 class LiveQuestionFragmentRequest(FormalRequest):
     fragment_id: str = Field(alias="fragmentId", min_length=1)
+    after_question_id: str | None = Field(default=None, alias="afterQuestionId")
+
+
+class LiveQuestionFragmentsRequest(FormalRequest):
+    fragment_ids: list[str] = Field(alias="fragmentIds", min_length=1, max_length=256)
     after_question_id: str | None = Field(default=None, alias="afterQuestionId")
 
 

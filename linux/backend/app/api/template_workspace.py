@@ -8,6 +8,7 @@ from app.api.schemas import (
     CaseQuestionUpdateRequest,
     FragmentAnswerRequest,
     LiveQuestionFragmentRequest,
+    LiveQuestionFragmentsRequest,
     PendingAddRequest,
     PendingLinkRequest,
     QuestionReorderRequest,
@@ -68,6 +69,7 @@ def create_case_question(case_id: str, body: CaseQuestionCreateRequest, db: Sess
         standard_question_id=body.standard_question_id,
         regex_patterns=body.regex_patterns,
         after_question_id=body.after_question_id,
+        element_key=body.element_key,
     )
     db.commit()
     return envelope(result, "问题已加入本案笔录")
@@ -91,9 +93,19 @@ def update_case_question(case_id: str, question_id: str, body: CaseQuestionUpdat
         question_id,
         text=body.text,
         regex_patterns=body.regex_patterns,
+        **({"element_key": body.element_key} if "element_key" in body.model_fields_set else {}),
     )
     db.commit()
     return envelope(result, "问题已更新")
+
+
+@router.post("/cases/{case_id}/questions/from-fragments")
+def create_live_question_from_fragments(case_id: str, body: LiveQuestionFragmentsRequest, db: Session = Depends(get_db)):
+    result = TemplateWorkspaceService(db).create_live_question_from_fragments(
+        case_id, fragment_ids=body.fragment_ids, after_question_id=body.after_question_id,
+    )
+    db.commit()
+    return envelope(result, "语音问题已加入笔录，原片段已标记为已处理")
 
 
 @router.put("/cases/{case_id}/questions/{question_id}/answer")

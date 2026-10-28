@@ -261,7 +261,8 @@ def test_case_voice_role_draft_survives_reload_before_session_start(tmp_path):
         assert reloaded == saved
 
 
-def test_session_start_binds_voiceprint_roles_atomically(tmp_path):
+def test_session_start_binds_voiceprint_roles_atomically(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUSPECT_LEGACY_VOICEPRINT_ENABLED", "true")
     app = app_with_voiceprint_fakes(tmp_path)
     with TestClient(app) as client:
         case_id = create_identity_ready_case(client)

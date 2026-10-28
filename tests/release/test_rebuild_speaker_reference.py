@@ -27,7 +27,7 @@ SAMPLE_RATE = 16_000
 ERES = "eres2net_large"
 
 
-def pcm16(duration_ms: int = 30_000, sample: int = 1200) -> bytes:
+def pcm16(duration_ms: int = 90_000, sample: int = 1200) -> bytes:
     count = duration_ms * SAMPLE_RATE // 1000
     return int(sample).to_bytes(2, "little", signed=True) * count
 
@@ -48,7 +48,7 @@ class FakeSpeechClient:
     def speech_segments(self, pcm: bytes, sample_rate: int = SAMPLE_RATE):
         assert sample_rate == SAMPLE_RATE
         assert pcm
-        return [[0, 8000], [9000, 17000], [18000, 26000]]
+        return [[0, 20000], [21000, 41000], [42000, 62000]]
 
     def extract_embedding(self, pcm: bytes, sample_rate: int = SAMPLE_RATE, backend: str | None = None):
         assert sample_rate == SAMPLE_RATE

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import struct
 import time
+import pytest
 
 from app.database.session import init_database, make_engine, make_session_factory
 from app.database.voiceprint_models import SessionSpeakerCalibrationSnapshot
@@ -11,6 +12,11 @@ from app.repositories import speaker_calibrations as calibration_repo
 from app.repositories import voiceprints as voiceprint_repo
 from app.services.asr_capture_service import AsrCaptureService
 from app.services.speaker_calibration_runtime import ResolvedSpeakerCalibration
+
+
+@pytest.fixture(autouse=True)
+def legacy_calibration_enabled(monkeypatch):
+    monkeypatch.setenv("SUSPECT_LEGACY_VOICEPRINT_ENABLED", "true")
 
 
 class IdleDevice:

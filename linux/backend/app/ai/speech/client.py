@@ -152,6 +152,11 @@ class SpeechWorkerClient:
         return self._require_dict(self._request("extract_embedding", **payload))
 
     def _request(self, op: str, **payload: Any) -> Any:
+        if not hasattr(socket, "AF_UNIX"):
+            raise BackendUnavailableError(
+                "speech worker requires an AF_UNIX socket runtime",
+                details={"op": op, "socket": str(self.socket_path)},
+            )
         request_id = uuid.uuid4().hex
         request = {"request_id": request_id, "op": op, **payload}
         try:

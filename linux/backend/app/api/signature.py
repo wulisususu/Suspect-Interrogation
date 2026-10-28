@@ -56,15 +56,33 @@ def _finalize_document(
     if speech_coordinator is None:
         raise DomainError("ASR_PROCESSING_UNAVAILABLE", "语音处理服务未配置，不能结束并冻结笔录", 503)
     actor_id = body.actor_id if body else None
-    return envelope(
-        DocumentFinalizationService(
+    try:
+        result = DocumentFinalizationService(
             db,
             capture_service=capture_service,
             routing_coordinator=getattr(request.app.state, "qa_routing_coordinator", None),
             speech_coordinator=speech_coordinator,
-        ).finalize(case_id, actor_id),
-        success_message,
-    )
+        ).finalize(case_id, actor_id)
+    except DomainError as exc:
+        db.rollback()
+        from sqlalchemy import select
+        from app.database.models import ASRCaptureSession
+        from app.services.case_management_service import CaseManagementService
+
+        if exc.code not in {"CASE_VOIDED", "CASE_NOT_FOUND"}:
+            with request.app.state.session_factory() as interruption_db:
+                capture = interruption_db.scalar(select(ASRCaptureSession).where(ASRCaptureSession.case_id == case_id)
+                                                 .order_by(ASRCaptureSession.started_at.desc()).limit(1))
+                try:
+                    CaseManagementService(interruption_db).interrupt(
+                        case_id, reason="FINALIZATION_INTERRUPTED", actor_id=actor_id,
+                        question_id=capture.target_question_id if capture else None, detail=exc.code,
+                    )
+                    interruption_db.commit()
+                except DomainError:
+                    interruption_db.rollback()
+        raise
+    return envelope(result, success_message)
 
 
 @router.post("/cases/{case_id}/document/sign")

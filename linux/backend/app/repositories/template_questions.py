@@ -67,11 +67,13 @@ def create_case(
     db: Session, *, case_id: str, source: str, text: str, standard_question_id: str | None,
     regex_patterns_json: str, aliases_json: str, section_type: str = "BODY",
     template_key: str | None = None, template_item_key: str | None = None, locked: bool = False,
+    element_key: str | None = None,
 ) -> CaseQuestion:
     row = CaseQuestion(
         id=str(uuid4()), case_id=case_id, source=source, standard_question_id=standard_question_id, text=text,
         regex_patterns_json=regex_patterns_json, aliases_json=aliases_json, section_type=section_type,
         template_key=template_key, template_item_key=template_item_key, locked=locked,
+        element_key=element_key,
         sort_order=next_case_sort_order(db, case_id), active=True,
     )
     db.add(row)
@@ -90,4 +92,6 @@ def set_canonical_answer(
     if row.first_asked_at is None and first_asked_at is not None:
         row.first_asked_at = first_asked_at
     db.flush()
+    from app.services.question_element_service import sync_element_coverage
+    sync_element_coverage(db, row.case_id, row.element_key)
     return row

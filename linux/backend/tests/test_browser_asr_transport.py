@@ -396,3 +396,13 @@ def test_browser_asr_socket_rechecks_capture_before_accepting_each_pcm_frame():
     assert close["code"] == 4409
     assert browser_input.read_audio_frames(timeout=0.01) == b""
     assert app.state.asr_capture_service.frames == []
+
+
+def test_ordinary_browser_disconnect_marks_active_capture_incomplete():
+    app, _ = make_app({'CASE-A': {'active': True, 'captureSessionId': 'CAPTURE-A', 'source': 'BROWSER'}})
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws/asr/cases/CASE-A/capture/CAPTURE-A'):
+            pass
+    assert app.state.asr_capture_service.incomplete == [
+        ('CASE-A', 'CAPTURE-A', 'browser audio connection disconnected')
+    ]

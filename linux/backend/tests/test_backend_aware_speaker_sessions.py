@@ -4,6 +4,8 @@ import struct
 import threading
 from pathlib import Path
 
+import socket
+
 import pytest
 from sqlalchemy.orm import Session
 
@@ -209,6 +211,7 @@ def _start_worker(path: Path, runtime: BackendAwareRuntime):
     return server, thread
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="requires an AF_UNIX socket runtime")
 def test_speech_session_does_not_run_selected_speaker_backend_in_stage_one(tmp_path: Path):
     socket_path = tmp_path / "speech.sock"
     runtime = BackendAwareRuntime()

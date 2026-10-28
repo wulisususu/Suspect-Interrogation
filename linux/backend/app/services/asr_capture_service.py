@@ -28,6 +28,7 @@ from app.repositories import audit as audit_repo
 from app.repositories import cases as case_repo
 from app.repositories import sessions as session_repo
 from app.repositories import speaker_calibrations as calibration_repo
+from app.ai.legacy_voiceprint import legacy_voiceprint_enabled
 from app.repositories import speaker_compare_evidence as compare_evidence_repo
 from app.repositories import voiceprints as voiceprint_repo
 from app.services.interrogation_projection_service import InterrogationProjectionService
@@ -262,7 +263,7 @@ class AsrCaptureService:
             self._active[runtime.case_id] = runtime
             thread.start()
 
-    def start(self, case_id: str) -> dict[str, Any]:
+    def start(self, case_id: str, *, target_question_id: str | None = None, replace: bool = False) -> dict[str, Any]:
         case_id = str(case_id).strip()
         if not case_id:
             raise DomainError("CASE_ID_REQUIRED", "案件编号不能为空", 400)
@@ -278,38 +279,46 @@ class AsrCaptureService:
                 raise DomainError("ASR_AUDIO_RESOURCE_BUSY", "准备阶段语音输入正在占用麦克风", 409)
 
         with self.session_factory() as db:
-            case_repo.get(db, case_id)
+            from app.services.formal_record_policy import assert_formal_record_mutable
+            from app.database.session import begin_sqlite_immediate
+
+            begin_sqlite_immediate(db)
+            assert_formal_record_mutable(db, case_id)
             interrogation_session = session_repo.active_for_case(db, case_id)
             if interrogation_session is None:
                 raise DomainError("SESSION_NOT_ACTIVE", "请先开始审讯再启动语音采集", 409)
             if interrogation_session.status != SessionStatus.RUNNING.value:
                 raise DomainError("SESSION_NOT_RUNNING", "当前审讯未处于进行状态", 409)
-            try:
-                resolved = self._resolve_calibration(db)
-            except Exception:
-                logger.exception("speaker calibration is unavailable for case %s", case_id)
-                resolved = self._unavailable_calibration()
+            resolved = self._unavailable_calibration()
+            if legacy_voiceprint_enabled():
+                try:
+                    resolved = self._resolve_calibration(db)
+                except Exception:
+                    logger.exception("speaker calibration is unavailable for case %s", case_id)
             secondary_calibration = None
             capture = asr_repo.create_capture_session(
                 db,
                 case_id=case_id,
                 interrogation_session_id=interrogation_session.id,
                 sample_rate=self.sample_rate,
+                target_question_id=target_question_id,
+                replace=replace,
             )
             db.flush()
-            calibration_repo.create_session_snapshot(
-                db,
-                capture_session_id=capture.id,
-                interrogation_session_id=interrogation_session.id,
-                calibration_id=resolved.calibration_id,
-                threshold=resolved.threshold,
-                margin=resolved.margin,
-                threshold_source=resolved.source,
-                calibration_status=resolved.status,
-                speaker_backend_key=resolved.speaker_backend_key or self.authoritative_speaker_backend,
-                speaker_model_fingerprint=resolved.speaker_model_fingerprint,
-                microphone_fingerprint=resolved.microphone_fingerprint,
-            )
+            if legacy_voiceprint_enabled():
+                calibration_repo.create_session_snapshot(
+                    db,
+                    capture_session_id=capture.id,
+                    interrogation_session_id=interrogation_session.id,
+                    calibration_id=resolved.calibration_id,
+                    threshold=resolved.threshold,
+                    margin=resolved.margin,
+                    threshold_source=resolved.source,
+                    calibration_status=resolved.status,
+                    speaker_backend_key=resolved.speaker_backend_key or self.authoritative_speaker_backend,
+                    speaker_model_fingerprint=resolved.speaker_model_fingerprint,
+                    microphone_fingerprint=resolved.microphone_fingerprint,
+                )
             db.commit()
             capture_session_id = capture.id
             interrogation_session_id = interrogation_session.id
@@ -319,8 +328,10 @@ class AsrCaptureService:
             # Seed the declared mode inside the session start() already owns: the
             # previous code opened a second one just for this, before the runtime row
             # existed.
-            bound_roles = self._bound_roles(db, interrogation_session_id)
+            bound_roles = self._bound_roles(db, interrogation_session_id) if legacy_voiceprint_enabled() else set()
             initial_workflow_status = {
+                "targetQuestionId": capture.target_question_id,
+                "replace": capture.replace_answer,
                 "startedAt": capture.started_at.isoformat() if capture.started_at is not None else None,
                 "recordingStatus": capture.recording_status,
                 "asrStatus": capture.asr_status,
@@ -346,7 +357,7 @@ class AsrCaptureService:
             authoritative_speaker_backend=self.authoritative_speaker_backend,
             secondary_speaker_backend=self.secondary_speaker_backend,
             secondary_calibration=secondary_calibration,
-            declared_recognition_mode=self.declared_mode_for_roles(bound_roles),
+            declared_recognition_mode=self.declared_mode_for_roles(bound_roles) if legacy_voiceprint_enabled() else "DISABLED",
             sample_rate=self.sample_rate,
             capture_started_at=capture_started_at,
             live_transcript_status=self._live_transcript_status(),
@@ -433,6 +444,8 @@ class AsrCaptureService:
                     "caseId": case_id,
                     "active": False,
                     "captureSessionId": None,
+                    "targetQuestionId": None,
+                    "replace": False,
                     "interrogationSessionId": None,
                     "status": "IDLE",
                     "liveTranscriptStatus": self._live_transcript_status(),
@@ -756,7 +769,7 @@ class AsrCaptureService:
                 continue
             key = (int(event.start_ms), int(event.end_ms))
             if event.type is SpeechEventType.ASR_FINAL:
-                if (event.details or {}).get("stage_one_asr_only"):
+                if not legacy_voiceprint_enabled() or (event.details or {}).get("stage_one_asr_only"):
                     asr_only_events.append(event)
                 else:
                     asr_by_range[key] = event
@@ -870,7 +883,7 @@ class AsrCaptureService:
         payload["calibrationStatus"] = runtime.calibration_status
         payload.update(self.speaker_mode_capability(runtime))
         self.publish_event(runtime.interrogation_session_id, "ASR_FRAGMENT", payload)
-        if self._live_speech_coordinator is not None:
+        if self._live_speech_coordinator is not None and legacy_voiceprint_enabled():
             self._live_speech_coordinator.schedule_speaker_jobs(runtime.capture_session_id)
         if payload["speaker"] == "UNKNOWN":
             return fragment_id
@@ -1301,6 +1314,10 @@ class AsrCaptureService:
 
     def speaker_mode_capability(self, runtime: _CaptureRuntime) -> dict[str, Any]:
         """Declared/effective recognition mode of a live capture, from the shared rule."""
+        if not legacy_voiceprint_enabled():
+            return {"declaredRecognitionMode": "DISABLED", "effectiveRecognitionMode": "DISABLED",
+                    "recognitionModeDegraded": False, "recognitionModeDegradedReason": None,
+                    "recognitionModeVerified": False}
         return mode_decision_detail(
             declared_mode=runtime.declared_recognition_mode,
             margin=runtime.speaker_margin,
@@ -1321,6 +1338,8 @@ class AsrCaptureService:
         declared_mode: str,
         asr_event: SpeechEvent,
     ) -> None:
+        if not legacy_voiceprint_enabled():
+            return
         if decision.role is SpeakerRole.OFFICER_FALLBACK:
             action = "ASR_SPEAKER_FALLBACK"
         elif decision.low_confidence:
@@ -1556,8 +1575,8 @@ class AsrCaptureService:
         if capture.interrogation_session_id is None:
             return None
         with self.session_factory() as db:
-            snapshot = calibration_repo.get_session_snapshot(db, capture.id)
-            roles = self._bound_roles(db, capture.interrogation_session_id)
+            snapshot = calibration_repo.get_session_snapshot(db, capture.id) if legacy_voiceprint_enabled() else None
+            roles = self._bound_roles(db, capture.interrogation_session_id) if legacy_voiceprint_enabled() else set()
             ordinal = int(
                 db.scalar(
                     select(func.count(ASRFragment.id)).where(
@@ -1589,7 +1608,7 @@ class AsrCaptureService:
             speaker_model_fingerprint=calibration.speaker_model_fingerprint,
             microphone_fingerprint=calibration.microphone_fingerprint,
             authoritative_speaker_backend=self.authoritative_speaker_backend,
-            declared_recognition_mode=self.declared_mode_for_roles(roles),
+            declared_recognition_mode=self.declared_mode_for_roles(roles) if legacy_voiceprint_enabled() else "DISABLED",
             sample_rate=self.sample_rate,
             capture_started_at=(
                 iso_utc(capture.started_at)
@@ -1804,6 +1823,8 @@ class AsrCaptureService:
             )
             return {
                 "startedAt": capture.started_at.isoformat() if capture.started_at is not None else None,
+                "targetQuestionId": capture.target_question_id,
+                "replace": capture.replace_answer,
                 "recordingStatus": capture.recording_status,
                 "asrStatus": capture.asr_status,
                 "speakerStatus": capture.speaker_status,

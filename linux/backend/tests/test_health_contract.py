@@ -115,8 +115,8 @@ def test_voiceprint_calibration_reports_the_runtime_device_calibration(monkeypat
     assert calibration["thresholdConfigured"] is True
 
 
-def test_capabilities_recording_is_not_available_when_calibration_is_unverified():
-    """The runtime capability contract must not advertise recording as AVAILABLE."""
+def test_capabilities_recording_is_available_without_retired_speaker_calibration():
+    """ASR and VAD readiness are sufficient for the recording workflow."""
     from app.health import runtime_capabilities
 
     class Supervisor:
@@ -131,9 +131,9 @@ def test_capabilities_recording_is_not_available_when_calibration_is_unverified(
 
     recording = runtime_capabilities(_StubRequest(state))["recording"]
 
-    assert recording["state"] == "UNVERIFIED"
-    assert recording["metadata"]["calibration"]["state"] == "UNVERIFIED"
-    assert recording["metadata"]["calibration"]["verified"] is False
+    assert recording["state"] == "AVAILABLE"
+    assert recording["metadata"]["asr"]["state"] == "AVAILABLE"
+    assert recording["metadata"]["vad"]["state"] == "AVAILABLE"
 
 
 def test_runtime_capabilities_endpoint_exposes_frontend_contract():
@@ -142,7 +142,7 @@ def test_runtime_capabilities_endpoint_exposes_frontend_contract():
     payload = response.json()
     assert set(payload) == {
         "identity", "camera", "microphone", "fingerprint", "signature",
-        "recording", "asr", "ocr", "llm", "report",
+        "recording", "asr", "asrStreaming", "ocr", "llm", "report",
     }
     assert payload["microphone"]["state"] in {"AVAILABLE", "NOT_CONFIGURED", "ERROR"}
     assert payload["asr"]["state"] in {"AVAILABLE", "NOT_CONFIGURED", "ERROR", "MODEL_NOT_INSTALLED"}

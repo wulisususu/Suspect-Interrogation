@@ -70,7 +70,7 @@ async def _stream_browser_pcm(
             message = await websocket.receive()
             if message.get("type") == "websocket.disconnect":
                 logger.info("browser asr ws %s client disconnected", capture_id)
-                break
+                raise WebSocketDisconnect(code=message.get("code", 1000))
             text = message.get("text")
             if text is not None:
                 if frame_ingress is None or incomplete_sink is None:
@@ -192,7 +192,11 @@ async def _stream_browser_pcm(
                 await _close(websocket, capture_id, 1008, f"speech worker rejected audio: {exc}")
                 return
     except WebSocketDisconnect:
-        pass
+        if frame_ingress is not None and incomplete_sink is not None and accepts_pcm is not None and accepts_pcm():
+            try:
+                await asyncio.to_thread(incomplete_sink, "browser audio connection disconnected")
+            except Exception:
+                logger.exception("failed to persist browser audio disconnect for %s", capture_id)
 
 
 @router.websocket("/ws/asr/cases/{case_id}/capture/{capture_id}")

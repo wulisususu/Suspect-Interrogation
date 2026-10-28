@@ -28,15 +28,26 @@ from app.repositories import speaker_calibrations as calibration_repo
 from app.services.speaker_policy import SpeakerDecision
 
 
-def create_capture_session(db: Session, *, case_id: str, interrogation_session_id: str | None, sample_rate: int) -> ASRCaptureSession:
+def create_capture_session(db: Session, *, case_id: str, interrogation_session_id: str | None, sample_rate: int,
+                           target_question_id: str | None = None, replace: bool = False) -> ASRCaptureSession:
     if sample_rate <= 0:
         raise DomainError("INVALID_SAMPLE_RATE", "采样率必须大于 0", 400)
+    from app.services.formal_record_policy import assert_formal_record_mutable
+
+    assert_formal_record_mutable(db, case_id)
+    if target_question_id is not None:
+        from app.repositories import template_questions
+        template_questions.get_case(db, case_id, target_question_id)
     item = ASRCaptureSession(
         id=str(uuid4()), case_id=case_id, interrogation_session_id=interrogation_session_id,
         status="CAPTURING", sample_rate=sample_rate, started_at=datetime.now(timezone.utc), ended_at=None,
+        target_question_id=target_question_id, replace_answer=replace, answer_replacement_applied=False,
     )
     db.add(item)
     db.flush()
+    from app.services.recording_service import snapshot_capture_options
+
+    snapshot_capture_options(db, item.id)
     return item
 
 
@@ -125,6 +136,8 @@ def create_or_update_asr_only_fragment(
             existing.model_id = model_id
             existing.model_version = model_version
             db.flush()
+        from app.services.question_recording_service import attach_targeted_fragment
+        attach_targeted_fragment(db, existing)
         return existing, False
 
     max_ordinal = db.scalar(
@@ -187,6 +200,8 @@ def create_or_update_asr_only_fragment(
         calibration_id=None,
         calibration_status=None,
     )
+    from app.services.question_recording_service import attach_targeted_fragment
+    attach_targeted_fragment(db, item)
     return item, True
 
 
@@ -311,6 +326,8 @@ def create_fragment(
             "calibration_status": None if snapshot is None else snapshot.calibration_status,
         },
     )
+    from app.services.question_recording_service import attach_targeted_fragment
+    attach_targeted_fragment(db, item)
     return item
 
 

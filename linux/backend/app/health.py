@@ -253,26 +253,18 @@ def runtime_capabilities(request: Request) -> dict[str, Any]:
     """Expose the canonical UI capability contract from the production health state."""
     snapshot = readiness_snapshot(request)
     health = snapshot["capabilities"]
-    calibration = health["voiceprintCalibration"]
     asr = health["asr"]
     asr_streaming = health["asrStreaming"]
     asr_state = _runtime_capability_state(asr["state"])
     microphone = health["audioCapture"]
     microphone_state = _runtime_capability_state(microphone["state"])
-    if asr_state != "AVAILABLE":
-        recording_state = asr_state
-    elif calibration["state"] == "READY":
-        recording_state = "AVAILABLE"
-    elif calibration["state"] == "UNVERIFIED":
-        # Never advertise continuous recording as available while the speaker
-        # operating point cannot be checked against the runtime (Task 17B-1).
-        recording_state = "UNVERIFIED"
-    else:
-        recording_state = "NOT_CONFIGURED"
+    vad = health["vad"]
+    vad_state = _runtime_capability_state(vad["state"])
+    recording_state = asr_state if asr_state != "AVAILABLE" else vad_state
     recording_reason = (
-        "offline ASR and calibrated speaker verification are ready"
+        "offline ASR and VAD are ready"
         if recording_state == "AVAILABLE"
-        else (str(calibration["detail"]) if asr_state == "AVAILABLE" else str(asr["detail"]))
+        else str((asr if asr_state != "AVAILABLE" else vad)["detail"])
     )
     supervisor = getattr(request.app.state, "ai_supervisor", None)
     try:
@@ -298,7 +290,7 @@ def runtime_capabilities(request: Request) -> dict[str, Any]:
         "microphone": _runtime_capability(microphone_state, str(microphone["detail"]), **microphone),
         "fingerprint": unavailable("fingerprint device is not configured"),
         "signature": unavailable("signature device is not configured"),
-        "recording": _runtime_capability(recording_state, recording_reason, asr=asr, calibration=calibration),
+        "recording": _runtime_capability(recording_state, recording_reason, asr=asr, vad=vad),
         "asr": _runtime_capability(asr_state, str(asr["detail"]), **asr),
         "asrStreaming": _runtime_capability(
             _runtime_capability_state(asr_streaming["state"]),

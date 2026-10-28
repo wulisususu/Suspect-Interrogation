@@ -57,6 +57,7 @@ def _stop_server(server: SpeechWorkerServer, thread: threading.Thread):
     assert not thread.is_alive()
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="requires an AF_UNIX socket runtime")
 def test_server_round_trip_uses_unix_socket_and_session_lifecycle(tmp_path: Path):
     socket_path = tmp_path / "speech.sock"
     runtime = FakeRuntime()
@@ -104,6 +105,7 @@ def test_server_round_trip_uses_unix_socket_and_session_lifecycle(tmp_path: Path
     assert not socket_path.exists()
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="requires an AF_UNIX socket runtime")
 def test_second_server_cannot_unlink_active_listener(tmp_path: Path):
     socket_path = tmp_path / "speech.sock"
     first, thread = _start_server(socket_path, FakeRuntime())
@@ -118,6 +120,7 @@ def test_second_server_cannot_unlink_active_listener(tmp_path: Path):
         _stop_server(first, thread)
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="requires an AF_UNIX socket runtime")
 def test_stale_unix_socket_is_replaced_only_after_listener_is_gone(tmp_path: Path):
     socket_path = tmp_path / "speech.sock"
     stale = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -143,6 +146,7 @@ def test_non_socket_path_is_never_deleted_as_stale_socket(tmp_path: Path):
     assert socket_path.read_text(encoding="utf-8") == "do not delete"
 
 
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="requires an AF_UNIX socket runtime")
 def test_duplicate_session_open_is_rejected_without_resetting_existing_state(tmp_path: Path):
     socket_path = tmp_path / "speech.sock"
     server, thread = _start_server(socket_path, FakeRuntime())

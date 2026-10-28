@@ -44,7 +44,7 @@ def begin_sqlite_immediate(db: Session) -> None:
 def init_database(engine: Engine) -> None:
     # Import modular tables before create_all so fresh/dev databases receive the
     # same schema that Alembic creates in deployed environments.
-    from app.database import recognition_models, voiceprint_models  # noqa: F401
+    from app.database import case_management_models, catalog_models, document_export_models, document_mark_models, officer_models, recording_models, recognition_models, voiceprint_models  # noqa: F401
 
     Base.metadata.create_all(engine)
 

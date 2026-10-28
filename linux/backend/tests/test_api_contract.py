@@ -13,7 +13,7 @@ def test_ai_health_and_capabilities_are_available_without_models(monkeypatch, tm
     monkeypatch.setenv("MODEL_REGISTRY", str(config))
     monkeypatch.setenv("MODEL_ROOT", str(tmp_path / "models"))
 
-    with TestClient(create_app()) as client:
+    with TestClient(create_app(database_url=f"sqlite:///{tmp_path / 'health-contract.db'}")) as client:
         health = client.get("/api/v1/ai/health")
         capabilities = client.get("/api/v1/ai/capabilities")
         response = client.post(
@@ -40,7 +40,7 @@ def test_asr_websocket_emits_partial_then_final(monkeypatch, tmp_path):
     monkeypatch.setenv("MODEL_REGISTRY", str(config))
     monkeypatch.setenv("MODEL_ROOT", str(tmp_path / "models"))
 
-    with TestClient(create_app()) as client:
+    with TestClient(create_app(database_url=f"sqlite:///{tmp_path / 'websocket-contract.db'}")) as client:
         with client.websocket_connect("/api/v1/ai/asr/stream?session_id=s1") as ws:
             ws.send_bytes(b"hello world")
             partial = ws.receive_json()

@@ -299,6 +299,8 @@ class InterrogationProjectionService:
         return bool(revisions and revisions[-1].before_speaker == "UNKNOWN")
 
     def _processed_result(self, processed: ProcessedSpeechFragment) -> dict:
+        if processed.action in {"QUESTION_ANSWER", "LIVE_QUESTION"} and processed.target_id:
+            return {"status": processed.action, "questionId": processed.target_id}
         if processed.action == "RAW_ONLY":
             return {"status": "RAW_ONLY"}
         if processed.action in {"ROUND_OPEN", "ROUND_APPEND"} and processed.target_id:

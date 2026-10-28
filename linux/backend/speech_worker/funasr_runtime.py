@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 import numpy as np
 
+from app.ai.legacy_voiceprint import legacy_voiceprint_enabled
 from app.ai.errors import BackendUnavailableError, ModelNotInstalledError, WorkerCrashedError
 from speech_worker.speaker.base import SpeakerBackendKey, SpeakerEmbeddingBackend
 from speech_worker.speaker.eres2net_large import ERes2NetLargeBackend, ModelFactory as ERes2NetModelFactory
@@ -52,6 +53,7 @@ class FunASRSpeechRuntime:
         eres2net_model_factory: ERes2NetModelFactory | None = None,
         profile: str = "full",
     ) -> None:
+        self.legacy_voiceprint_enabled = legacy_voiceprint_enabled()
         self.profile = str(profile or "full").strip().lower()
         if self.profile not in _MODEL_PROFILES:
             raise ValueError(f"unknown funasr model profile: {profile}")
@@ -90,7 +92,7 @@ class FunASRSpeechRuntime:
 
     @property
     def loaded(self) -> bool:
-        return self.core_loaded and SpeakerBackendKey.ERES2NET_LARGE in self._speaker_backends
+        return self.core_loaded and (not self.legacy_voiceprint_enabled or SpeakerBackendKey.ERES2NET_LARGE in self._speaker_backends)
 
     @property
     def core_loaded(self) -> bool:
@@ -146,7 +148,8 @@ class FunASRSpeechRuntime:
         self.vad_model = loaded.get("fsmn-vad")
         if self.profile == "full":
             self._load_streaming_asr(factory)
-        self._load_eres2net()
+        if self.legacy_voiceprint_enabled:
+            self._load_eres2net()
 
     def _load_streaming_asr(self, factory: ModelFactory) -> None:
         self.streaming_asr_model = None

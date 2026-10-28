@@ -97,7 +97,8 @@ def test_manual_correction_keeps_ai_evidence_and_appends_revision(tmp_path):
                 actor_id="officer-001",
                 reason="现场人工确认说话人为主审民警",
             ),
-            db,
+            request=None,
+            db=db,
         )
         assert payload["rawText"] == "原始识别文本"
         assert payload["editedText"] == "人工修订文本"
@@ -137,7 +138,8 @@ def test_text_only_correction_preserves_speaker_and_still_appends_revision(tmp_p
                 actor_id="officer-002",
                 reason="修正同音字",
             ),
-            db,
+            request=None,
+            db=db,
         )
         assert payload["speaker"] == "SUSPECT"
         assert payload["speakerId"] == "suspect-vp-1"

@@ -12,6 +12,7 @@ class WorkflowState(str, Enum):
     FROZEN = "FROZEN"
     SIGNED = "SIGNED"
     REPORT_GENERATED = "REPORT_GENERATED"
+    VOIDED = "VOIDED"
 
 
 class SessionStatus(str, Enum):

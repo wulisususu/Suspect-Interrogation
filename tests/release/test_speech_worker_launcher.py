@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+
 from pathlib import Path
 
 
@@ -70,7 +71,6 @@ def test_launcher_fails_closed_when_required_runtime_inputs_are_missing(tmp_path
     for missing in (
         "SUSPECT_FUNASR_PYTHON",
         "SUSPECT_FUNASR_MODEL_ROOT",
-        "SUSPECT_ERES2NET_MODEL_DIR",
         "SUSPECT_SPEECH_SOCKET",
     ):
         candidate = dict(env)
@@ -119,6 +119,7 @@ def test_launcher_rejects_invalid_python_and_incomplete_model_root(tmp_path: Pat
     assert "paraformer" in result.stderr or "fsmn-vad" in result.stderr
 
     missing_eres = dict(env)
+    missing_eres["SUSPECT_LEGACY_VOICEPRINT_ENABLED"] = "true"
     missing_eres.pop("SUSPECT_ERES2NET_MODEL_DIR")
     result = subprocess.run(
         ["bash", os.fspath(LAUNCHER)],
@@ -137,5 +138,16 @@ def test_systemd_delegates_stale_socket_safety_to_worker_server():
 
     assert "ExecStart=/opt/suspect-interrogation/current/scripts/ai-worker-start.sh" in text
     assert "ExecStartPre=/usr/bin/rm -f /run/suspect-interrogation/speech.sock" not in text
-    assert "RuntimeDirectory=suspect-interrogation" in text
+    assert "\nRuntimeDirectory=" not in text
+    tmpfiles = (ROOT / "deploy" / "tmpfiles-suspect-interrogation.conf").read_text(encoding="utf-8")
+    assert "d /run/suspect-interrogation 0750 suspect-interrogation suspect-interrogation" in tmpfiles
     assert "ReadOnlyPaths=/opt/suspect-interrogation/models/funasr" in text
+
+
+def test_launcher_does_not_require_retired_speaker_models_by_default(tmp_path: Path):
+    env, capture = _base_env(tmp_path)
+    env.pop("SUSPECT_ERES2NET_MODEL_DIR")
+    env["SUSPECT_LEGACY_VOICEPRINT_ENABLED"] = "false"
+    result = subprocess.run(["bash", os.fspath(LAUNCHER)], cwd=ROOT, env=env, text=True, capture_output=True, check=False)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    assert capture.read_text(encoding="utf-8").splitlines() == [STABLE_PYTHONPATH, "-m", "speech_worker.main"]

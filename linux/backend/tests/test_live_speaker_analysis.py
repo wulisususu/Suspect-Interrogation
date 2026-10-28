@@ -24,6 +24,12 @@ from app.services.live_speech_coordinator import LiveSpeechCoordinator
 from speech_worker.speaker_turn_splitter import TurnSpan
 
 
+@pytest.fixture(autouse=True)
+def enable_legacy_voiceprint_compatibility(monkeypatch):
+    """These tests exercise retained historical speaker analysis explicitly."""
+    monkeypatch.setenv("SUSPECT_LEGACY_VOICEPRINT_ENABLED", "true")
+
+
 @dataclass
 class _Transcript:
     text: str

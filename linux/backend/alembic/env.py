@@ -10,6 +10,12 @@ from app.database.base import Base
 import app.database.models  # noqa: F401 - registers core ORM tables
 import app.database.recognition_models  # noqa: F401 - registers recognition evidence tables
 import app.database.voiceprint_models  # noqa: F401 - registers global voiceprint/calibration tables
+import app.database.catalog_models  # noqa: F401
+import app.database.officer_models  # noqa: F401
+import app.database.case_management_models  # noqa: F401
+import app.database.document_mark_models  # noqa: F401
+import app.database.document_export_models  # noqa: F401
+import app.database.recording_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

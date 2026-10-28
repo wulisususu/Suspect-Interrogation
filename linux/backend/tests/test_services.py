@@ -1,3 +1,5 @@
+import base64
+
 import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -11,6 +13,12 @@ from app.services.document_service import DocumentService
 from app.services.identity_service import IdentityService
 from app.services.message_service import MessageService
 from app.services.session_service import SessionService
+
+
+VALID_SIGNATURE_PNG = 'data:image/png;base64,' + base64.b64encode(bytes.fromhex(
+    '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489'
+    '0000000d49444154789c63606060f80f00010401005fe5c34b0000000049454e44ae426082'
+)).decode()
 
 
 def make_db(tmp_path):
@@ -68,7 +76,7 @@ def test_full_service_workflow_revision_audit_and_documents(tmp_path, enroll_tes
 
         suspect_signed = documents.sign(
             case["id"], signer_role="SUSPECT", signer_name="测试对象",
-            image_data="data:image/png;base64,SUSPECT", strokes_json="[]", actor_id="officer-1"
+            image_data=VALID_SIGNATURE_PNG, strokes_json="[]", actor_id="officer-1"
         )
         assert suspect_signed["status"] == "FROZEN"
         assert [item["signerRole"] for item in suspect_signed["signatures"]] == ["SUSPECT"]
@@ -77,14 +85,14 @@ def test_full_service_workflow_revision_audit_and_documents(tmp_path, enroll_tes
         with pytest.raises(DomainError) as duplicate_signature:
             documents.sign(
                 case["id"], signer_role="SUSPECT", signer_name="测试对象",
-                image_data="data:image/png;base64,SUSPECT-RETRY", strokes_json="[]", actor_id="officer-1"
+                image_data=VALID_SIGNATURE_PNG, strokes_json="[]", actor_id="officer-1"
             )
         assert duplicate_signature.value.code == "SIGNATURE_ALREADY_EXISTS"
         assert duplicate_signature.value.status_code == 409
 
         officer_signed = documents.sign(
             case["id"], signer_role="OFFICER", signer_name="测试警官",
-            image_data="data:image/png;base64,OFFICER", strokes_json="[]", actor_id="officer-1"
+            image_data=VALID_SIGNATURE_PNG, strokes_json="[]", actor_id="officer-1"
         )
         assert officer_signed["status"] == "LOCKED"
         assert [item["signerRole"] for item in officer_signed["signatures"]] == ["SUSPECT", "OFFICER"]
@@ -124,7 +132,7 @@ def test_signature_schema_allows_each_role_once_per_snapshot(tmp_path):
                 snapshot_id=snapshot.id,
                 signer_role="SUSPECT",
                 signer_name="测试对象",
-                image_data="data:image/png;base64,ONE",
+                image_data=VALID_SIGNATURE_PNG,
             )
         )
         db.commit()
@@ -136,7 +144,7 @@ def test_signature_schema_allows_each_role_once_per_snapshot(tmp_path):
                 snapshot_id=snapshot.id,
                 signer_role="SUSPECT",
                 signer_name="测试对象",
-                image_data="data:image/png;base64,TWO",
+                image_data=VALID_SIGNATURE_PNG,
             )
         )
         with pytest.raises(IntegrityError):

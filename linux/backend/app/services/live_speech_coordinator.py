@@ -13,6 +13,7 @@ from uuid import uuid4
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.ai.legacy_voiceprint import legacy_voiceprint_enabled
 from app.ai.speech.types import SpeechEvent, SpeechEventType
 from app.database.models import ASRAudioFrame, ASRCaptureSession, ASRFragment, Case, LiveSpeechJob
 from app.repositories import audio_archive as archive_repo
@@ -71,6 +72,7 @@ class LiveSpeechCoordinator:
         ai_supervisor: Any,
         min_free_bytes: int = 0,
     ) -> None:
+        self.legacy_voiceprint_enabled = legacy_voiceprint_enabled()
         self.session_factory = session_factory
         self.capture_service = capture_service
         self.ai_supervisor = ai_supervisor
@@ -117,7 +119,12 @@ class LiveSpeechCoordinator:
         with self._lock:
             if self._started:
                 return
+            with self.session_factory() as db:
+                interrupted_ids = list(db.scalars(select(ASRCaptureSession.id).where(
+                    ASRCaptureSession.recording_status == "CAPTURING")))
             recovered = self.archive.recover_incomplete()
+            for capture_id in interrupted_ids:
+                self._record_capture_interruption(capture_id, "POWER_RECOVERY", "capture recovered after service restart")
             with self.session_factory() as db:
                 browser_capture_ids = set(
                     db.scalars(select(ASRAudioFrame.capture_session_id).distinct())
@@ -171,7 +178,7 @@ class LiveSpeechCoordinator:
                 if not has_interrogation_session:
                     if should_finalize:
                         try:
-                            self.archive.finalize_capture(capture_id)
+                            self._finalize_archive(capture_id)
                         except Exception:
                             logger.exception(
                                 "failed to finalize orphan audio capture %s",
@@ -188,7 +195,7 @@ class LiveSpeechCoordinator:
                 if should_finalize:
                     if finalization_error is None:
                         try:
-                            self.archive.finalize_capture(capture_id)
+                            self._finalize_archive(capture_id)
                         except Exception as exc:
                             finalization_error = exc
 
@@ -288,6 +295,19 @@ class LiveSpeechCoordinator:
                         )
                     self._enqueue_finish_capture(runtime)
 
+            from app.database.recording_models import CaptureRecording
+            with self.session_factory() as db:
+                unfinished_originals = list(db.scalars(
+                    select(ASRCaptureSession.id).join(CaptureRecording,
+                        CaptureRecording.capture_id == ASRCaptureSession.id).where(
+                        ASRCaptureSession.recording_status == "COMPLETE",
+                        ASRCaptureSession.audio_sample_count > 0,
+                        CaptureRecording.full_recording_enabled.is_(True),
+                        CaptureRecording.original_sha256.is_(None),
+                    )))
+            for capture_id in unfinished_originals:
+                self._finalize_original(capture_id)
+
             self._asr_thread = threading.Thread(
                 target=self._asr_loop,
                 daemon=True,
@@ -295,31 +315,46 @@ class LiveSpeechCoordinator:
             )
             self._asr_thread.start()
 
-            with self.session_factory() as db:
-                speaker_candidates = list(
-                    db.scalars(
-                        select(ASRCaptureSession.id).where(
-                            ASRCaptureSession.recording_status.in_(("COMPLETE", "INCOMPLETE")),
-                            ASRCaptureSession.id.in_(
-                                select(ASRFragment.capture_session_id).where(
-                                    ASRFragment.state == "PENDING",
-                                    ASRFragment.speaker_source == "PENDING_ANALYSIS",
-                                )
-                            ),
+            if self.legacy_voiceprint_enabled:
+                with self.session_factory() as db:
+                    speaker_candidates = list(
+                        db.scalars(
+                            select(ASRCaptureSession.id).where(
+                                ASRCaptureSession.recording_status.in_(("COMPLETE", "INCOMPLETE")),
+                                ASRCaptureSession.id.in_(
+                                    select(ASRFragment.capture_session_id).where(
+                                        ASRFragment.state == "PENDING",
+                                        ASRFragment.speaker_source == "PENDING_ANALYSIS",
+                                    )
+                                ),
+                            )
                         )
                     )
-                )
-            for capture_id in speaker_candidates:
-                self.schedule_speaker_jobs(capture_id, force=True)
-            self._recover_speaker_jobs()
+                for capture_id in speaker_candidates:
+                    self.schedule_speaker_jobs(capture_id, force=True)
+                self._recover_speaker_jobs()
 
-            self._speaker_thread = threading.Thread(
-                target=self._speaker_loop,
-                daemon=True,
-                name="live-speech-speaker",
-            )
-            self._speaker_thread.start()
+                self._speaker_thread = threading.Thread(
+                    target=self._speaker_loop,
+                    daemon=True,
+                    name="live-speech-speaker",
+                )
+                self._speaker_thread.start()
             self._started = True
+
+    def _finalize_archive(self, capture_id: str, **options) -> None:
+        self.archive.finalize_capture(capture_id, **options)
+        self._finalize_original(capture_id)
+
+    def _finalize_original(self, capture_id: str) -> None:
+        from app.services.recording_service import RecordingService
+        try:
+            with self.session_factory() as db:
+                RecordingService(db, self.archive).finalize_original(capture_id)
+                db.commit()
+        except Exception:
+            # Durable archive and ASR can finish; a missing hash is retried on restart.
+            logger.exception("full recording could not be assembled for capture %s", capture_id)
 
     def open_capture(self, runtime: Any) -> None:
         try:
@@ -508,7 +543,7 @@ class LiveSpeechCoordinator:
         self._asr_cursors.setdefault(capture_id, asr_cursor)
         self._asr_blocked.discard(capture_id)
         self._begin_asr_finalization(capture_id, sample_rate)
-        self.archive.finalize_capture(capture_id, allow_incomplete_recovery=True)
+        self._finalize_archive(capture_id, allow_incomplete_recovery=True)
         self._enqueue_finish_capture(runtime)
         self._browser_recoveries_started.discard(capture_id)
         return {
@@ -535,7 +570,7 @@ class LiveSpeechCoordinator:
             ) is not None
 
     def mark_browser_capture_incomplete(self, case_id: str, capture_id: str, reason: str) -> bool:
-        del reason
+        changed = False
         with archive_repo.archive_transaction(self.session_factory) as db:
             capture = db.get(ASRCaptureSession, capture_id)
             if capture is None or capture.case_id != str(case_id):
@@ -544,8 +579,29 @@ class LiveSpeechCoordinator:
                 return False
             if capture.recording_status != "INCOMPLETE":
                 archive_repo.mark_capture_incomplete(db, capture_id)
+                changed = True
+        if changed:
+            self._record_capture_interruption(capture_id, "NETWORK_INTERRUPTED", reason)
         return True
 
+    def _record_capture_interruption(self, capture_id: str, reason: str, detail: str) -> None:
+        from app.services.case_management_service import CaseManagementService
+        with self.session_factory() as db:
+            capture = db.get(ASRCaptureSession, capture_id)
+            if capture is None:
+                return
+            try:
+                CaseManagementService(db).interrupt(
+                    capture.case_id, reason=reason,
+                    question_id=getattr(capture, "target_question_id", None),
+                    detail=str(detail)[:1000],
+                )
+                db.commit()
+            except DomainError as exc:
+                db.rollback()
+                # Recovery must preserve audio even when the record was sealed or voided.
+                if exc.code not in {"FORMAL_RECORD_FROZEN", "CASE_VOIDED", "CASE_QUESTION_NOT_FOUND"}:
+                    raise
 
     def speaker_jobs_ready(
         self,
@@ -578,6 +634,8 @@ class LiveSpeechCoordinator:
 
     def schedule_speaker_jobs(self, capture_id: str, *, force: bool = False) -> list[str]:
         """Persist one deferred analysis job for each unresolved Stage 1 fragment."""
+        if not self.legacy_voiceprint_enabled:
+            return []
         queued: list[str] = []
         with archive_repo.archive_transaction(self.session_factory) as db:
             capture = db.get(ASRCaptureSession, capture_id)
@@ -657,6 +715,8 @@ class LiveSpeechCoordinator:
 
     def _recover_speaker_jobs(self) -> list[str]:
         """Requeue durable work after start has queued all ASR recovery ranges."""
+        if not self.legacy_voiceprint_enabled:
+            return []
         with archive_repo.archive_transaction(self.session_factory) as db:
             interrupted = list(
                 db.scalars(
@@ -694,7 +754,7 @@ class LiveSpeechCoordinator:
                     capture = db.get(ASRCaptureSession, runtime.capture_session_id)
                     recording_status = None if capture is None else capture.recording_status
                 if recording_status == "CAPTURING":
-                    self.archive.finalize_capture(runtime.capture_session_id)
+                    self._finalize_archive(runtime.capture_session_id)
                 elif recording_status not in {"INCOMPLETE", "COMPLETE"}:
                     raise RuntimeError("capture cannot be finalized from its current state")
             except Exception as exc:
@@ -741,7 +801,7 @@ class LiveSpeechCoordinator:
                         )
                         or 0
                     )
-                    if capture_ids
+                    if capture_ids and self.legacy_voiceprint_enabled
                     else 0
                 )
 
@@ -780,7 +840,7 @@ class LiveSpeechCoordinator:
                 pending_finish_events[0].wait(min(0.05, remaining))
                 continue
 
-            if pending_speaker_jobs or pending_speaker_count:
+            if self.legacy_voiceprint_enabled and (pending_speaker_jobs or pending_speaker_count):
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError("speaker analysis did not finish before the deadline")

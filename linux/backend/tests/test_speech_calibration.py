@@ -83,7 +83,8 @@ def test_calibration_rejects_non_finite_or_out_of_range_values(monkeypatch):
             SpeakerCalibration.from_env()
 
 
-def test_eres2net_load_failure_keeps_asr_and_vad_available(tmp_path: Path):
+def test_eres2net_load_failure_keeps_asr_and_vad_available(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("SUSPECT_LEGACY_VOICEPRINT_ENABLED", "true")
     model_root = tmp_path / "funasr"
     for name in ("paraformer", "fsmn-vad"):
         (model_root / name).mkdir(parents=True)
@@ -105,7 +106,7 @@ def test_eres2net_load_failure_keeps_asr_and_vad_available(tmp_path: Path):
     runtime.load()
 
     health = runtime.health()
-    assert health["models"] == {"asr": True, "vad": True, "speaker": False}
+    assert health["models"] == {"asr": True, "asr_streaming": False, "vad": True, "speaker": False}
     assert runtime.asr_model is not None
     assert runtime.vad_model is not None
     assert runtime.speaker_model is None
@@ -135,7 +136,7 @@ def test_supervisor_reports_speaker_failure_independently_from_asr_and_vad(tmp_p
         def health(self):
             return {
                 "status": "degraded",
-                "models": {"asr": True, "vad": True, "speaker": False},
+                "models": {"asr": True, "asr_streaming": False, "vad": True, "speaker": False},
             }
 
     supervisor = AISupervisor(

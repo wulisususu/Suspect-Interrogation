@@ -9,6 +9,8 @@ from app.repositories import cases as case_repo
 from app.repositories import sessions as session_repo
 from app.repositories import voiceprints as voiceprint_repo
 from app.services.serializers import session_dict
+from app.services.case_management_service import assert_case_not_void
+from app.ai.legacy_voiceprint import legacy_voiceprint_enabled
 from app.workflow.state import StateMachine
 
 
@@ -35,7 +37,7 @@ class SessionService:
     ) -> dict:
         begin_sqlite_immediate(self.db)
         try:
-            case = case_repo.get(self.db, case_id)
+            case = assert_case_not_void(self.db, case_id)
             active = session_repo.active_for_case(self.db, case_id)
             if active:
                 return session_dict(active, case)
@@ -54,12 +56,19 @@ class SessionService:
                 raise DomainError("SESSION_START_NOT_ALLOWED", f"当前状态不可开始审讯：{state.value}", 409)
             # 声纹已从办理流程中移除：开始审讯不再要求嫌疑人声纹。
             # 仍保有声纹的历史案件照旧绑定民警角色，其余案件跳过绑定。
-            bind_voiceprint_roles = voiceprint_service is not None and voiceprint_repo.get_suspect(
+            bind_voiceprint_roles = legacy_voiceprint_enabled() and voiceprint_service is not None and voiceprint_repo.get_suspect(
                 self.db, case_id, model_key=voiceprint_service.authoritative_speaker_backend
             ) is not None
             if bind_voiceprint_roles:
                 voiceprint_service.validate_role_binding(
                     case_id, interrogator_officer_id, recorder_officer_id
+                )
+            if not bind_voiceprint_roles and (interrogator_officer_id or recorder_officer_id):
+                from app.services.officer_service import OfficerService
+
+                OfficerService(self.db).bind_case_officers(
+                    case_id, interrogator_badge_number=interrogator_officer_id,
+                    recorder_badge_number=recorder_officer_id,
                 )
             self._advance(case, WorkflowState.QUESTIONING)
             row = session_repo.create(self.db, case_id, case.stage)
@@ -79,7 +88,7 @@ class SessionService:
             raise
 
     def pause(self, case_id: str, actor_id: str | None = None) -> dict:
-        case = case_repo.get(self.db, case_id)
+        case = assert_case_not_void(self.db, case_id)
         row = session_repo.active_for_case(self.db, case_id)
         if row is None or row.status != SessionStatus.RUNNING.value:
             raise DomainError("SESSION_NOT_RUNNING", "当前没有正在进行的审讯", 409)
@@ -91,7 +100,7 @@ class SessionService:
         return session_dict(row, case)
 
     def resume(self, case_id: str, actor_id: str | None = None) -> dict:
-        case = case_repo.get(self.db, case_id)
+        case = assert_case_not_void(self.db, case_id)
         row = session_repo.active_for_case(self.db, case_id)
         if row is None or row.status != SessionStatus.PAUSED.value:
             raise DomainError("SESSION_NOT_PAUSED", "当前审讯不是暂停状态", 409)
@@ -103,7 +112,7 @@ class SessionService:
         return session_dict(row, case)
 
     def finish(self, case_id: str, actor_id: str | None = None, *, commit: bool = True) -> dict:
-        case = case_repo.get(self.db, case_id)
+        case = assert_case_not_void(self.db, case_id)
         row = session_repo.active_for_case(self.db, case_id)
         if row is None:
             raise DomainError("SESSION_NOT_ACTIVE", "当前没有可结束的审讯", 409)
@@ -120,7 +129,7 @@ class SessionService:
         return session_dict(row, case)
 
     def change_stage(self, case_id: str, stage: str, actor_id: str | None = None) -> dict:
-        case = case_repo.get(self.db, case_id)
+        case = assert_case_not_void(self.db, case_id)
         row = session_repo.active_for_case(self.db, case_id)
         if row is None:
             raise DomainError("SESSION_NOT_ACTIVE", "请先开始审讯再切换阶段", 409)

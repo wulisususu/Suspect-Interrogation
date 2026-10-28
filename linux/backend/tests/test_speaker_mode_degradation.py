@@ -46,6 +46,11 @@ GOOD_EMBEDDINGS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def legacy_speaker_modes_enabled(monkeypatch):
+    monkeypatch.setenv("SUSPECT_LEGACY_VOICEPRINT_ENABLED", "true")
+
+
 def pcm16(duration_ms: int = 62000, sample: int = 1200) -> bytes:
     samples = duration_ms * SAMPLE_RATE // 1000
     return struct.pack(f"<{samples}h", *([sample] * samples))

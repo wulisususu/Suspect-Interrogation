@@ -27,6 +27,12 @@ from app.services.speaker_mode import (
 from app.services.speaker_policy import SpeakerRole, decide_speaker
 
 
+@pytest.fixture
+def legacy_voiceprint(monkeypatch):
+    """Opt in only for tests of historical speaker attribution/projection."""
+    monkeypatch.setenv("SUSPECT_LEGACY_VOICEPRINT_ENABLED", "true")
+
+
 def _embedding(*values: float) -> bytes:
     return struct.pack(f"<{len(values)}f", *values)
 
@@ -271,7 +277,7 @@ def test_capture_broadcasts_live_transcript_preview_without_creating_a_fragment(
         assert db.query(ASRFragment).count() == 0
 
 
-def test_capture_pushes_each_pcm_chunk_once_persists_verified_fragment_and_broadcasts(tmp_path: Path):
+def test_capture_pushes_each_pcm_chunk_once_persists_verified_fragment_and_broadcasts(tmp_path: Path, legacy_voiceprint):
     engine, factory, case_id, session_id = _seed_database(tmp_path)
     chunks = [b"\x01\x00" * 1600, b"\x02\x00" * 1600]
     device = FakeDeviceManager(chunks)
@@ -366,7 +372,7 @@ def test_capture_rejects_paused_interrogation_session(tmp_path: Path):
     engine.dispose()
 
 
-def test_capture_without_margin_runs_suspect_only_and_preserves_uncalibrated_margin(tmp_path: Path):
+def test_capture_without_margin_runs_suspect_only_and_preserves_uncalibrated_margin(tmp_path: Path, legacy_voiceprint):
     engine, factory, case_id, session_id = _seed_database(tmp_path)
     chunks = [b"\x01\x00" * 1600, b"\x02\x00" * 1600]
     device = FakeDeviceManager(chunks)
@@ -421,7 +427,7 @@ def _capture_service(factory, speech: FakeSpeechSupervisor, events: EventCollect
     )
 
 
-def test_capture_status_declares_the_effective_mode_reported_by_the_shared_rule(tmp_path: Path):
+def test_capture_status_declares_the_effective_mode_reported_by_the_shared_rule(tmp_path: Path, legacy_voiceprint):
     """Task 17B-1: the runtime must publish the mode it actually enforces."""
     engine, factory, case_id, _ = _seed_database(tmp_path, bind_interrogator=True)
     speech = FakeSpeechSupervisor()
@@ -460,7 +466,7 @@ def test_capture_status_declares_the_effective_mode_reported_by_the_shared_rule(
     engine.dispose()
 
 
-def test_without_a_margin_the_runtime_drops_unbound_officer_candidates(tmp_path: Path):
+def test_without_a_margin_the_runtime_drops_unbound_officer_candidates(tmp_path: Path, legacy_voiceprint):
     """The narrowing must reuse the shared predicate (single source of truth)."""
     engine, factory, _case_id, _session_id = _seed_database(tmp_path)
     speech = FakeSpeechSupervisor()
@@ -501,7 +507,7 @@ def test_without_a_margin_the_runtime_drops_unbound_officer_candidates(tmp_path:
     engine.dispose()
 
 
-def test_degraded_fragment_audit_records_the_shared_mode_rule(tmp_path: Path):
+def test_degraded_fragment_audit_records_the_shared_mode_rule(tmp_path: Path, legacy_voiceprint):
     """Task 17B-1: a narrowed operating point must leave an auditable reason."""
     import json
 
@@ -616,7 +622,7 @@ def test_declared_mode_for_roles_ignores_values_that_are_not_speaker_roles():
     )
 
 
-def test_start_seeds_the_declared_mode_without_a_second_database_session(tmp_path: Path, monkeypatch):
+def test_start_seeds_the_declared_mode_without_a_second_database_session(tmp_path: Path, monkeypatch, legacy_voiceprint):
     """``start()`` must not open an extra session just to seed the declared mode."""
     engine, factory, case_id, _ = _seed_database(tmp_path, bind_interrogator=True)
     sessions: list[int] = []
@@ -649,7 +655,7 @@ def test_start_seeds_the_declared_mode_without_a_second_database_session(tmp_pat
 # --- contract: the published ASR_FRAGMENT payload -------------------------------
 
 
-def test_published_fragment_payload_carries_the_shared_mode_rule(tmp_path: Path):
+def test_published_fragment_payload_carries_the_shared_mode_rule(tmp_path: Path, legacy_voiceprint):
     """Task 17B-1: every broadcast fragment names the mode it was decided in."""
     engine, factory, case_id, session_id = _seed_database(tmp_path, bind_interrogator=True)
     chunks = [b"\x01\x00" * 1600, b"\x02\x00" * 1600]
@@ -703,7 +709,7 @@ def test_published_fragment_payload_carries_the_shared_mode_rule(tmp_path: Path)
     engine.dispose()
 
 
-def test_capture_starts_with_model_baseline_when_device_calibration_is_missing(tmp_path: Path):
+def test_capture_starts_with_model_baseline_when_device_calibration_is_missing(tmp_path: Path, legacy_voiceprint):
     engine, factory, case_id, _ = _seed_database(tmp_path)
     device = FakeDeviceManager([])
     speech = FakeSpeechSupervisor()
@@ -729,7 +735,7 @@ def test_capture_starts_with_model_baseline_when_device_calibration_is_missing(t
     engine.dispose()
 
 
-def test_projection_failure_keeps_raw_fragment_and_capture_loop_healthy(tmp_path: Path, monkeypatch):
+def test_projection_failure_keeps_raw_fragment_and_capture_loop_healthy(tmp_path: Path, monkeypatch, legacy_voiceprint):
     engine, factory, case_id, _ = _seed_database(tmp_path)
     device = FakeDeviceManager([b"\x01\x00" * 1600, b"\x02\x00" * 1600])
     speech = FakeSpeechSupervisor()
@@ -764,7 +770,7 @@ def test_projection_failure_keeps_raw_fragment_and_capture_loop_healthy(tmp_path
     assert stopped["lastError"] is None
 
 
-def test_fragment_sink_bypasses_legacy_projection_and_capture_finished_sink_flushes(tmp_path: Path, monkeypatch):
+def test_fragment_sink_bypasses_legacy_projection_and_capture_finished_sink_flushes(tmp_path: Path, monkeypatch, legacy_voiceprint):
     engine, factory, case_id, session_id = _seed_database(tmp_path)
     device = FakeDeviceManager([b"\x01\x00" * 1600, b"\x02\x00" * 1600])
     speech = FakeSpeechSupervisor()
@@ -853,8 +859,8 @@ def test_audio_level_event_is_throttled_and_counts_suppressed_pcm(tmp_path: Path
     pcm = struct.pack("<hh", 1000, -1000)
 
     service._publish_audio_level(runtime, pcm, now=1.0)
+    service._publish_audio_level(runtime, pcm, now=1.02)
     service._publish_audio_level(runtime, pcm, now=1.05)
-    service._publish_audio_level(runtime, pcm, now=1.1)
 
     assert len(events.events) == 2
     assert events.events[-1][2]["sampleCount"] == 6

@@ -3,13 +3,13 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.database.session import begin_sqlite_immediate
-from app.database.models import ASRCaptureSession, ASRFragment, ASRFragmentLineage
+from app.database.models import ASRCaptureSession, ASRFragment, ASRFragmentLineage, ProcessedSpeechFragment
 from app.domain.errors import DomainError
 from app.repositories import asr_fragments as asr_repo
 from app.services.serializers import iso_utc
@@ -38,6 +38,12 @@ class FragmentBatchRequest(BaseModel):
     actor_id: str | None = None
 
 
+class CaptureStartRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+    target_question_id: str | None = Field(default=None, alias="targetQuestionId", min_length=1, max_length=64)
+    replace: bool = False
+
+
 def _supervisor(request: Request):
     return request.app.state.ai_supervisor
 
@@ -55,6 +61,12 @@ def _fragment_for_case(db: Session, case_id: str, fragment_id: str) -> ASRFragme
     if fragment.case_id != case_id:
         raise DomainError("ASR_FRAGMENT_NOT_FOUND", "ASR 临时片段不存在", 404)
     return fragment
+
+
+def _assert_unclaimed_for_legacy_action(db: Session, fragment_id: str) -> None:
+    claim = asr_repo.get_processed(db, fragment_id)
+    if claim is not None and claim.action in {"QUESTION_ANSWER", "LIVE_QUESTION"}:
+        raise DomainError("ASR_FRAGMENT_ALREADY_PROCESSED", "片段已归属题目，请在对应题目内办理", 409)
 
 
 def _fragment_payload(
@@ -198,8 +210,10 @@ def capture_status(case_id: str, request: Request):
 
 
 @router.post("/cases/{case_id}/asr/capture/start")
-def capture_start(case_id: str, request: Request):
-    status = _capture_service(request).start(case_id)
+def capture_start(case_id: str, request: Request, body: CaptureStartRequest | None = None):
+    ownership = ({"target_question_id": body.target_question_id, "replace": body.replace}
+                 if body is not None and (body.target_question_id is not None or body.replace) else {})
+    status = _capture_service(request).start(case_id, **ownership)
     publish_recording_state(request.app.state, case_id, status)
     return status
 
@@ -238,7 +252,11 @@ def list_fragments(
         .where(ASRFragment.case_id == case_id, ASRFragment.state != "DISCARDED")
     )
     if not include_confirmed:
-        stmt = stmt.where(ASRFragment.state != "CONFIRMED")
+        processed = select(ProcessedSpeechFragment.fragment_id).where(
+            ProcessedSpeechFragment.fragment_id == ASRFragment.id,
+            ProcessedSpeechFragment.action.in_(("LIVE_QUESTION", "QUESTION_ANSWER")),
+        ).exists()
+        stmt = stmt.where(ASRFragment.state != "CONFIRMED", ~processed)
     if not include_superseded:
         stmt = stmt.where(ASRFragment.state != "SUPERSEDED")
     stmt = stmt.order_by(
@@ -265,6 +283,7 @@ def update_fragment(
 ):
     fragment = _fragment_for_case(db, case_id, fragment_id)
     assert_formal_record_mutable(db, case_id)
+    _assert_unclaimed_for_legacy_action(db, fragment.id)
     if fragment.state == "DISCARDED":
         raise DomainError("ASR_FRAGMENT_DISCARDED", "已丢弃的 ASR 片段不能修改", 409)
     if fragment.state == "SUPERSEDED":
@@ -335,6 +354,7 @@ def _confirm_one(db: Session, *, case_id: str, fragment_id: str, actor_id: str |
     begin_sqlite_immediate(db)
     fragment = _fragment_for_case(db, case_id, fragment_id)
     assert_formal_record_mutable(db, case_id)
+    _assert_unclaimed_for_legacy_action(db, fragment.id)
     if fragment.state == "DISCARDED":
         raise DomainError("ASR_FRAGMENT_DISCARDED", "已丢弃的 ASR 片段不能确认", 409)
     if fragment.state == "SUPERSEDED":
@@ -385,7 +405,11 @@ def apply_fragments(case_id: str, body: FragmentBatchRequest, db: Session = Depe
     begin_sqlite_immediate(db)
     fragment_ids = list(body.fragment_ids)
     if not fragment_ids:
-        fragment_ids = list(db.scalars(select(ASRFragment.id).where(ASRFragment.case_id == case_id, ASRFragment.state.in_(["PENDING", "EDITED"])).order_by(ASRFragment.created_at.asc(), ASRFragment.ordinal.asc())))
+        consumed = select(ProcessedSpeechFragment.fragment_id).where(
+            ProcessedSpeechFragment.fragment_id == ASRFragment.id,
+            ProcessedSpeechFragment.action.in_(("QUESTION_ANSWER", "LIVE_QUESTION")),
+        ).exists()
+        fragment_ids = list(db.scalars(select(ASRFragment.id).where(ASRFragment.case_id == case_id, ASRFragment.state.in_(["PENDING", "EDITED"]), ~consumed).order_by(ASRFragment.created_at.asc(), ASRFragment.ordinal.asc())))
     return _confirm_batch(db, case_id=case_id, fragment_ids=fragment_ids, actor_id=body.actor_id)
 
 
@@ -393,6 +417,7 @@ def apply_fragments(case_id: str, body: FragmentBatchRequest, db: Session = Depe
 def discard_fragment(case_id: str, fragment_id: str, db: Session = Depends(get_db)):
     fragment = _fragment_for_case(db, case_id, fragment_id)
     assert_formal_record_mutable(db, case_id)
+    _assert_unclaimed_for_legacy_action(db, fragment.id)
     if fragment.state == "SUPERSEDED":
         raise DomainError("ASR_FRAGMENT_SUPERSEDED", "已被替换的 ASR 片段不能丢弃", 409)
     if fragment.state == "CONFIRMED":
