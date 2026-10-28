@@ -9,7 +9,6 @@ import {
 } from '../api/templateInterrogation'
 import CaseProfilePage from '../components/CaseProfilePage.vue'
 import type { RuntimeCapabilities } from '../runtime/types'
-import SessionControls from '../components/SessionControls.vue'
 import StepBar from '../components/StepBar.vue'
 import TemplateDrivenInterrogationPage from '../components/TemplateDrivenInterrogationPage.vue'
 import TemplatePickerPage from '../components/TemplatePickerPage.vue'
@@ -129,7 +128,6 @@ const recordSavingCount = ref(0)
 let recordSaveGeneration = 0
 const preparationDevices = ref<RuntimeCapabilities | null>(null)
 const preparationDeviceError = ref('')
-const preparationBusy = ref(false)
 async function checkPreparationDevices() {
   const caseId = props.caseId
   preparationDeviceError.value = ''
@@ -141,14 +139,6 @@ async function checkPreparationDevices() {
     preparationDevices.value = null
     preparationDeviceError.value = backendErrorMessage(cause)
   }
-}
-async function startPreparedSession() {
-  if (preparationGuard.value.disabled || preparationBusy.value || questionDictationActive.value || questionDictationBusy.value || store.session.status !== 'READY') return
-  preparationBusy.value = true
-  try {
-    await store.startSession()
-    if (['RUNNING'].includes(store.session.status)) openInterrogation()
-  } finally { preparationBusy.value = false }
 }
 const preparationGuard = computed(() => sessionStartGuard(store.caseSummary, preparationDevices.value))
 
@@ -354,9 +344,6 @@ async function refreshCaseWorkspace() {
   }
 }
 
-function openInterrogation() {
-  activePage.value = 'interrogation'
-}
 
 async function runTemplateAction(action: () => Promise<unknown>) {
   try { await action() }
@@ -474,18 +461,6 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
         @select="goStep"
       >
         <span class="step-hint">{{ stepHint }}</span>
-        <template #actions>
-          <SessionControls
-            v-if="flowStep === 'review'"
-            :session="store.session"
-            :start-disabled="preparationGuard.disabled || preparationBusy || questionDictationActive || questionDictationBusy"
-            :start-disabled-reason="questionDictationActive || questionDictationBusy ? '请先停止准备阶段语音输入，再开始正式审讯。' : preparationBusy ? '正在处理，请稍候' : preparationGuard.reason"
-            @start="startPreparedSession"
-            @toggle-pause="store.togglePause"
-            @finish="store.finishSession"
-            @next-stage="store.nextStage"
-          />
-        </template>
       </StepBar>
 
       <div class="workspace-toast-region record-no-print" aria-live="polite">

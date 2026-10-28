@@ -79,6 +79,14 @@
 - 后台「知识库管理」「录音查看（双通道）」接口。
 - 首页「自助模式」（当事人自助问答，设计稿 P04 右侧卡片与自助问答页）未实现。
 
+## 10. 前端遗留组件清理（待办）
+
+按设计稿改版后以下组件已不再挂载，可在声纹清理（第 8 项）时一并删除：
+`FormalTemplatePanel`（③④ 改为只读预览 `DictationRecordPreview` / `ReviewRecordPreview`）、
+`SessionControls`（③ 由题卡开始 / 暂停，④「确认定稿」由后端结束询问）、`LiveDialoguePanel`、
+`QuestionPreparationPanel`、`CasePreparationPage`、`VoiceprintSetupPage`、`MossTranscriptionPanel`、
+`AiSettingsPanel`。MOSS 转写与 AI 设置是否需要新的入口待定。
+
 ## 附：已知的预存测试失败
 
 以下 9 个后端测试在改版前的代码上即失败（本机缺语音 worker / 模型路径不同），与本次改版无关，

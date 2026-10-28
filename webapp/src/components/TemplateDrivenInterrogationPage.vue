@@ -24,13 +24,14 @@ import type {
   StandardQuestion,
   TemplateWorkspace,
 } from '../types/templateInterrogation'
-import FormalTemplatePanel from './FormalTemplatePanel.vue'
+import LongPressButton from './LongPressButton.vue'
 import DictationRecordPreview from './DictationRecordPreview.vue'
 import DraftQuestionRail from './DraftQuestionRail.vue'
 import FactCoverageBar from './FactCoverageBar.vue'
 import RecordArchivePage from './RecordArchivePage.vue'
 import RecordReviewPanel from './RecordReviewPanel.vue'
 import ReviewChecklistPanel from './ReviewChecklistPanel.vue'
+import ReviewRecordPreview from './ReviewRecordPreview.vue'
 import RecordSigningPage from './RecordSigningPage.vue'
 import type { RecordMode } from '../flow/steps'
 import { cssToken } from '../utils/cssToken'
@@ -125,7 +126,6 @@ const mode = computed<RecordMode>({
   get: () => props.completionMode,
   set: (value) => emit('update:completionMode', value),
 })
-const freezeChecks = ref([false, false, false, false, false])
 let signingRequest = 0
 /** 逐题录音已挂到题目回答上的片段视为已处理（与后端冻结校验一致），不再列入待确认转写。 */
 const attachedFragmentIds = computed(() => new Set(props.workspace.rounds
@@ -139,7 +139,7 @@ const completionBusy = computed(() => props.templateBusy || props.captureBusy ||
 const freezeReason = computed(() => freezeBlockReason({
   sessionStatus: props.session.status, captureRunning: props.capture.running, busy: completionBusy.value,
   loading: signingLoading.value, loadError: signingLoadError.value, frozen: documentFrozen.value,
-  checks: freezeChecks.value, unresolvedFragments: unresolvedFragments.value, unresolvedQa: unresolvedQa.value,
+  unresolvedFragments: unresolvedFragments.value, unresolvedQa: unresolvedQa.value,
   recordError: props.templateError || (props.workspace.caseId !== props.caseId ? '笔录尚未读取' : ''), hasQuestions: props.workspace.questions.length > 0,
   asrStatus: props.capture.asrStatus, speakerStatus: props.capture.speakerStatus, recordingStatus: props.capture.recordingStatus,
 }))
@@ -160,7 +160,6 @@ watch(
     reviewBusy.value = false
     signatureRole.value = null
     signatureStrokes.value = []
-    freezeChecks.value = [false, false, false, false, false]
     mode.value = props.session.status === 'COMPLETED' ? 'review' : 'interrogation'
     void loadSigningState()
   },
@@ -168,10 +167,6 @@ watch(
 )
 watch(() => props.session.status, (status) => {
   if (status === 'COMPLETED' && mode.value === 'interrogation') mode.value = 'review'
-})
-// A changed record must be inspected again before the operator freezes it.
-watch(() => JSON.stringify([props.summary, props.facts, props.workspace.questions, props.workspace.rounds, props.dialogueHistory, props.workspace.qaUnits]), () => {
-  freezeChecks.value = [false, false, false, false, false]
 })
 
 async function loadSigningState() {
@@ -222,11 +217,6 @@ function locateQuestion(questionId: string) {
   target.scrollIntoView({ block: 'center', behavior: 'smooth' })
   target.classList.add('record-qa-located')
   window.setTimeout(() => target.classList.remove('record-qa-located'), 1600)
-}
-
-function updateFreezeCheck(index: number, checked: boolean) {
-  if (index < 0 || index >= 5 || documentFrozen.value || completionBusy.value) return
-  freezeChecks.value[index] = checked
 }
 
 async function finishAndFreeze() {
@@ -363,10 +353,6 @@ function clearSignature() {
   prepareCanvas()
 }
 
-function forwardQuestionUpdate(questionId: string, input: CaseQuestionUpdateInput) {
-  emit('updateQuestion', questionId, input)
-}
-
 async function confirmSignature() {
   const caseId = props.caseId
   const request = signingRequest
@@ -404,7 +390,7 @@ async function confirmSignature() {
 <template>
   <section class="template-driven-interrogation-page" :class="{ 'record-completion-mode': mode !== 'interrogation' }">
     <p v-if="templateError || signingError || signingLoadError" class="template-page-error" role="alert">{{ templateError || signingError || signingLoadError }}<button v-if="signingLoadError" :disabled="signingLoading" @click="loadSigningState">重新读取签署状态</button></p>
-    <header v-if="mode !== 'interrogation'" class="record-completion-heading record-no-print"><h1>{{ mode === 'review' ? '定稿校验' : '签署归档' }} · {{ documentFrozen ? documentLocked ? '签署完成' : '已冻结' : session.status === 'COMPLETED' ? '审讯已结束' : '待冻结' }}</h1><p>{{ summary.id }} · {{ summary.suspectName || '姓名未填写' }} · 待确认转写 {{ unresolvedFragments }} 条 · 待处理问答 {{ unresolvedQa }} 组</p></header>
+    <header v-if="mode === 'sign' || mode === 'archive'" class="record-completion-heading record-no-print"><h1>签署归档 · {{ documentFrozen ? documentLocked ? '签署完成' : '已冻结' : session.status === 'COMPLETED' ? '审讯已结束' : '待冻结' }}</h1><p>{{ summary.id }} · {{ summary.suspectName || '姓名未填写' }} · 待确认转写 {{ unresolvedFragments }} 条 · 待处理问答 {{ unresolvedQa }} 组</p></header>
 
     <RecordSigningPage
       v-if="mode === 'sign'"
@@ -443,18 +429,15 @@ async function confirmSignature() {
       <button type="button" class="dictation-finalize" :disabled="!!recordingQuestionId || questionRecording" @click="mode = 'review'">{{ missingElements ? `定稿并校验 · 缺 ${missingElements} 项` : '定稿并校验' }}</button>
     </header>
 
-    <div v-if="mode === 'review' || mode === 'interrogation'" class="template-interrogation-grid" :class="{ 'record-review-grid': mode === 'review', 'draft-first': mode === 'interrogation' }">
-      <div class="formal-column" :class="{ 'is-dictation': mode === 'interrogation' }">
-        <header v-if="mode === 'interrogation'" class="formal-heading record-no-print">
+    <div v-if="mode === 'interrogation'" class="template-interrogation-grid draft-first">
+      <div class="formal-column is-dictation">
+        <header class="formal-heading record-no-print">
           <strong>正本 · 询问笔录</strong>
           <span class="formal-template-chip">模板 · {{ templateTitle }}</span>
           <small v-if="savedAtText">已自动保存 · {{ savedAtText }}</small>
         </header>
-        <header v-if="mode === 'review'" class="review-formal-heading record-no-print"><strong>询问笔录 · 复核中</strong><span>修改内容离开输入框后保存</span></header>
-        <FactCoverageBar v-if="mode === 'interrogation'" :facts="facts" @fill="mode = 'review'" />
-
+        <FactCoverageBar :facts="facts" @fill="mode = 'review'" />
         <DictationRecordPreview
-          v-if="mode === 'interrogation'"
           :summary="summary"
           :facts="facts"
           :session="session"
@@ -463,56 +446,9 @@ async function confirmSignature() {
           :locked="documentFrozen"
           @commit="(questionId, text) => emit('updateAnswer', questionId, text)"
         />
-        <FormalTemplatePanel
-          v-else
-          :summary="summary"
-          :facts="facts"
-          :session="session"
-          :questions="workspace.questions"
-          :rounds="workspace.rounds"
-          :busy="templateBusy || reviewBusy || signingLoading || !!signingLoadError"
-          :completion-mode="mode === 'review'"
-          :document-frozen="documentFrozen"
-          :document-locked="documentLocked"
-          :signing-state="signingState"
-          :signing-busy="signingBusy"
-          :capture-running="capture.running"
-          @update-question="forwardQuestionUpdate"
-          @reorder="emit('reorderQuestions', $event)"
-          @remove-question="(id) => emit('removeQuestion', id)"
-          @insert-pending="(pendingId, afterQuestionId) => emit('resolvePending', pendingId, { action: 'ADD', afterQuestionId })"
-          @resolve-qa-unit="(qaUnitId, resolution) => emit('resolveQaUnit', qaUnitId, resolution)"
-          @update-answer="(id, text) => emit('updateAnswer', id, text)"
-          @attach-fragment-answer="(questionId, fragmentIds) => emit('attachFragmentAnswer', questionId, fragmentIds)"
-          @create-live-question-from-fragments="(fragmentIds, afterQuestionId) => emit('createLiveQuestionFromFragments', fragmentIds, afterQuestionId)"
-          @print="emit('print')"
-          @save-library="emit('saveLibrary', $event)"
-          @freeze="mode = 'sign'"
-          @sign="openSignature"
-          @update-header="(target, key, value) => emit('updateHeader', target, key, value)"
-        />
       </div>
 
-      <div v-if="mode === 'review'" class="review-side">
-        <ReviewChecklistPanel
-          :facts="facts"
-          :questions="workspace.questions"
-          :checks="freezeChecks"
-          :block-reason="freezeReason"
-          :busy="completionBusy || signingLoading"
-          :frozen="documentFrozen"
-          :unresolved-fragments="unresolvedFragments"
-          :unresolved-qa="unresolvedQa"
-          :auto-checks="autoChecks"
-          @check="updateFreezeCheck"
-          @freeze="finishAndFreeze"
-        />
-        <details class="raw-transcript review-fragments">
-          <summary>待确认转写 {{ unresolvedFragments }} 条 · 待处理问答 {{ unresolvedQa }} 组</summary>
-          <RecordReviewPanel :fragments="reviewFragments" :qa-units="workspace.qaUnits" :busy="completionBusy || signingLoading || !!signingLoadError" :frozen="documentFrozen" @confirm="reviewAction($event)" @discard="reviewAction([$event], true)" @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)" @correct="(id, speaker, reason, text) => emit('correctFragment', id, speaker, reason, text)" />
-        </details>
-      </div>
-      <div v-else class="dialogue-column draft-column">
+      <div class="dialogue-column draft-column">
         <DraftQuestionRail
           :questions="workspace.questions"
           :session-status="session.status"
@@ -537,6 +473,47 @@ async function confirmSignature() {
         />
       </div>
     </div>
+
+    <template v-if="mode === 'review'">
+      <header class="dictation-heading record-no-print">
+        <div>
+          <h1>④ 定稿校验</h1>
+          <p>核对核心要素与未获取项，补齐或如实标注后定稿；定稿后笔录冻结</p>
+        </div>
+        <span class="dictation-mode">人工操作模式 · 正式询问</span>
+        <template v-if="!documentFrozen">
+          <button type="button" class="review-back" :disabled="!!signingBusy" @click="mode = 'interrogation'">返回修改</button>
+          <LongPressButton class="dictation-finalize" :disabled="!!freezeReason" @confirm="finishAndFreeze">{{ signingBusy === 'freeze' ? '正在定稿…' : '确认定稿' }}</LongPressButton>
+        </template>
+        <button v-else type="button" class="dictation-finalize" @click="mode = 'sign'">进入签署归档 →</button>
+      </header>
+
+      <div class="review-layout">
+        <div class="review-left">
+          <ReviewChecklistPanel
+            :summary="summary"
+            :facts="facts"
+            :questions="workspace.questions"
+            :template-title="templateTitle"
+            :block-reason="freezeReason"
+            :frozen="documentFrozen"
+            :unresolved-fragments="unresolvedFragments"
+            :unresolved-qa="unresolvedQa"
+            :auto-checks="autoChecks"
+          />
+          <details v-if="unresolvedFragments || unresolvedQa" class="raw-transcript review-fragments">
+            <summary>处理未完成的转写 {{ unresolvedFragments }} 条 · 问答 {{ unresolvedQa }} 组</summary>
+            <RecordReviewPanel :fragments="reviewFragments" :qa-units="workspace.qaUnits" :busy="completionBusy || signingLoading || !!signingLoadError" :frozen="documentFrozen" @confirm="reviewAction($event)" @discard="reviewAction([$event], true)" @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)" @correct="(id, speaker, reason, text) => emit('correctFragment', id, speaker, reason, text)" />
+          </details>
+        </div>
+        <ReviewRecordPreview :questions="workspace.questions" />
+      </div>
+
+      <footer class="review-footer record-no-print">
+        <span>定稿后笔录即冻结，不可再编辑；签名与指纹在 ⑤ 签署归档完成<template v-if="!documentFrozen"> · 长按「确认定稿」0.8 秒即定稿</template></span>
+        <span v-if="savedAtText">已自动保存 · {{ savedAtText }}</span>
+      </footer>
+    </template>
 
     <div v-if="signatureRole" class="signature-modal" role="dialog" aria-modal="true" aria-label="电子签名">
       <section class="signature-dialog">

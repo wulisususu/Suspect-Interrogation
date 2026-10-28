@@ -855,3 +855,13 @@ button:disabled {
 .formal-template-chip { padding: 2px var(--space-3); border-radius: var(--radius-pill); background: var(--primary-100); color: var(--primary-600); font-size: var(--text-xs); }
 .formal-heading small { margin-left: auto; color: var(--ink-400); font-size: var(--text-xs); }
 @media (max-width: 1280px) { .template-interrogation-grid.draft-first { grid-template-columns: 1fr; overflow: auto; } }
+
+/* ④ 定稿校验（样板 P13）：页头 + 左「核心要素核对 / 定稿前检查」右「询问笔录预览」+ 底部提示条 */
+.record-completion-mode:has(> .review-layout) { padding: 0; }
+.review-back { min-height: 52px; padding: 0 var(--space-6); border: 1px solid var(--primary-600); border-radius: var(--radius-sm); background: var(--surface); color: var(--primary-600); font-size: var(--text-md); font-weight: 600; }
+.review-layout { display: grid; flex: 1 1 auto; grid-template-columns: minmax(0, 42fr) minmax(0, 58fr); gap: var(--space-6); min-height: 0; padding: var(--space-5) var(--space-6); background: var(--surface-sunken); }
+.review-left { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; }
+.review-left > .review-checklist { flex: 1 1 auto; }
+.review-left > .review-fragments { flex: 0 1 auto; max-height: 45%; overflow: auto; border-radius: var(--radius-lg); background: var(--surface); }
+.review-footer { display: flex; flex: 0 0 auto; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--line-200); background: var(--surface); color: var(--ink-500); font-size: var(--text-sm); }
+@media (max-width: 1280px) { .review-layout { grid-template-columns: 1fr; overflow: auto; } }

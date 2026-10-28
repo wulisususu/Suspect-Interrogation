@@ -20,9 +20,13 @@ export function confirmationCandidates(items: TemporaryAsrFragment[]) {
     && item.confidenceSource !== 'UNAVAILABLE' && item.confidence != null && item.confidence >= .96)
 }
 
+/**
+ * 确认定稿前的硬性条件（样板 P13：校验项只提示不阻断，这里只拦后端必然拒绝的情况）。
+ * 后端定稿会自行停止录音、结束本次询问并冻结，所以不再要求先手动「结束审讯」。
+ */
 export function freezeBlockReason(value: {
   sessionStatus: string; captureRunning: boolean; busy: boolean; loading: boolean; loadError: string
-  frozen: boolean; checks: boolean[]; unresolvedFragments: number; unresolvedQa: number
+  frozen: boolean; unresolvedFragments: number; unresolvedQa: number
   recordError?: string; hasQuestions?: boolean
   asrStatus?: string | null; speakerStatus?: string | null; recordingStatus?: string | null
 }) {
@@ -32,12 +36,11 @@ export function freezeBlockReason(value: {
   if (value.hasQuestions === false) return '正式笔录暂无问答内容，请返回复核检查'
   if (value.busy) return '正在保存或处理，请稍候'
   if (value.captureRunning) return '请先停止录音'
-  if (value.sessionStatus !== 'COMPLETED') return '请先结束审讯，再复核并冻结笔录'
+  if (!['RUNNING', 'PAUSED', 'COMPLETED'].includes(value.sessionStatus)) return '尚未开始询问，没有可定稿的问答'
   if (value.recordingStatus === 'INCOMPLETE' || value.recordingStatus === 'CAPTURING') return '录音尚未完整归档，请先处理'
   if (value.asrStatus && value.asrStatus !== 'COMPLETE') return '文字转写尚未完成，请先处理'
   if (value.speakerStatus && !['COMPLETE', 'NEEDS_REVIEW'].includes(value.speakerStatus)) return '说话人分析尚未完成，请先处理'
   if (value.unresolvedFragments) return `还有 ${value.unresolvedFragments} 条转写片段待确认或丢弃`
   if (value.unresolvedQa) return `还有 ${value.unresolvedQa} 组问答待处置`
-  if (value.checks.length !== 5 || value.checks.some(checked => !checked)) return '请逐项完成打印前核对'
   return ''
 }

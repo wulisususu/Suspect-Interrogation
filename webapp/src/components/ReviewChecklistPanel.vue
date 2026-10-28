@@ -1,233 +1,116 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { CheckCircle2, CircleAlert, CircleDashed, ShieldCheck } from '@lucide/vue'
-import type { FactItem } from '../types/interrogation'
+import type { CaseSummary, FactItem } from '../types/interrogation'
 import type { FormalQuestion } from '../types/templateInterrogation'
+import { coreFacts } from '../utils/factCoverage'
 import type { ReviewAutoCheck } from '../utils/reviewChecks'
-import LongPressButton from './LongPressButton.vue'
 
 /**
- * 定稿校验 · 左栏
+ * ④ 定稿校验 · 左栏（样板 P13 / 状态 C）
  *
- * 样板里这一步是"核对要素 → 逐项打勾 → 冻结"：先看哪些要素还没拿到，
- * 再看定稿前必须确认的几件事，最后才允许冻结。冻结后笔录只读。
+ * 核心要素核对（已确认 / 待补 / 未获取）+ 定稿前检查。检查项只提示、不代改，
+ * 判断权在民警；只有后端必然拒绝的情况（blockReason）才阻止确认定稿。
  */
 const props = defineProps<{
+  summary: CaseSummary
   facts: FactItem[]
   questions: FormalQuestion[]
-  checks: boolean[]
+  templateTitle: string
   blockReason: string
-  busy: boolean
   frozen: boolean
   unresolvedFragments: number
   unresolvedQa: number
   autoChecks?: ReviewAutoCheck[]
 }>()
 
-const emit = defineEmits<{
-  check: [index: number, checked: boolean]
-  freeze: []
-}>()
+type ElementState = 'confirmed' | 'pending' | 'missing'
+const STATE_LABEL: Record<ElementState, string> = { confirmed: '已确认 ✓', pending: '待补', missing: '未获取' }
 
-const checkLabels = [
-  '姓名、证件号码已与证件原件核对',
-  '询问时间、地点及询问人、记录人信息已核对',
-  '说话人身份、问答归属与文字已人工复核',
-  '录音归档、转写与问答处理状态已检查',
-  '已查看打印预览并核对版面',
-]
+/** 当事人身份证号 + 模板核心要素，未确认的排在已确认之后、未获取放最后（与样板一致）。 */
+const elements = computed(() => {
+  const identity = { key: 'id-number', label: '当事人身份证号', state: (props.summary.idNumber ? 'confirmed' : 'pending') as ElementState }
+  const core = coreFacts(props.facts).map((item) => ({
+    key: item.key,
+    label: item.label,
+    state: (item.status === 'confirmed' ? 'confirmed' : item.status === 'missing' ? 'missing' : 'pending') as ElementState,
+  }))
+  const order: Record<ElementState, number> = { confirmed: 0, pending: 1, missing: 2 }
+  return [identity, ...core].sort((a, b) => order[a.state] - order[b.state])
+})
+const counts = computed(() => ({
+  confirmed: elements.value.filter((item) => item.state === 'confirmed').length,
+  pending: elements.value.filter((item) => item.state === 'pending').length,
+  missing: elements.value.filter((item) => item.state === 'missing').length,
+}))
 
-const autoSummary = computed(() => {
-  const checks = props.autoChecks ?? []
-  return {
-    total: checks.length,
-    passed: checks.filter((item) => item.state === 'pass').length,
-    pending: checks.filter((item) => item.state === 'pending').length,
+const drafts = computed(() => props.questions.filter((question) => question.active !== false && !question.formalAnswerText?.trim()
+  && question.rounds?.some((round) => round.status !== 'DETACHED' && round.answerText?.trim())).length)
+
+type CheckState = 'pass' | 'pending' | 'unavailable'
+const checks = computed<{ key: string; state: CheckState; text: string }[]>(() => {
+  const auto = props.autoChecks ?? []
+  const find = (key: string) => auto.find((item) => item.key === key)
+  const elementsCheck = find('elements')
+  const signers = find('signers')
+  const list: { key: string; state: CheckState; text: string }[] = [
+    { key: 'template', state: 'pass', text: `笔录格式与《${props.templateTitle}》模板一致` },
+    { key: 'identity', state: props.summary.idNumber && props.summary.suspectName ? 'pass' : 'pending', text: '身份信息与建档核对一致' },
+  ]
+  if (elementsCheck) list.push({ key: 'elements', state: elementsCheck.state, text: `模板要素 · ${elementsCheck.detail}` })
+  if (signers) list.push({ key: 'signers', state: signers.state, text: `签署人数与身份 · ${signers.detail}` })
+  for (const key of ['timeline', 'homophone']) {
+    const item = find(key)
+    if (item) list.push({ key, state: item.state, text: `${item.title}${item.state === 'unavailable' ? '（待接入）' : ''}` })
   }
+  if (drafts.value) list.push({ key: 'drafts', state: 'pending', text: `${drafts.value} 条录音回答尚未摘入正本，未摘入的不会进入笔录` })
+  if (props.unresolvedFragments) list.push({ key: 'fragments', state: 'pending', text: `${props.unresolvedFragments} 条转写片段未处理（需确认或丢弃后才能定稿）` })
+  if (props.unresolvedQa) list.push({ key: 'qa', state: 'pending', text: `${props.unresolvedQa} 组问答待处置（需处置后才能定稿）` })
+  return list
 })
-const AUTO_STATE_LABEL = { pass: '通过', pending: '待确认', unavailable: '待接入' } as const
-
-const remainingChecks = computed(() => checkLabels.filter((_, index) => !props.checks[index]).length)
-
-/** 要素核对：优先展示尚未确认的事实，已确认的收在后面 */
-const factGroups = computed(() => {
-  const items = props.facts.filter((item) => item.value && item.value !== '未录入')
-  const order = { missing: 0, conflict: 1, pending: 2, confirmed: 3 } as const
-  const sorted = [...items].sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3))
-  return {
-    confirmed: items.filter((item) => item.status === 'confirmed').length,
-    pending: items.filter((item) => item.status === 'pending').length,
-    missing: items.filter((item) => item.status === 'missing').length,
-    conflict: items.filter((item) => item.status === 'conflict').length,
-    items: sorted.slice(0, 8),
-  }
-})
-
-const coverage = computed(() => {
-  const total = props.questions.length
-  const answered = props.questions.filter((question) => question.formalAnswerText?.trim()).length
-  return { total, answered, unanswered: total - answered }
-})
-
-function statusMeta(status: FactItem['status']) {
-  if (status === 'confirmed') return { label: '已确认', cls: 'is-ok', icon: CheckCircle2 }
-  if (status === 'missing') return { label: '未获取', cls: 'is-missing', icon: CircleDashed }
-  if (status === 'conflict') return { label: '有冲突', cls: 'is-conflict', icon: CircleAlert }
-  return { label: '待补', cls: 'is-pending', icon: CircleAlert }
-}
+const CHECK_MARK: Record<CheckState, string> = { pass: '✓', pending: '!', unavailable: '○' }
 </script>
 
 <template>
   <section class="review-checklist" aria-label="定稿校验">
-    <article class="review-card">
-      <header>
-        <h2>核心要素核对</h2>
-        <div class="review-counts">
-          <span class="is-ok">已确认 {{ factGroups.confirmed }}</span>
-          <span class="is-pending">待补 {{ factGroups.pending }}</span>
-          <span class="is-missing">未获取 {{ factGroups.missing }}</span>
-        </div>
-      </header>
-      <p class="review-note">未获取的要素会如实标注「未获取」写入笔录；定稿后可在案件详情补录。</p>
+    <header class="review-checklist-head">
+      <strong>核心要素核对</strong>
+      <span>已确认 {{ counts.confirmed }} · 待补 {{ counts.pending }} · 未获取 {{ counts.missing }}</span>
+    </header>
+    <ul class="review-elements">
+      <li v-for="item in elements" :key="item.key" :class="`is-${item.state}`">
+        <span>{{ item.label }}</span><i aria-hidden="true">·</i><span>{{ STATE_LABEL[item.state] }}</span>
+      </li>
+    </ul>
+    <p class="review-note">未获取项将以「未获取」如实记入笔录；定稿并归档后可在案件详情补录</p>
 
-      <ul v-if="factGroups.items.length" class="review-fact-list">
-        <li v-for="item in factGroups.items" :key="item.key">
-          <span class="review-fact-label">{{ item.label }}</span>
-          <span class="review-fact-value">{{ item.value }}</span>
-          <span class="review-fact-state" :class="statusMeta(item.status).cls">{{ statusMeta(item.status).label }}</span>
-        </li>
-      </ul>
-      <p v-else class="review-empty">尚未录入核心要素，请先回到建档补充身份信息。</p>
+    <h3>定稿前检查</h3>
+    <ul class="review-checks">
+      <li v-for="item in checks" :key="item.key" :class="`is-${item.state}`"><b aria-hidden="true">{{ CHECK_MARK[item.state] }}</b><span>{{ item.text }}</span></li>
+    </ul>
 
-      <p class="review-coverage">
-        问答覆盖：{{ coverage.answered }} / {{ coverage.total }} 题已成文<template v-if="coverage.unanswered">，{{ coverage.unanswered }} 题未获取</template>
-      </p>
-      <p v-if="unresolvedFragments || unresolvedQa" class="review-pending-work">
-        还有 {{ unresolvedFragments }} 条转写未确认、{{ unresolvedQa }} 组问答待处理
-      </p>
-    </article>
-
-    <article class="review-card">
-      <header>
-        <ShieldCheck :size="18" aria-hidden="true" />
-        <h2>定稿前校验 · 逐项确认（只提示，不代改）</h2>
-      </header>
-      <p v-if="autoChecks?.length" class="review-auto-summary">{{ autoSummary.total }} 项检查 · {{ autoSummary.passed }} 项通过 · {{ autoSummary.pending }} 项待确认</p>
-      <ul v-if="autoChecks?.length" class="review-auto-list">
-        <li v-for="item in autoChecks" :key="item.key" :class="`is-${item.state}`">
-          <strong>{{ AUTO_STATE_LABEL[item.state] }} · {{ item.title }}</strong>
-          <span v-if="item.detail">{{ item.detail }}</span>
-        </li>
-      </ul>
-
-      <h3 class="review-subhead">民警确认<span class="review-remaining">{{ remainingChecks ? `剩 ${remainingChecks} 项` : '已全部确认' }}</span></h3>
-
-      <label v-for="(label, index) in checkLabels" :key="label" class="review-check" :class="{ checked: checks[index] }">
-        <input type="checkbox" :checked="checks[index]" :disabled="busy || frozen" @change="emit('check', index, ($event.target as HTMLInputElement).checked)" />
-        <span>{{ label }}</span>
-      </label>
-
-      <LongPressButton class="review-freeze" :duration-ms="800" :disabled="busy || frozen || !!blockReason" @confirm="emit('freeze')">
-        {{ frozen ? '笔录已冻结' : busy ? '处理中…' : '确认定稿 · 正本冻结并进入签署（长按 800ms）' }}
-      </LongPressButton>
-      <p v-if="blockReason && !frozen" class="review-block" role="status">{{ blockReason }}</p>
-      <p class="review-note">冻结后笔录不可再编辑，签名与捺印在「⑤ 签署归档」完成。</p>
-    </article>
+    <p v-if="frozen" class="review-block is-done">笔录已冻结，可进入 ⑤ 签署归档</p>
+    <p v-else-if="blockReason" class="review-block" role="status">{{ blockReason }}</p>
   </section>
 </template>
 
 <style scoped>
-.review-auto-summary { margin: 0; color: var(--warning-700); font-size: var(--text-xs); }
-.review-auto-list { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.review-auto-list li { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface-sunken); font-size: var(--text-xs); color: var(--ink-500); }
-.review-auto-list li strong { color: var(--ink-700); font-size: var(--text-sm); font-weight: 600; }
-.review-auto-list li.is-pass { background: var(--success-100); }
-.review-auto-list li.is-pass strong { color: var(--success-700); }
-.review-auto-list li.is-pending { background: var(--warning-100); }
-.review-auto-list li.is-pending strong { color: var(--warning-700); }
-.review-subhead { display: flex; align-items: center; justify-content: space-between; margin: var(--space-2) 0 0; color: var(--ink-900); font-size: var(--text-sm); font-weight: 600; }
-
-.review-checklist {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-height: 0;
-  overflow: auto;
-  padding: var(--space-3);
-  background: var(--surface-sunken);
-}
-
-.review-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--line-200);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-.review-card > header { display: flex; align-items: center; gap: var(--space-2); }
-.review-card h2 { margin: 0; color: var(--ink-900); font-size: var(--text-md); font-weight: 600; }
-
-.review-counts { display: flex; gap: var(--space-2); margin-left: auto; font-size: var(--text-xs); }
-.review-counts span { padding: 2px 8px; border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--ink-400); }
-.review-counts .is-ok { background: var(--success-100); color: var(--success-700); }
-.review-counts .is-pending { background: var(--warning-100); color: var(--warning-700); }
-.review-counts .is-missing { background: var(--surface-muted); color: var(--ink-400); }
-
-.review-note { margin: 0; color: var(--ink-400); font-size: var(--text-xs); line-height: 1.7; }
-
-.review-fact-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 1px; background: var(--line-100); }
-.review-fact-list li {
-  display: grid;
-  grid-template-columns: 110px minmax(0, 1fr) auto;
-  gap: var(--space-2);
-  align-items: center;
-  padding: var(--space-2) var(--space-3);
-  background: var(--surface);
-  font-size: var(--text-sm);
-}
-.review-fact-label { color: var(--ink-400); }
-.review-fact-value { color: var(--ink-700); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.review-fact-state { padding: 1px 8px; border-radius: var(--radius-pill); font-size: var(--text-xs); background: var(--surface-muted); color: var(--ink-400); }
-.review-fact-state.is-ok { background: var(--success-100); color: var(--success-700); }
-.review-fact-state.is-pending, .review-fact-state.is-conflict { background: var(--warning-100); color: var(--warning-700); }
-.review-fact-state.is-missing { background: var(--surface-muted); color: var(--ink-400); }
-
-.review-empty { margin: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface-sunken); color: var(--ink-300); font-size: var(--text-sm); }
-.review-coverage { margin: 0; color: var(--ink-500); font-size: var(--text-sm); }
-.review-pending-work { margin: 0; color: var(--warning-700); font-size: var(--text-sm); }
-
-.review-remaining { margin-left: auto; color: var(--ink-400); font-size: var(--text-xs); }
-
-.review-check {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: 40px;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-sm);
-  color: var(--ink-700);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-.review-check:hover { background: var(--surface-sunken); }
-.review-check input { width: 18px; height: 18px; accent-color: var(--primary-600); }
-.review-check.checked { color: var(--success-700); }
-
-.review-freeze {
-  width: 100%;
-  min-height: 46px;
-  margin-top: var(--space-2);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: var(--primary-600);
-  color: var(--surface);
-  font-size: var(--text-base);
-  font-weight: 600;
-}
-.review-freeze:hover:not(:disabled) { background: var(--primary-700); }
-.review-freeze:disabled { background: var(--surface-muted); color: var(--ink-300); cursor: not-allowed; }
-
-.review-block { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--warning-100); color: var(--warning-700); font-size: var(--text-xs); line-height: 1.6; }
+.review-checklist { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; padding: var(--space-6) var(--space-8); overflow: auto; border-radius: var(--radius-lg); background: var(--surface); }
+.review-checklist-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-4); }
+.review-checklist-head strong { color: var(--ink-900); font-size: var(--text-lg); font-weight: 650; }
+.review-checklist-head span { color: var(--ink-900); font-size: var(--text-lg); font-weight: 600; }
+.review-elements, .review-checks { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.review-elements li { display: flex; gap: var(--space-3); font-size: var(--text-md); }
+.review-elements i { font-style: normal; }
+.review-elements .is-confirmed { color: var(--success-700); }
+.review-elements .is-pending { color: var(--warning-700); }
+.review-elements .is-missing { color: var(--ink-400); }
+.review-note { margin: 0; color: var(--ink-400); font-size: var(--text-xs); }
+.review-checklist h3 { margin: var(--space-2) 0 0; color: var(--ink-900); font-size: var(--text-md); font-weight: 650; }
+.review-checks li { display: flex; gap: var(--space-3); font-size: var(--text-md); }
+.review-checks b { flex: 0 0 16px; font-weight: 600; }
+.review-checks .is-pass { color: var(--success-700); }
+.review-checks .is-pending { color: var(--warning-700); }
+.review-checks .is-unavailable { color: var(--ink-400); }
+.review-block { margin: var(--space-2) 0 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); background: var(--warning-100); color: var(--warning-700); font-size: var(--text-sm); }
+.review-block.is-done { background: var(--success-100); color: var(--success-700); }
 </style>

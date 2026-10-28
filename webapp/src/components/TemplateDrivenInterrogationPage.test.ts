@@ -11,7 +11,7 @@ const componentModules = import.meta.glob('./*.vue')
 describe('template-driven interrogation C-page contract', () => {
   it('renders the draft cards and the formal transcript as sibling panels (design P07)', () => {
     expect(pageSource).toContain('template-interrogation-grid')
-    expect(pageSource).toContain('FormalTemplatePanel')
+    expect(pageSource).toContain('<DictationRecordPreview')
     expect(pageSource).toContain('<DraftQuestionRail')
     expect(pageSource).toContain('③ 智能工作台 · 问答录入')
     expect(pageSource).toContain('正本 · 询问笔录')
@@ -48,6 +48,15 @@ describe('template-driven interrogation C-page contract', () => {
     expect(preparationSource).toContain('手动输入')
     expect(preparationSource).toContain('语音输入')
     expect(preparationSource).toContain('加入本案问题')
+  })
+
+  it('rebuilds 定稿校验 as checks + read-only preview with a long-press 确认定稿 (design P13)', () => {
+    expect(pageSource).toContain('④ 定稿校验')
+    expect(pageSource).toContain('<ReviewChecklistPanel')
+    expect(pageSource).toContain('<ReviewRecordPreview')
+    expect(pageSource).toContain('@confirm="finishAndFreeze"')
+    expect(pageSource).toContain('返回修改')
+    expect(pageSource).not.toContain('freezeChecks')
   })
 
   it('records answers per card and appends questions by voice instead of a separate preparation drawer', () => {

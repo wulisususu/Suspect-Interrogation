@@ -16,15 +16,10 @@ describe('interrogation workspace shell', () => {
     expect(source).toContain(':current="flowStep"')
   })
 
-  it('places session actions inside the step bar actions slot', () => {
-    const stepBar = source.indexOf('<StepBar')
-    const controls = source.indexOf('<SessionControls')
-    const content = source.indexOf('<section class="workspace-page-body"')
-
-    expect(stepBar).toBeGreaterThanOrEqual(0)
-    expect(controls).toBeGreaterThan(stepBar)
-    expect(controls).toBeLessThan(content)
+  it('keeps the step bar free of session buttons (design: ③ cards start / pause, ④ 确认定稿 ends the session)', () => {
+    expect(source).not.toContain('<SessionControls')
     expect(source).not.toContain(':stage-text="store.stageText"')
+    expect(source).toContain('@toggle-pause="store.togglePause"')
   })
 
   it('shows the case identity in a top bar chip and keeps officer metadata beside it', () => {

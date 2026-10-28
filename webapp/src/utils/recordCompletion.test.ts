@@ -21,10 +21,12 @@ describe('record completion safety and review ordering', () => {
     expect(confirmationCandidates(items).map(item => item.id)).toEqual(['good'])
   })
 
-  const ready = { sessionStatus: 'COMPLETED', captureRunning: false, busy: false, loading: false, loadError: '', recordError: '', hasQuestions: true, frozen: false, checks: [true, true, true, true, true], unresolvedFragments: 0, unresolvedQa: 0, asrStatus: 'COMPLETE', speakerStatus: 'COMPLETE', recordingStatus: 'COMPLETE' }
-  it('requires every manual acknowledgement and stopped, processed audio before freezing', () => {
+  const ready = { sessionStatus: 'COMPLETED', captureRunning: false, busy: false, loading: false, loadError: '', recordError: '', hasQuestions: true, frozen: false, unresolvedFragments: 0, unresolvedQa: 0, asrStatus: 'COMPLETE', speakerStatus: 'COMPLETE', recordingStatus: 'COMPLETE' }
+  it('requires stopped, processed audio before freezing but no manual acknowledgement', () => {
     expect(freezeBlockReason(ready)).toBe('')
-    expect(freezeBlockReason({ ...ready, checks: [true, true, true, true, false] })).toContain('核对')
+    // 定稿会由后端结束仍在进行的询问，进行中 / 暂停的会话可以直接确认定稿。
+    expect(freezeBlockReason({ ...ready, sessionStatus: 'RUNNING' })).toBe('')
+    expect(freezeBlockReason({ ...ready, sessionStatus: 'PAUSED' })).toBe('')
     expect(freezeBlockReason({ ...ready, captureRunning: true })).toContain('录音')
     expect(freezeBlockReason({ ...ready, asrStatus: 'FINALIZING' })).toContain('转写')
     expect(freezeBlockReason({ ...ready, recordingStatus: 'INCOMPLETE' })).toContain('归档')
@@ -34,7 +36,7 @@ describe('record completion safety and review ordering', () => {
     expect(freezeBlockReason({ ...ready, unresolvedFragments: 2 })).toContain('转写片段')
     expect(freezeBlockReason({ ...ready, unresolvedQa: 1 })).toContain('问答')
     expect(freezeBlockReason({ ...ready, loadError: '网络异常' })).toContain('状态')
-    expect(freezeBlockReason({ ...ready, sessionStatus: 'READY' })).toContain('审讯')
+    expect(freezeBlockReason({ ...ready, sessionStatus: 'READY' })).toContain('尚未开始询问')
     expect(freezeBlockReason({ ...ready, frozen: true })).toContain('冻结')
     expect(freezeBlockReason({ ...ready, busy: true })).toContain('保存')
     expect(freezeBlockReason({ ...ready, recordError: '读取失败' })).toContain('笔录')
