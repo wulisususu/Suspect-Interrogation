@@ -299,6 +299,69 @@ def test_dragged_fragment_can_be_saved_as_formal_answer_with_provenance(tmp_path
         assert saved_question["rounds"][0]["answerFragmentIds"] == [fragment_id]
 
 
+def test_recorded_card_answer_stays_draft_until_written_into_the_record(tmp_path):
+    """问答录入 · 逐题录音：录完先成待摘入草稿，重录替换草稿，摘入正本才写正式回答。"""
+    app = create_app(
+        database_url=f"sqlite:///{tmp_path / 'template-draft-answer.db'}",
+        hardware_gateway=MockHardwareGateway(simulated=True),
+    )
+    with TestClient(app) as client:
+        case_id = create_case(client)
+        question = payload(
+            client.post(
+                f"/api/v1/cases/{case_id}/questions",
+                json={"text": "车辆当时锁了吗？", "source": "CASE"},
+            )
+        )
+
+        with app.state.session_factory() as db:
+            session = InterrogationSession(id="SESSION-DRAFT-ANSWER", case_id=case_id, status="RUNNING", stage="QUESTIONING")
+            db.add(session)
+            db.flush()
+            capture = asr_repo.create_capture_session(db, case_id=case_id, interrogation_session_id=session.id, sample_rate=16000)
+            ids = []
+            for ordinal, text in enumerate(["锁了，", "锁在单元门口。", "锁在柱子上。"], start=1):
+                fragment = asr_repo.create_fragment(
+                    db,
+                    capture_session_id=capture.id,
+                    case_id=case_id,
+                    ordinal=ordinal,
+                    started_at_ms=ordinal * 1000,
+                    ended_at_ms=ordinal * 1000 + 600,
+                    raw_text=text,
+                    speaker="UNKNOWN",
+                    speaker_source="MANUAL",
+                    voiceprint_verified=False,
+                    low_confidence=False,
+                    model_id="test-asr",
+                )
+                ids.append(fragment.id)
+            db.commit()
+
+        url = f"/api/v1/cases/{case_id}/questions/{question['id']}/answer-fragments"
+        drafted = payload(client.post(url, json={"fragmentIds": ids[:2], "draft": True}))
+        assert drafted["answerText"] == "锁了，锁在单元门口。"
+
+        def saved():
+            workspace = payload(client.get(f"/api/v1/cases/{case_id}/template-workspace"))
+            return next(item for item in workspace["questions"] if item["id"] == question["id"])
+
+        assert saved()["formalAnswerText"] == ""
+
+        rerecorded = payload(client.post(url, json={"fragmentIds": ids[2:], "draft": True, "replace": True}))
+        assert rerecorded["answerText"] == "锁在柱子上。"
+        assert rerecorded["answerFragmentIds"] == ids[2:]
+        assert saved()["formalAnswerText"] == ""
+        with app.state.session_factory() as db:
+            states = {fragment_id: asr_repo.get_fragment(db, fragment_id).state for fragment_id in ids}
+        assert states[ids[0]] == "DISCARDED"
+        assert states[ids[1]] == "DISCARDED"
+        assert states[ids[2]] != "DISCARDED"
+
+        payload(client.put(f"/api/v1/cases/{case_id}/questions/{question['id']}/answer", json={"answerText": "锁了，锁在单元门口的柱子上。"}))
+        assert saved()["formalAnswerText"] == "锁了，锁在单元门口的柱子上。"
+
+
 def test_officer_fragment_can_create_live_question_from_dynamic_drop(tmp_path):
     app = create_app(
         database_url=f"sqlite:///{tmp_path / 'template-live-question-drop.db'}",

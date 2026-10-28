@@ -9,10 +9,12 @@ import preparationSource from './QuestionPreparationPanel.vue?raw'
 const componentModules = import.meta.glob('./*.vue')
 
 describe('template-driven interrogation C-page contract', () => {
-  it('renders the formal transcript and live dialogue as explicit sibling panels', () => {
+  it('renders the draft cards and the formal transcript as sibling panels (design P07)', () => {
     expect(pageSource).toContain('template-interrogation-grid')
     expect(pageSource).toContain('FormalTemplatePanel')
-    expect(pageSource).toContain('LiveDialoguePanel')
+    expect(pageSource).toContain('<DraftQuestionRail')
+    expect(pageSource).toContain('③ 智能工作台 · 问答录入')
+    expect(pageSource).toContain('正本 · 询问笔录')
   })
 
   it('keeps the formal transcript header out of the C-page content area', () => {
@@ -48,18 +50,19 @@ describe('template-driven interrogation C-page contract', () => {
     expect(preparationSource).toContain('加入本案问题')
   })
 
-  it('wires preparation voice dictation to a real runtime instead of a disabled placeholder', () => {
-    expect(pageSource).not.toContain(':voice-available="false"')
-    expect(pageSource).toContain(':voice-draft="questionDictationDraft"')
-    expect(pageSource).toContain('@voice-start="emit(\'questionDictationStart\')"')
-    expect(pageSource).toContain('@voice-stop="emit(\'questionDictationStop\')"')
+  it('records answers per card and appends questions by voice instead of a separate preparation drawer', () => {
+    expect(pageSource).not.toContain('QuestionPreparationPanel')
+    expect(pageSource).toContain("@record=\"(questionId, replace) => emit('answerStart', questionId, replace)\"")
+    expect(pageSource).toContain("@stop=\"emit('answerStop')\"")
+    expect(pageSource).toContain("@question-hold-start=\"emit('questionHoldStart', $event)\"")
+    expect(workspaceSource).toContain('@answer-start="startCardAnswer"')
+    expect(workspaceSource).toContain('@answer-stop="stopCardAnswer"')
   })
 
   it('shows live dialogue without any voiceprint gate now that voiceprints left the workflow', () => {
     expect(pageSource).not.toContain('VoiceprintEnrollmentGate')
     expect(workspaceSource).not.toContain('VoiceprintSetupPage')
     expect(workspaceSource).not.toContain('autoVoiceprint')
-    expect(pageSource).toContain('<LiveDialoguePanel')
     expect(pageSource).not.toContain('readiness.suspectReady')
     expect(pageSource).not.toContain('dialogue-voiceprint-hint')
   })

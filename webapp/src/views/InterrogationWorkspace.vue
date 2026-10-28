@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { backendErrorMessage, fetchRuntimeCapabilities, updateAsrFragment } from '../api/interrogation'
+import { backendErrorMessage, discardAsrFragment, fetchRuntimeCapabilities, updateAsrFragment } from '../api/interrogation'
 import { currentOperatorId } from '../api/operator'
 import { updateCaseFact, updateCaseProfile } from '../api/caseProfile'
 import {
@@ -29,7 +29,6 @@ import {
 import { TEMPLATE_CATALOG } from '../config/templateCatalog'
 import { useInterrogationStore } from '../stores/interrogation'
 import { useTemplateInterrogationStore } from '../stores/templateInterrogation'
-import { factCoverage } from '../utils/factCoverage'
 import { sessionStartGuard } from '../utils/sessionStartGuard'
 import type { CaseSummary, TemporaryAsrSpeaker } from '../types/interrogation'
 import type {
@@ -64,7 +63,10 @@ const flowProgress = computed<FlowProgress>(() => {
   })
 })
 const currentStepMeta = computed(() => stepMeta(flowStep.value))
-const missingElements = computed(() => factCoverage(store.facts).missing.length)
+/** ③ 的步骤条右侧按样板显示已选模板，其余步骤显示步骤说明。 */
+const stepHint = computed(() => (flowStep.value === 'dictation' && caseTypeText.value
+  ? `已选模板：${templateTitle.value || caseTypeText.value}`
+  : currentStepMeta.value.hint))
 const profileLocked = computed(() => ['FROZEN', 'SIGNED', 'REPORT_GENERATED'].includes(store.caseSummary.workflowState || '')
   || ['FROZEN', 'LOCKED'].includes(store.caseSummary.documentStatus || ''))
 function factValue(key: string) {
@@ -149,6 +151,110 @@ async function startPreparedSession() {
   } finally { preparationBusy.value = false }
 }
 const preparationGuard = computed(() => sessionStartGuard(store.caseSummary, preparationDevices.value))
+
+/**
+ * 逐题录音（样板 P07 交互状态 B）：点卡即录，结束并转写后把这一次录音的片段
+ * 挂成该题的待摘入草稿；按住「追加一问」说完即成卡。录音按题归属，不依赖说话人识别。
+ */
+const answeringQuestionId = ref<string | null>(null)
+const questionHoldActive = ref(false)
+let answerTarget: { questionId: string; captureId: string; replace: boolean } | null = null
+let questionHold: { afterQuestionId: string | null; captureId: string } | null = null
+
+const liveCaptureText = computed(() => {
+  const captureId = store.capture.captureSessionId
+  if (!store.capture.running || !captureId) return ''
+  const finals = templateStore.dialogueHistory
+    .filter((item) => item.captureSessionId === captureId && !['DISCARDED', 'SUPERSEDED'].includes(item.state))
+    .map((item) => (item.editedText || item.rawText).trim())
+  return [...finals, store.capture.partialText?.trim() || ''].filter(Boolean).join('')
+})
+
+async function ensureSessionRunning(): Promise<boolean> {
+  if (store.session.status === 'RUNNING') return true
+  if (store.session.status !== 'READY') {
+    store.feedback(store.session.status === 'PAUSED' ? '询问已暂停，请先继续询问' : '本次询问已结束，不能继续录音', true)
+    return false
+  }
+  if (preparationGuard.value.disabled) {
+    store.feedback(preparationGuard.value.reason, true)
+    return false
+  }
+  await store.startSession()
+  // startSession 会替换 session；TS 仍按进入时的 READY 收窄，这里重新读取。
+  const started: string = store.session.status
+  return started === 'RUNNING'
+}
+
+async function beginCapture(): Promise<string | null> {
+  if (store.capture.running || store.captureBusy) return null
+  if (!(await ensureSessionRunning())) return null
+  await store.startCapture()
+  return store.capture.running ? store.capture.captureSessionId || null : null
+}
+
+/** 停止录音并取回这一次录音的全部最终片段（停止后重新读取，避免漏掉收尾片段）。 */
+async function finishCapture(captureId: string) {
+  if (!(await store.stopCapture(undefined, false))) return null
+  const caseId = store.caseId
+  if (!caseId) return null
+  await templateStore.initialize(caseId)
+  return templateStore.dialogueHistory
+    .filter((item) => item.captureSessionId === captureId && !['DISCARDED', 'SUPERSEDED'].includes(item.state) && (item.editedText || item.rawText).trim())
+    .sort((a, b) => a.startedAtMs - b.startedAtMs || a.ordinal - b.ordinal)
+}
+
+async function startCardAnswer(questionId: string, replace: boolean) {
+  if (answerTarget || questionHold) return
+  answeringQuestionId.value = questionId
+  const captureId = await beginCapture()
+  if (!captureId) { answeringQuestionId.value = null; return }
+  answerTarget = { questionId, captureId, replace }
+}
+
+async function stopCardAnswer() {
+  const target = answerTarget
+  if (!target) return
+  try {
+    const fragments = await finishCapture(target.captureId)
+    if (!fragments) return
+    if (!fragments.length) { store.feedback('这次没有识别到语音，请靠近话筒重新回答', true); return }
+    await templateStore.attachFragmentAnswer(target.questionId, fragments.map((item) => item.id), { draft: true, replace: target.replace })
+    store.feedback('已转写为待摘入，核对后点「摘入正本」')
+  } catch {
+    store.feedback(templateStore.error || '回答转写失败', true)
+  } finally {
+    if (!store.capture.running) { answerTarget = null; answeringQuestionId.value = null }
+  }
+}
+
+async function startQuestionHold(afterQuestionId: string | null) {
+  if (answerTarget || questionHold) return
+  questionHoldActive.value = true
+  const captureId = await beginCapture()
+  if (!captureId) { questionHoldActive.value = false; return }
+  questionHold = { afterQuestionId, captureId }
+}
+
+async function stopQuestionHold() {
+  const hold = questionHold
+  if (!hold) { questionHoldActive.value = false; return }
+  try {
+    const fragments = await finishCapture(hold.captureId)
+    if (!fragments) return
+    const text = fragments.map((item) => (item.editedText || item.rawText).trim()).join('')
+    if (!text) { store.feedback('没有听清问题，请按住再说一遍，或改为手动输入', true); return }
+    await templateStore.createCaseQuestion({ text, source: 'LIVE', afterQuestionId: hold.afterQuestionId })
+    // 问题文字已成卡，原始片段丢弃留痕，不再挡住定稿冻结。
+    const caseId = store.caseId
+    if (caseId) await Promise.all(fragments.map((item) => discardAsrFragment(caseId, item.id).catch(() => undefined)))
+    store.feedback('已追加一问')
+  } catch {
+    store.feedback(templateStore.error || '追加问题失败', true)
+  } finally {
+    if (!store.capture.running) { questionHold = null; questionHoldActive.value = false }
+  }
+}
 const questionDictationDraft = ref('')
 const questionDictationActive = ref(false)
 const questionDictationBusy = ref(false)
@@ -367,10 +473,10 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
         :reachable="flowProgress.reachable"
         @select="goStep"
       >
-        <span class="step-hint">{{ currentStepMeta.hint }}</span>
+        <span class="step-hint">{{ stepHint }}</span>
         <template #actions>
           <SessionControls
-            v-if="flowStep !== 'intake' && flowStep !== 'template'"
+            v-if="flowStep === 'review'"
             :session="store.session"
             :start-disabled="preparationGuard.disabled || preparationBusy || questionDictationActive || questionDictationBusy"
             :start-disabled-reason="questionDictationActive || questionDictationBusy ? '请先停止准备阶段语音输入，再开始正式审讯。' : preparationBusy ? '正在处理，请稍候' : preparationGuard.reason"
@@ -379,12 +485,6 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             @finish="store.finishSession"
             @next-stage="store.nextStage"
           />
-          <button
-            v-if="flowStep === 'dictation' && activePage === 'interrogation'"
-            type="button"
-            class="step-finalize"
-            @click="goStep('review', true)"
-          >{{ missingElements ? `定稿并校验 · 缺 ${missingElements} 项` : '定稿并校验' }}</button>
         </template>
       </StepBar>
 
@@ -435,6 +535,9 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             :question-dictation-draft="questionDictationDraft"
             :question-dictation-error="questionDictationError"
             :recorder-name="recorderName === '未指定' ? '' : recorderName"
+            :recording-question-id="answeringQuestionId"
+            :question-recording="questionHoldActive"
+            :live-text="liveCaptureText"
             :completion-mode="completionMode"
             @update:completion-mode="onCompletionModeChange"
             @saved="refreshCaseWorkspace"
@@ -458,6 +561,11 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             @correct-fragment="correctRecognitionFragment"
             @update-header="saveRecordHeader"
             @back="$emit('back')"
+            @answer-start="startCardAnswer"
+            @answer-stop="stopCardAnswer"
+            @question-hold-start="startQuestionHold"
+            @question-hold-end="stopQuestionHold"
+            @toggle-pause="store.togglePause"
           />
         </div>
       </section>
@@ -466,7 +574,6 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
 </template>
 
 <style scoped>
-.step-finalize { min-height: 36px; padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); background: var(--primary-600); color: var(--surface); font-size: var(--text-sm); font-weight: 600; white-space: nowrap; }
 .app-topbar {
   display: flex;
   align-items: center;

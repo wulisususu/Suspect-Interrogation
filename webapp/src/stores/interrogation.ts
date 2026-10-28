@@ -755,7 +755,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     try {
       const status = await startAsrCapture(scope.caseId)
       applyCaptureStatus(status, scope)
-      feedbackIfCurrent(scope, '录音已开始；每个语音片段需确认后才写入正式笔录')
+      feedbackIfCurrent(scope, '录音已开始')
     } catch (err) {
       feedbackIfCurrent(scope, backendErrorMessage(err), true)
     } finally {

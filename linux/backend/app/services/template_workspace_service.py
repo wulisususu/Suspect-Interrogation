@@ -274,7 +274,21 @@ class TemplateWorkspaceService:
     def upsert_case_question_answer(self, case_id: str, question_id: str, *, answer_text: str) -> dict:
         return FormalRecordAnswerService(self.db).upsert(case_id, question_id, answer_text=answer_text)
 
-    def attach_case_question_answer_fragments(self, case_id: str, question_id: str, *, fragment_ids: list[str]) -> dict:
+    def attach_case_question_answer_fragments(
+        self,
+        case_id: str,
+        question_id: str,
+        *,
+        fragment_ids: list[str],
+        draft: bool = False,
+        replace: bool = False,
+    ) -> dict:
+        """Attach ASR fragments as the answer of one question.
+
+        ``draft`` keeps the text on the question's round only (待摘入), so the officer
+        can edit it before it is written into the formal record; ``replace`` starts the
+        round answer over (重录这题) instead of appending to it.
+        """
         self._assert_case_mutable(case_id)
         question = question_repo.get_case(self.db, case_id, question_id)
         requested_ids: list[str] = []
@@ -297,6 +311,15 @@ class TemplateWorkspaceService:
             raise DomainError("ASR_FRAGMENT_EMPTY", "所选语音片段没有可录入的文字", 400)
 
         round_row = round_repo.latest_for_question(self.db, case_id, question_id)
+        if round_row is not None and replace:
+            # 重录：旧草稿片段标为丢弃（行保留可追溯），不再挡住定稿冻结。
+            for old_id in _load_list(round_row.answer_fragment_ids_json):
+                if old_id in requested_ids:
+                    continue
+                old = asr_repo.get_fragment(self.db, old_id)
+                if old.case_id == case_id and old.state not in ("CONFIRMED", "SUPERSEDED"):
+                    old.state = "DISCARDED"
+            round_repo.reset_round_answer(self.db, round_row)
         existing_ids = set(_load_list(round_row.answer_fragment_ids_json)) if round_row is not None else set()
         new_fragments = [item for item in fragments if item[0] not in existing_ids]
         if round_row is None:
@@ -320,12 +343,13 @@ class TemplateWorkspaceService:
                 [item[0] for item in new_fragments],
             )
 
-        question_repo.set_canonical_answer(
-            self.db,
-            question,
-            answer_text=round_row.answer_text,
-            first_asked_at=round_row.started_at,
-        )
+        if not draft:
+            question_repo.set_canonical_answer(
+                self.db,
+                question,
+                answer_text=round_row.answer_text,
+                first_asked_at=round_row.started_at,
+            )
         return question_round_dict(round_row)
 
     def deactivate_case_question(self, case_id: str, question_id: str) -> dict:

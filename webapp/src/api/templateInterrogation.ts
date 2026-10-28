@@ -158,10 +158,17 @@ export async function upsertQuestionAnswer(caseId: string, questionId: string, a
   ))
 }
 
-export async function attachQuestionAnswerFragments(caseId: string, questionId: string, fragmentIds: string[]): Promise<FormalQuestionRound> {
+export interface AttachAnswerOptions {
+  /** 只挂成待摘入草稿，不写入正本 */
+  draft?: boolean
+  /** 重录：替换原草稿而不是追加 */
+  replace?: boolean
+}
+
+export async function attachQuestionAnswerFragments(caseId: string, questionId: string, fragmentIds: string[], options: AttachAnswerOptions = {}): Promise<FormalQuestionRound> {
   return unwrap(await http.post<BackendEnvelope<FormalQuestionRound>>(
     `/api/v1/cases/${encodeURIComponent(caseId)}/questions/${encodeURIComponent(questionId)}/answer-fragments`,
-    { fragmentIds },
+    { fragmentIds, ...(options.draft ? { draft: true } : {}), ...(options.replace ? { replace: true } : {}) },
   ))
 }
 

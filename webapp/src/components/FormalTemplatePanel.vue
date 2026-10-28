@@ -67,6 +67,16 @@ function roundsFor(questionId: string) {
   return props.rounds.filter((r) => r.caseQuestionId === questionId && r.status !== 'DETACHED').sort((a, b) => a.roundNo - b.roundNo)
 }
 function latestRound(questionId: string) { return roundsFor(questionId).at(-1) }
+
+/** 逐题录音录完、尚未摘入正本的回答草稿（问答录入 · 待摘入）。 */
+function draftOf(q: FormalQuestion) {
+  if (props.completionMode || q.formalAnswerText?.trim()) return ''
+  const round = [...roundsFor(q.id)].reverse().find((item) => item.status !== 'DETACHED')
+  return round?.answerText?.trim() || ''
+}
+const cardOrdinal = computed(() => new Map(orderedQuestions.value.filter((q) => q.active !== false).map((q, index) => [q.id, index + 1])))
+const unitName = computed(() => factText('officer_unit'))
+const roundText = computed(() => factText('interrogation_round', '1'))
 function saveQuestion(question: FormalQuestion) {
   if (question.locked || props.documentFrozen || props.busy) return
   const text = (questionDrafts[question.id] || '').trim()
@@ -76,10 +86,6 @@ function saveCanonicalAnswer(question: FormalQuestion) {
   if (props.documentFrozen || props.busy) return
   const answer = (canonicalAnswerDrafts[question.id] || '').trim()
   if (answer !== (question.formalAnswerText ?? '').trim()) emit('updateAnswer', question.id, answer)
-}
-function signatureFor(role: DocumentSignerRole) { return props.signingState?.signatures.find((s) => s.signerRole === role) }
-function formatSignedAt(value?: number) {
-  return value ? new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)) : ''
 }
 function formatRecordTime(value?: number | null) {
   if (!value) return '____年__月__日__时__分'
@@ -248,21 +254,8 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
         <button type="button" class="pending-drop-cancel" @click="clearDrop()">取消</button>
       </div>
       <header class="record-paper-header">
-        <div class="record-title-block"><h1>询问笔录</h1><span>第 1 次</span></div>
-        <div v-if="!completionMode" class="record-top-actions record-no-print">
-          <button :disabled="busy || signingBusy !== ''" @click="emit('print')">
-            {{ documentFrozen ? '打印正式笔录' : '打印预览' }}
-          </button>
-          <button class="primary" :disabled="documentFrozen || signingBusy !== '' || captureRunning" @click="emit('freeze')">
-            {{ signingBusy === 'freeze' ? '正在完成语音处理…' : documentFrozen ? '笔录已冻结' : '结束并冻结笔录' }}
-          </button>
-          <button :disabled="!signingState || !!signatureFor('SUSPECT') || signingBusy !== '' || documentLocked" @click="emit('sign', 'SUSPECT')">
-            {{ signatureFor('SUSPECT') ? `被询问人已签 ${formatSignedAt(signatureFor('SUSPECT')?.signedAt)}` : '被询问人签名' }}
-          </button>
-          <button :disabled="!signingState || !!signatureFor('OFFICER') || signingBusy !== '' || documentLocked" @click="emit('sign', 'OFFICER')">
-            {{ signatureFor('OFFICER') ? `民警已签 ${formatSignedAt(signatureFor('OFFICER')?.signedAt)}` : '民警签名' }}
-          </button>
-        </div>
+        <p v-if="unitName" class="record-unit">{{ unitName }}</p>
+        <div class="record-title-block"><h1>询问笔录</h1><span>第 {{ roundText }} 次</span></div>
       </header>
 
       <button v-if="completionMode" class="record-meta-toggle record-no-print" :aria-expanded="showMetadata" @click="showMetadata = !showMetadata">{{ showMetadata ? '收起身份与询问信息' : '展开身份与询问信息' }}</button>
@@ -282,19 +275,21 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
       <section class="record-qa-section fixed-opening">
         <div v-for="q in openingQuestions" :key="q.id" :data-question-id="q.id" class="record-qa fixed-question">
           <p class="record-question"><b>问：</b><span>{{ q.text }}</span></p>
-          <label class="record-answer qa-answer-drop" :class="{ 'record-answer-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `answer-${q.id}`)" @dragleave="dragOverKey = ''" @drop.stop="dropAnswerOnQuestion($event, q.id)" @click="tapAnswerOnQuestion(q.id)"><b>答：</b><textarea v-model="canonicalAnswerDrafts[q.id]" :disabled="busy || documentFrozen" rows="1" @input="autoGrow($event)" @blur="saveCanonicalAnswer(q)"></textarea><small class="record-no-print">聊天记录或答案可拖到这里</small></label>
+          <div v-if="draftOf(q)" class="record-draft-preview record-no-print"><small>← 来自 Q{{ cardOrdinal.get(q.id) }} · 录音转写草稿，可在左栏修改 · 摘入即落位本段</small><p><b>答：</b><span>{{ draftOf(q) }}</span></p><button type="button" :disabled="busy || documentFrozen" @click="emit('updateAnswer', q.id, draftOf(q))">摘入正本 →</button></div>
+          <label v-else class="record-answer qa-answer-drop" :class="{ 'record-answer-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `answer-${q.id}`)" @dragleave="dragOverKey = ''" @drop.stop="dropAnswerOnQuestion($event, q.id)" @click="tapAnswerOnQuestion(q.id)"><b>答：</b><textarea v-model="canonicalAnswerDrafts[q.id]" :disabled="busy || documentFrozen" rows="1" @input="autoGrow($event)" @blur="saveCanonicalAnswer(q)"></textarea><small class="record-no-print">聊天记录或答案可拖到这里</small></label>
           <small v-if="latestRound(q.id)?.actualQuestionText && latestRound(q.id)?.actualQuestionText !== q.text" class="actual-question record-no-print">现场原问法：{{ latestRound(q.id)?.actualQuestionText }}</small>
         </div>
       </section>
 
-      <div class="record-section-label record-no-print"><span>案件动态问答区</span><small>右侧实时对话可拖入；本区可拖动排序、编辑或移出</small></div>
-      <div class="record-drop-zone record-no-print" :class="{ active: dragOverKey === 'body-start' }" @dragover="allowPendingDrop($event, 'body-start')" @dragleave="dragOverKey = ''" @drop="dropGap($event, lastOpeningId)">拖到这里插入为第一条案件问题 / 民警提问 / 整组问答</div>
+      <div v-if="completionMode || pendingDrop" class="record-section-label record-no-print"><span>案件动态问答区</span><small>右侧实时对话可拖入；本区可拖动排序、编辑或移出</small></div>
+      <div v-if="completionMode || pendingDrop" class="record-drop-zone record-no-print" :class="{ active: dragOverKey === 'body-start' }" @dragover="allowPendingDrop($event, 'body-start')" @dragleave="dragOverKey = ''" @drop="dropGap($event, lastOpeningId)">拖到这里插入为第一条案件问题 / 民警提问 / 整组问答</div>
 
       <section class="record-qa-section body-section">
         <article v-for="q in bodyQuestions" :key="q.id" :data-question-id="q.id" class="record-qa body-question" draggable="true" @dragstart="startBodyDrag($event, q.id)" @dragover.prevent @drop="dropBody($event, q.id)">
           <div class="body-question-tools record-no-print"><span class="drag-handle" title="拖动排序">⋮⋮</span><span>{{ q.source === 'LIVE' ? '实时对话' : q.source === 'STANDARD' ? '问题库' : '本案问题' }}</span><button :disabled="busy || documentFrozen" @click="emit('saveLibrary', q.id)">存入题库</button><button class="danger-link" :disabled="busy || documentFrozen" @click="emit('removeQuestion', q.id)">移出笔录</button></div>
           <label class="record-question editable-question qa-question-drop" :class="{ 'record-question-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `qa-${q.id}`)" @drop.stop="dropQaOnQuestion($event, q.id)" @click="tapQaOnQuestionField(q.id, $event)"><b>问：</b><textarea v-model="questionDrafts[q.id]" :disabled="busy || documentFrozen" rows="1" @input="autoGrow($event)" @blur="saveQuestion(q)"></textarea><small class="record-no-print">整组 QA 可拖到本题</small></label>
-          <label class="record-answer qa-answer-drop" :class="{ 'record-answer-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `answer-${q.id}`)" @dragleave="dragOverKey = ''" @drop.stop="dropAnswerOnQuestion($event, q.id)" @click="tapAnswerOnQuestion(q.id)"><b>答：</b><textarea v-model="canonicalAnswerDrafts[q.id]" :disabled="busy || documentFrozen" rows="2" placeholder="等待现场回答" @input="autoGrow($event)" @blur="saveCanonicalAnswer(q)"></textarea><small class="record-no-print">聊天记录或答案可拖到这里</small></label>
+          <div v-if="draftOf(q)" class="record-draft-preview record-no-print"><small>← 来自 Q{{ cardOrdinal.get(q.id) }} · 录音转写草稿，可在左栏修改 · 摘入即落位本段</small><p><b>答：</b><span>{{ draftOf(q) }}</span></p><button type="button" :disabled="busy || documentFrozen" @click="emit('updateAnswer', q.id, draftOf(q))">摘入正本 →</button></div>
+          <label v-else class="record-answer qa-answer-drop" :class="{ 'record-answer-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `answer-${q.id}`)" @dragleave="dragOverKey = ''" @drop.stop="dropAnswerOnQuestion($event, q.id)" @click="tapAnswerOnQuestion(q.id)"><b>答：</b><textarea v-model="canonicalAnswerDrafts[q.id]" :disabled="busy || documentFrozen" rows="2" placeholder="等待现场回答" @input="autoGrow($event)" @blur="saveCanonicalAnswer(q)"></textarea><small class="record-no-print">聊天记录或答案可拖到这里</small></label>
           <small v-if="latestRound(q.id)?.actualQuestionText && latestRound(q.id)?.actualQuestionText !== q.text" class="actual-question record-no-print">现场原问法：{{ latestRound(q.id)?.actualQuestionText }}</small>
           <div class="record-drop-zone compact record-no-print" :class="{ active: dragOverKey === q.id }" @dragover="allowPendingDrop($event, q.id)" @dragleave="dragOverKey = ''" @drop="dropGap($event, q.id)">拖到这里，插入在本题之后 / 民警提问新建现场问题</div>
         </article>
@@ -304,7 +299,8 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
       <section class="record-qa-section fixed-closing">
         <div v-for="q in closingQuestions" :key="q.id" :data-question-id="q.id" class="record-qa fixed-question">
           <p class="record-question"><b>问：</b><span>{{ q.text }}</span></p>
-          <label class="record-answer qa-answer-drop" :class="{ 'record-answer-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `answer-${q.id}`)" @dragleave="dragOverKey = ''" @drop.stop="dropAnswerOnQuestion($event, q.id)" @click="tapAnswerOnQuestion(q.id)"><b>答：</b><textarea v-model="canonicalAnswerDrafts[q.id]" :disabled="busy || documentFrozen" rows="1" @input="autoGrow($event)" @blur="saveCanonicalAnswer(q)"></textarea><small class="record-no-print">聊天记录或答案可拖到这里</small></label>
+          <div v-if="draftOf(q)" class="record-draft-preview record-no-print"><small>← 来自 Q{{ cardOrdinal.get(q.id) }} · 录音转写草稿，可在左栏修改 · 摘入即落位本段</small><p><b>答：</b><span>{{ draftOf(q) }}</span></p><button type="button" :disabled="busy || documentFrozen" @click="emit('updateAnswer', q.id, draftOf(q))">摘入正本 →</button></div>
+          <label v-else class="record-answer qa-answer-drop" :class="{ 'record-answer-armed': transcriptFragmentArmed }" @dragover="allowPendingDrop($event, `answer-${q.id}`)" @dragleave="dragOverKey = ''" @drop.stop="dropAnswerOnQuestion($event, q.id)" @click="tapAnswerOnQuestion(q.id)"><b>答：</b><textarea v-model="canonicalAnswerDrafts[q.id]" :disabled="busy || documentFrozen" rows="1" @input="autoGrow($event)" @blur="saveCanonicalAnswer(q)"></textarea><small class="record-no-print">聊天记录或答案可拖到这里</small></label>
           <small v-if="latestRound(q.id)?.actualQuestionText && latestRound(q.id)?.actualQuestionText !== q.text" class="actual-question record-no-print">现场原问法：{{ latestRound(q.id)?.actualQuestionText }}</small>
         </div>
       </section>
@@ -318,6 +314,14 @@ function dropPending(event: DragEvent, afterQuestionId: string | null) {
 </template>
 
 <style scoped>
+.record-unit { margin: 0 0 var(--space-1); font-size: var(--text-lg); }
+.record-draft-preview { display: flex; flex-direction: column; gap: var(--space-2); margin: var(--space-2) 0; padding: var(--space-3) var(--space-4); border: 1px dashed var(--primary-500); border-radius: var(--radius-sm); background: var(--primary-50); font-family: var(--font-sans); }
+.record-draft-preview small { color: var(--primary-600); font-size: var(--text-xs); }
+.record-draft-preview p { display: flex; margin: 0; color: var(--ink-500); font-family: var(--font-serif); }
+.record-draft-preview p b { flex: 0 0 38px; font-weight: 600; }
+.record-draft-preview button { align-self: flex-start; min-height: 40px; padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); background: var(--primary-600); color: var(--surface); font-size: var(--text-sm); font-weight: 600; }
+.qa-answer-drop > small { display: none; }
+.qa-answer-drop.record-answer-armed > small { display: inline; }
 .qa-question-drop, .qa-answer-drop { position: relative; border-radius: 6px; }
 .pending-drop-banner { position: sticky; top: 0; z-index: 6; display: flex; gap: var(--space-3); align-items: center; justify-content: space-between; margin: var(--space-3) var(--space-4) 0; padding: 9px var(--space-3); border: 1px solid var(--primary-700); border-radius: var(--radius-sm); background: var(--primary-100); color: var(--primary-700); font: var(--text-sm) var(--font-sans); }
 .pending-drop-cancel { border: 1px solid var(--primary-700); background: var(--surface); color: var(--primary-700); border-radius: 6px; padding: 3px 10px; font: var(--text-xs) var(--font-sans); }

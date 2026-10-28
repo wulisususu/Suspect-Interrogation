@@ -31,9 +31,9 @@ describe('visual defects found in the design review', () => {
 })
 
 describe('dictation step header', () => {
-  it('offers 定稿并校验 with the missing element count while dictating', () => {
-    expect(workspaceSource).toContain("missingElements ? `定稿并校验 · 缺 ${missingElements} 项` : '定稿并校验'")
-    expect(workspaceSource).toContain('@click="goStep(\'review\', true)"')
+  it('shows the selected template on the step bar while dictating (定稿 lives in the page header)', () => {
+    expect(workspaceSource).toContain('`已选模板：${templateTitle.value || caseTypeText.value}`')
+    expect(workspaceSource).not.toContain('step-finalize')
   })
 })
 

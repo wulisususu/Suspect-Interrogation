@@ -6,7 +6,9 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database.models import ASRCaptureSession, ASRFragment, QAUnit
+import json
+
+from app.database.models import ASRCaptureSession, ASRFragment, QAUnit, QuestionRound
 from app.database.session import begin_sqlite_immediate
 from app.domain.enums import WorkflowState
 from app.domain.errors import DomainError
@@ -127,13 +129,25 @@ class DocumentFinalizationService:
 
             capture_ids = [row.id for row in captures]
             if capture_ids:
-                unresolved_fragments = list(self.db.scalars(
-                    select(ASRFragment).where(
-                        ASRFragment.capture_session_id.in_(capture_ids),
-                        ASRFragment.state.not_in(("DISCARDED", "SUPERSEDED")),
-                        (ASRFragment.state != "CONFIRMED") | ASRFragment.confirmed_message_id.is_(None),
+                # 逐题录音挂到某道题回答上的片段已经有了去处，视为已处理。
+                attached_ids: set[str] = set()
+                for raw in self.db.scalars(
+                    select(QuestionRound.answer_fragment_ids_json).where(
+                        QuestionRound.case_id == case_id,
+                        QuestionRound.status != "DETACHED",
                     )
-                ))
+                ):
+                    attached_ids.update(str(value) for value in json.loads(raw or "[]"))
+                unresolved_fragments = [
+                    row for row in self.db.scalars(
+                        select(ASRFragment).where(
+                            ASRFragment.capture_session_id.in_(capture_ids),
+                            ASRFragment.state.not_in(("DISCARDED", "SUPERSEDED")),
+                            (ASRFragment.state != "CONFIRMED") | ASRFragment.confirmed_message_id.is_(None),
+                        )
+                    )
+                    if row.id not in attached_ids
+                ]
                 if unresolved_fragments:
                     raise DomainError(
                         "ASR_FRAGMENT_REVIEW_REQUIRED",

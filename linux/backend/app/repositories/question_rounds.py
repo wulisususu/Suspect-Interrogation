@@ -262,6 +262,13 @@ def append_round_answer(db: Session, row: QuestionRound, text: str, fragment_ids
     return row
 
 
+def reset_round_answer(db: Session, row: QuestionRound) -> QuestionRound:
+    row.answer_text = ""
+    row.answer_fragment_ids_json = json.dumps([], ensure_ascii=False)
+    db.flush()
+    return row
+
+
 def create_pending(
     db: Session,
     *,

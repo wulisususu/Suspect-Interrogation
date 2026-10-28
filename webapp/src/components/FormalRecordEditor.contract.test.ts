@@ -10,18 +10,22 @@ const templateStore = fs.readFileSync(path.join(root, '../stores/templateInterro
 const workspace = fs.readFileSync(path.join(root, '../views/InterrogationWorkspace.vue'), 'utf8')
 
 describe('formal record editor source contract', () => {
-  it('renders paper-style fixed/body/closing sections and top-right signing controls', () => {
+  it('renders paper-style fixed/body/closing sections without in-paper action buttons (design P07)', () => {
     expect(formal).toContain('正式询问笔录编辑器')
     expect(formal).toContain('openingQuestions')
     expect(formal).toContain('bodyQuestions')
     expect(formal).toContain('closingQuestions')
-    expect(formal).toContain('被询问人签名')
-    expect(formal).toContain('结束并冻结笔录')
+    // 签名、冻结、打印分别在 ④ 定稿校验与 ⑤ 签署归档完成，③ 的正本只做实时预览。
+    expect(formal).not.toContain('record-top-actions')
+    expect(formal).not.toContain('结束并冻结笔录')
   })
 
-  it('exposes printing from the formal record header and hides non-record content', () => {
-    expect(formal).toContain('打印预览')
-    expect(formal).toContain("emit('print')")
+  it('previews recorded-but-not-committed answers with a 摘入正本 action', () => {
+    expect(formal).toContain('record-draft-preview')
+    expect(formal).toContain("emit('updateAnswer', q.id, draftOf(q))")
+  })
+
+  it('keeps printing wired through the workspace', () => {
     expect(workspace).toContain('window.print()')
     expect(workspace).toContain('@print="printFormalRecord"')
   })

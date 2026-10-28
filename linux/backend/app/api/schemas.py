@@ -177,6 +177,9 @@ class RoundUpdateRequest(FormalRequest):
 
 class FragmentAnswerRequest(FormalRequest):
     fragment_ids: list[str] = Field(alias="fragmentIds", min_length=1)
+    # draft: 只挂成该题的待摘入草稿，不写入正本；replace: 重录时替换原草稿而不是追加。
+    draft: bool = False
+    replace: bool = False
 
 
 class LiveQuestionFragmentRequest(FormalRequest):

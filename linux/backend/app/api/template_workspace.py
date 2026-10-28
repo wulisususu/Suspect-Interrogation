@@ -113,9 +113,11 @@ def attach_case_question_answer_fragments(case_id: str, question_id: str, body: 
         case_id,
         question_id,
         fragment_ids=body.fragment_ids,
+        draft=body.draft,
+        replace=body.replace,
     )
     db.commit()
-    return envelope(result, "语音片段已录入正式回答")
+    return envelope(result, "语音片段已转为待摘入回答" if body.draft else "语音片段已录入正式回答")
 
 
 @router.post("/cases/{case_id}/questions/reorder")

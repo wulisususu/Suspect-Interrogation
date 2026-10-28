@@ -838,3 +838,20 @@ button:disabled {
 @media(max-width: 1350px) { .record-review-grid { grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.4fr); } }
 /* 要素列表限高，保证「定稿前检查」在首屏可见 */
 .review-checklist .review-fact-list { max-height: min(232px, 28vh); overflow: auto; }
+
+/* ③ 问答录入（样板 P07）：白底页头 + 左草稿 / 右正本两张等宽卡片 */
+.dictation-heading { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-4); padding: var(--space-5) var(--space-8); background: var(--surface); }
+.dictation-heading h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 650; }
+.dictation-heading p { margin: var(--space-2) 0 0; color: var(--ink-500); font-size: var(--text-sm); }
+.dictation-mode { margin-left: auto; padding: var(--space-2) var(--space-4); border-radius: var(--radius-pill); background: var(--primary-100); color: var(--primary-600); font-size: var(--text-sm); }
+.dictation-finalize { min-height: 52px; padding: 0 var(--space-8); border: 0; border-radius: var(--radius-sm); background: var(--primary-600); color: var(--surface); font-size: var(--text-lg); font-weight: 650; box-shadow: var(--shadow-card); }
+.dictation-finalize:disabled { opacity: .6; }
+.template-interrogation-grid.draft-first { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-6); padding: var(--space-5) var(--space-6); background: var(--surface-sunken); }
+.template-interrogation-grid.draft-first .dialogue-column { padding: 0; background: transparent; }
+.template-interrogation-grid.draft-first .dialogue-column > .draft-rail { flex: 1 1 auto; min-height: 0; }
+.formal-column.is-dictation { grid-template-rows: auto auto minmax(0, 1fr); border-radius: var(--radius-lg); background: var(--surface); }
+.formal-heading { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--line-200); }
+.formal-heading strong { color: var(--ink-900); font-size: var(--text-lg); font-weight: 650; }
+.formal-template-chip { padding: 2px var(--space-3); border-radius: var(--radius-pill); background: var(--primary-100); color: var(--primary-600); font-size: var(--text-xs); }
+.formal-heading small { margin-left: auto; color: var(--ink-400); font-size: var(--text-xs); }
+@media (max-width: 1280px) { .template-interrogation-grid.draft-first { grid-template-columns: 1fr; overflow: auto; } }

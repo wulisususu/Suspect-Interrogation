@@ -1,347 +1,292 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { ArrowRight, FileText, Mic, RotateCcw, Square } from '@lucide/vue'
-import type { FormalQAUnit, FormalQuestion, PendingFormalQuestion } from '../types/templateInterrogation'
+import { ArrowRight, ChevronRight, FileText, Mic, Pause, Play, Plus, RotateCcw, Square } from '@lucide/vue'
+import type { AudioLevelSample } from '../types/interrogation'
+import type { FormalQuestion } from '../types/templateInterrogation'
+import RecorderWaveformCanvas from './RecorderWaveformCanvas.vue'
 
 /**
- * 草稿 · 逐题卡片流
+ * 草稿 · 一问一答（样板 P07 左栏，交互状态 A / B）
  *
- * 样板里左栏的主体是「一道题一张卡」：问什么、答了什么、入没入正本一目了然，
- * 答文当场能改，改完即回写正本；录音入口收在卡片栏顶部，不再占一屏。
+ * 一道题一张卡，点卡即录、录完即转：
+ * 未开始 →（点击此处回答）→ 录音中 →（结束并转写）→ 待摘入 →（摘入正本）→ 已入正本。
+ * 录音按题归属，不依赖说话人识别；答区可直接改，待摘入改的是草稿，已入正本改的是正本。
  */
 const props = defineProps<{
   questions: FormalQuestion[]
-  qaUnits: FormalQAUnit[]
-  pendingQuestions: PendingFormalQuestion[]
-  captureRunning: boolean
+  sessionStatus: string
+  /** 正在为哪道题录音；null 表示没有逐题录音 */
+  recordingQuestionId: string | null
+  /** 正在按住说话追加一问 */
+  questionRecording?: boolean
   captureBusy?: boolean
   captureAvailable?: boolean
   captureElapsedMs?: number
+  audioLevels?: AudioLevelSample[]
+  liveText?: string
   locked?: boolean
 }>()
 
 const emit = defineEmits<{
   locate: [questionId: string]
+  record: [questionId: string, replace: boolean]
+  stop: []
+  commit: [questionId: string, answerText: string]
+  updateDraft: [roundId: string, answerText: string]
   updateAnswer: [questionId: string, answerText: string]
-  captureToggle: []
+  addQuestion: [text: string, afterQuestionId: string | null]
+  questionHoldStart: [afterQuestionId: string | null]
+  questionHoldEnd: []
+  togglePause: []
 }>()
 
-type DraftState = 'recorded' | 'buffered' | 'review' | 'empty'
+type CardState = 'recorded' | 'draft' | 'recording' | 'empty'
 
-const STATE_LABEL: Record<DraftState, string> = {
+const STATE_LABEL: Record<CardState, string> = {
   recorded: '已入正本',
-  buffered: '待入正本',
-  review: '待处理',
-  empty: '待补充',
+  draft: '待摘入',
+  recording: '● 录音中',
+  empty: '未开始',
 }
 
-const cards = computed(() => {
-  const reviewQuestionIds = new Set(
-    props.qaUnits
-      .filter((unit) => ['OPEN', 'CLOSED', 'ROUTING', 'NEEDS_REVIEW'].includes(unit.status))
-      .map((unit) => unit.targetQuestionId)
-      .filter((id): id is string => Boolean(id)),
-  )
-  const pendingQuestionIds = new Set(
-    props.pendingQuestions
-      .filter((item) => item.status === 'PENDING' || item.status === 'DEFERRED')
-      .map((item) => item.id),
-  )
+const selectedId = ref<string | null>(null)
 
-  return [...props.questions]
-    .filter((question) => question.active !== false)
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((question, index) => {
-      const canonical = question.formalAnswerText?.trim() || ''
-      const bufferedText = question.rounds?.find((round) => round.answerText?.trim())?.answerText?.trim() || ''
-      let state: DraftState = 'empty'
-      if (canonical) state = 'recorded'
-      else if (reviewQuestionIds.has(question.id) || pendingQuestionIds.has(question.id)) state = 'review'
-      else if (bufferedText) state = 'buffered'
+const cards = computed(() => [...props.questions]
+  .filter((question) => question.active !== false)
+  .sort((a, b) => a.sortOrder - b.sortOrder)
+  .map((question, index) => {
+    const answer = question.formalAnswerText?.trim() || ''
+    const round = [...(question.rounds ?? [])].reverse().find((item) => item.status !== 'DETACHED') ?? null
+    const draft = round?.answerText?.trim() || ''
+    let state: CardState = 'empty'
+    if (props.recordingQuestionId === question.id) state = 'recording'
+    else if (answer) state = 'recorded'
+    else if (draft) state = 'draft'
+    return { id: question.id, ordinal: index + 1, text: question.text, answer, draft, roundId: round?.id ?? null, state }
+  }))
 
-      return {
-        id: question.id,
-        ordinal: index + 1,
-        text: question.text,
-        answer: canonical,
-        bufferedText,
-        state,
-        stateLabel: STATE_LABEL[state],
-      }
-    })
+/** 本地编辑：只保存真正改过的内容，避免服务端刷新冲掉正在输入的文字。 */
+const edits = reactive<Record<string, string>>({})
+watch(
+  () => cards.value.map((card) => `${card.id}\u0000${card.state}\u0000${card.answer}\u0000${card.draft}`).join('\u0001'),
+  () => {
+    for (const card of cards.value) edits[card.id] = card.state === 'recorded' ? card.answer : card.draft
+  },
+  { immediate: true },
+)
+
+const recording = computed(() => Boolean(props.recordingQuestionId) || Boolean(props.questionRecording))
+const sessionClosed = computed(() => ['COMPLETED', 'CANCELLED'].includes(props.sessionStatus))
+const answerBlockedReason = computed(() => {
+  if (props.locked) return '笔录已冻结'
+  if (sessionClosed.value) return '本次询问已结束'
+  if (props.sessionStatus === 'PAUSED') return '询问已暂停，继续询问后可录音'
+  if (!props.captureAvailable) return '录音设备未就绪'
+  return ''
 })
-
-/**
- * 逐题录音：录音通道是全局的，这里只记住是从哪张卡发起的，用于高亮「录音中」卡片。
- * 录音停止后清除。
- */
-const recordingCardId = ref<string | null>(null)
-const RECORD_HINT = '录音通道为全局一路，回答由系统按问题自动归属；新录音不会覆盖已写入正本的回答'
-watch(() => props.captureRunning, (running) => { if (!running) recordingCardId.value = null })
-
-function recordCard(cardId: string) {
-  if (props.locked) return
-  recordingCardId.value = props.captureRunning ? null : cardId
-  emit('captureToggle')
-}
-
-function insertBuffered(cardId: string) {
-  const card = cards.value.find((item) => item.id === cardId)
-  if (props.locked || !card?.bufferedText) return
-  drafts[cardId] = card.bufferedText
-  emit('updateAnswer', cardId, card.bufferedText)
-}
+const canStartAnswer = computed(() => !answerBlockedReason.value && !recording.value && !props.captureBusy)
 
 const elapsedText = computed(() => {
   const total = Math.floor((props.captureElapsedMs ?? 0) / 1000)
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 })
 
-/** 本地编辑草稿：只保存用户真正改过的题，避免服务端刷新把正在输入的内容冲掉 */
-const drafts = reactive<Record<string, string>>({})
+const counts = computed(() => ({
+  total: cards.value.length,
+  recorded: cards.value.filter((card) => card.state === 'recorded').length,
+}))
 
-watch(
-  () => cards.value.map((card) => `${card.id}\u0000${card.answer}`).join('\u0001'),
-  () => {
-    for (const card of cards.value) {
-      if (drafts[card.id] === undefined) drafts[card.id] = card.answer
-    }
-    for (const id of Object.keys(drafts)) {
-      if (!cards.value.some((card) => card.id === id)) delete drafts[id]
-    }
-  },
-  { immediate: true },
-)
-
-function saveAnswer(cardId: string) {
-  if (props.locked) return
-  const next = (drafts[cardId] ?? '').trim()
-  const current = (cards.value.find((card) => card.id === cardId)?.answer ?? '').trim()
-  if (next === current) return
-  emit('updateAnswer', cardId, next)
+function select(cardId: string) {
+  selectedId.value = cardId
 }
 
-const counts = computed(() => {
-  const total = cards.value.length
-  const recorded = cards.value.filter((card) => card.state === 'recorded').length
-  return { total, recorded, remaining: total - recorded }
-})
+function record(cardId: string, replace = false) {
+  if (!canStartAnswer.value) return
+  selectedId.value = cardId
+  emit('record', cardId, replace)
+}
+
+function saveEdit(cardId: string) {
+  if (props.locked) return
+  const card = cards.value.find((item) => item.id === cardId)
+  if (!card) return
+  const next = (edits[cardId] ?? '').trim()
+  if (card.state === 'recorded' && next !== card.answer) emit('updateAnswer', cardId, next)
+  else if (card.state === 'draft' && card.roundId && next && next !== card.draft) emit('updateDraft', card.roundId, next)
+}
+
+function commit(cardId: string) {
+  const text = (edits[cardId] ?? '').trim()
+  if (props.locked || !text) return
+  emit('commit', cardId, text)
+}
+
+/** 追加一问：按住说话、松开成卡；录音不可用或想打字时改为手动输入。 */
+const typing = ref(false)
+const newQuestion = ref('')
+const lastCardId = computed(() => cards.value.at(-1)?.id ?? null)
+let holding = false
+
+function holdStart(event: PointerEvent) {
+  if (!canStartAnswer.value) { typing.value = true; return }
+  holding = true
+  ;(event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId)
+  emit('questionHoldStart', lastCardId.value)
+}
+function holdEnd() {
+  if (!holding) return
+  holding = false
+  emit('questionHoldEnd')
+}
+function submitQuestion() {
+  const text = newQuestion.value.trim()
+  if (!text || props.locked) return
+  emit('addQuestion', text, lastCardId.value)
+  newQuestion.value = ''
+  typing.value = false
+}
 </script>
 
 <template>
   <section class="draft-rail" aria-label="逐题草稿">
     <header class="draft-rail-head">
-      <div class="draft-rail-title">
-        <strong>草稿 · 一问一答</strong>
-        <small>{{ counts.recorded }} / {{ counts.total }} 题已入正本</small>
-      </div>
+      <strong>草稿 · 一问一答</strong>
+      <span class="draft-count">{{ counts.total }} 卡 · {{ counts.recorded }} 已入正本<template v-if="recordingQuestionId"> · 1 卡录制中</template></span>
+      <span v-if="recording" class="draft-live"><i aria-hidden="true"></i>录音中 {{ elapsedText }} · 边录边转</span>
+      <span v-else-if="sessionStatus === 'READY' && !locked" class="draft-hint">点任一题卡的「点击此处回答」即开始询问</span>
       <button
+        v-if="sessionStatus === 'RUNNING' || sessionStatus === 'PAUSED'"
         type="button"
-        class="draft-record"
-        :class="{ running: captureRunning }"
-        :disabled="captureBusy || captureAvailable === false"
-        :title="captureAvailable === false ? '麦克风或识别服务未就绪' : captureRunning ? '结束这一段并转写' : '开始录音，边说边出字'"
-        @click="emit('captureToggle')"
+        class="draft-pause"
+        :disabled="locked || recording || captureBusy"
+        @click="emit('togglePause')"
       >
-        <Square v-if="captureRunning" :size="14" :stroke-width="2.5" />
-        <Mic v-else :size="15" />
-        {{ captureRunning ? '结束并转写' : '开始录音' }}
+        <Play v-if="sessionStatus === 'PAUSED'" :size="15" aria-hidden="true" /><Pause v-else :size="15" aria-hidden="true" />
+        {{ sessionStatus === 'PAUSED' ? '继续询问' : '暂停询问' }}
       </button>
     </header>
 
     <ol v-if="cards.length" class="draft-list">
       <li v-for="card in cards" :key="card.id">
-        <article class="draft-card" :class="[`is-${card.state}`, { 'is-recording': captureRunning && recordingCardId === card.id }]">
+        <article
+          class="draft-card"
+          :class="[`is-${card.state}`, { 'is-selected': selectedId === card.id && card.state !== 'recording' }]"
+          :data-question-id="card.id"
+          @click="select(card.id)"
+        >
           <header class="draft-card-head">
-            <span class="draft-ordinal">{{ card.ordinal }}</span>
-            <button type="button" class="draft-question" :title="`在正本中定位第 ${card.ordinal} 题`" @click="emit('locate', card.id)">
-              {{ card.text }}
-            </button>
-            <span class="draft-state">{{ card.stateLabel }}</span>
+            <span class="draft-ordinal">Q{{ card.ordinal }}</span>
+            <p class="draft-question">{{ card.text }}</p>
+            <span class="draft-state">{{ STATE_LABEL[card.state] }}<template v-if="card.state === 'draft' && selectedId === card.id"> · 已选中</template></span>
           </header>
 
-          <label class="draft-answer-field">
-            <span class="draft-answer-label">答</span>
-            <textarea
-              v-model="drafts[card.id]"
-              rows="2"
-              :readonly="locked"
-              :placeholder="card.bufferedText ? `已录到：${card.bufferedText}` : '对着话筒说话，或在这里直接录入'"
-              @blur="saveAnswer(card.id)"
-            ></textarea>
-          </label>
-
-          <div v-if="captureRunning && recordingCardId === card.id" class="draft-recording" role="status">
-            <span>录音中 {{ elapsedText }}</span>
-            <button type="button" class="draft-action is-stop" :disabled="locked || captureBusy" @click="recordCard(card.id)"><Square :size="13" aria-hidden="true" />结束并转写</button>
+          <div v-if="card.state === 'recording'" class="draft-recording">
+            <div class="draft-recording-meter">
+              <span class="draft-timer">录音中 {{ elapsedText }}</span>
+              <RecorderWaveformCanvas v-if="audioLevels?.length" class="draft-wave" :samples="audioLevels" :max-height="22" :bar-width="3" :bar-gap="3" :sample-limit="24" />
+              <button type="button" class="draft-stop" :disabled="captureBusy" @click.stop="emit('stop')"><Square :size="14" aria-hidden="true" />结束并转写</button>
+            </div>
+            <p class="draft-live-text">{{ liveText || '请对着话筒回答，转写文字会实时出现在这里……' }}</p>
           </div>
-          <footer v-else-if="card.state === 'empty'" class="draft-card-actions is-empty">
-            <button type="button" class="draft-action is-answer" :disabled="locked || captureBusy || captureRunning || captureAvailable === false" :title="RECORD_HINT" @click="recordCard(card.id)"><Mic :size="15" aria-hidden="true" />点击此处回答</button>
-            <small>对着话筒说话 · 说完再点一下结束 · 回答由系统按问题自动归属，可再修改</small>
-          </footer>
-          <footer v-else class="draft-card-actions">
-            <button type="button" class="draft-action" :disabled="locked || captureBusy || captureRunning || captureAvailable === false" :title="RECORD_HINT" @click="recordCard(card.id)"><RotateCcw :size="14" aria-hidden="true" />重录这题</button>
-            <button v-if="card.state === 'recorded'" type="button" class="draft-action is-link" :disabled="locked" @click="emit('locate', card.id)"><FileText :size="14" aria-hidden="true" />在正本中查看 ›</button>
-            <button v-else type="button" class="draft-action is-primary" :disabled="locked || !card.bufferedText" @click="insertBuffered(card.id)">插入正本<ArrowRight :size="14" aria-hidden="true" /></button>
-          </footer>
+
+          <template v-else-if="card.state === 'recorded' || card.state === 'draft'">
+            <textarea
+              v-model="edits[card.id]"
+              class="draft-answer"
+              rows="2"
+              :aria-label="`第 ${card.ordinal} 题回答`"
+              :disabled="locked"
+              @blur="saveEdit(card.id)"
+            ></textarea>
+            <footer class="draft-actions">
+              <button type="button" class="draft-action is-secondary" :disabled="!canStartAnswer" @click.stop="record(card.id, true)"><RotateCcw :size="15" aria-hidden="true" />重录这题</button>
+              <button v-if="card.state === 'recorded'" type="button" class="draft-action is-link" @click.stop="emit('locate', card.id)"><FileText :size="15" aria-hidden="true" />在正本中查看<ChevronRight :size="15" aria-hidden="true" /></button>
+              <button v-else type="button" class="draft-action is-commit" :disabled="locked" @click.stop="commit(card.id)">摘入正本<ArrowRight :size="16" aria-hidden="true" /></button>
+            </footer>
+          </template>
+
+          <div v-else class="draft-empty">
+            <button type="button" class="draft-action is-answer" :disabled="!canStartAnswer" @click.stop="record(card.id)"><Mic :size="16" aria-hidden="true" />点击此处回答</button>
+            <small>{{ answerBlockedReason || '对着话筒说话 · 说完再点一下结束 · 自动转成文字，可再修改' }}</small>
+          </div>
         </article>
       </li>
     </ol>
+    <p v-else class="draft-none">本案暂无问题，可在下方追加一问。</p>
 
-    <p v-else class="draft-empty">选定模板后，题目会逐条出现在这里。</p>
+    <form v-if="typing" class="draft-add-form" @submit.prevent="submitQuestion">
+      <input v-model="newQuestion" type="text" placeholder="输入要追加的问题" aria-label="追加问题" :disabled="locked" />
+      <button type="submit" class="draft-action is-commit" :disabled="locked || !newQuestion.trim()">成卡</button>
+      <button type="button" class="draft-action is-secondary" @click="typing = false">取消</button>
+    </form>
+    <div v-else class="draft-add">
+      <button
+        type="button"
+        class="draft-add-hold"
+        :class="{ 'is-holding': questionRecording }"
+        :disabled="locked"
+        @pointerdown="holdStart"
+        @pointerup="holdEnd"
+        @pointercancel="holdEnd"
+      ><Plus :size="15" aria-hidden="true" />{{ questionRecording ? `正在听问题 ${elapsedText} · 松开即成卡` : '追加一问 · 按住说话，说完自动成卡' }}</button>
+      <button type="button" class="draft-add-type" :disabled="locked" @click="typing = true">手动输入</button>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.draft-card.is-recording { border-color: var(--danger-600); box-shadow: 0 0 0 1px var(--danger-600); }
-.draft-card-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
-.draft-card-actions.is-empty { justify-content: flex-start; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px dashed var(--primary-500); border-radius: var(--radius-md); }
-.draft-card-actions small { color: var(--ink-400); font-size: var(--text-xs); }
-.draft-action { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 36px; padding: 0 var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-sm); background: var(--surface-sunken); color: var(--primary-600); font-size: var(--text-xs); font-weight: 600; }
-.draft-action.is-primary { border-color: var(--primary-500); background: var(--surface); }
-.draft-action.is-link { border-color: transparent; background: transparent; }
-.draft-action.is-answer { min-height: 40px; padding: 0 var(--space-5); border: 0; border-radius: var(--radius-pill); background: var(--primary-600); color: var(--surface); font-size: var(--text-sm); }
-.draft-action.is-stop { border: 0; background: var(--danger-600); color: var(--surface); }
-.draft-recording { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--danger-100); color: var(--danger-700); font-size: var(--text-sm); font-weight: 600; }
+.draft-rail { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); background: var(--surface); }
+.draft-rail-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.draft-rail-head strong { color: var(--ink-900); font-size: var(--text-lg); font-weight: 650; }
+.draft-count { padding: 2px var(--space-3); border-radius: var(--radius-pill); background: var(--primary-100); color: var(--primary-600); font-size: var(--text-xs); }
+.draft-live { display: inline-flex; align-items: center; gap: var(--space-2); margin-left: auto; color: var(--danger-600); font-size: var(--text-sm); }
+.draft-live i { width: 10px; height: 10px; border-radius: 50%; background: var(--danger-600); }
+.draft-hint { margin-left: auto; color: var(--ink-400); font-size: var(--text-xs); }
+.draft-pause { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 40px; padding: 0 var(--space-4); border: 1px solid var(--danger-600); border-radius: var(--radius-sm); background: var(--danger-100); color: var(--danger-600); font-size: var(--text-sm); font-weight: 600; }
+.draft-live + .draft-pause, .draft-hint + .draft-pause { margin-left: 0; }
+.draft-count + .draft-pause { margin-left: auto; }
 
-.draft-rail {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  flex: 1 1 auto;
-  background: var(--surface);
-}
+.draft-list { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.draft-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--line-200); border-radius: var(--radius-md); background: var(--surface); }
+.draft-card.is-selected { border: 2px solid var(--primary-600); }
+.draft-card.is-recording { border: 2px solid var(--danger-600); background: var(--danger-100); }
+.draft-card.is-empty { background: var(--surface-sunken); }
+.draft-card-head { display: flex; align-items: flex-start; gap: var(--space-3); }
+.draft-ordinal { flex: none; padding: 1px var(--space-2); border-radius: var(--radius-sm); background: var(--primary-100); color: var(--primary-600); font-size: var(--text-xs); font-weight: 650; }
+.draft-card.is-selected .draft-ordinal { background: var(--primary-600); color: var(--surface); }
+.draft-card.is-recording .draft-ordinal { background: var(--danger-600); color: var(--surface); }
+.draft-card.is-empty .draft-ordinal { background: var(--surface-muted); color: var(--ink-400); }
+.draft-question { flex: 1; margin: 0; color: var(--ink-900); font-size: var(--text-md); line-height: 1.5; }
+.draft-card.is-empty .draft-question { color: var(--ink-500); }
+.draft-state { flex: none; color: var(--ink-400); font-size: var(--text-xs); }
+.draft-card.is-recorded .draft-state { color: var(--success-700); }
+.draft-card.is-draft .draft-state { color: var(--warning-700); }
+.draft-card.is-recording .draft-state { color: var(--danger-600); }
 
-.draft-rail-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--line-100);
-}
-.draft-rail-title { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
-.draft-rail-title strong { font-size: var(--text-base); color: var(--ink-900); }
-.draft-rail-title small { color: var(--ink-400); font-size: var(--text-xs); white-space: nowrap; }
+.draft-answer { width: 100%; min-height: 64px; padding: var(--space-3) var(--space-4); border: 1px solid var(--line-300); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink-900); font: inherit; font-size: var(--text-md); line-height: 1.7; resize: vertical; }
+.draft-card.is-selected .draft-answer { border-color: var(--primary-500); }
+.draft-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.draft-action { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 44px; padding: 0 var(--space-4); border: 0; border-radius: var(--radius-sm); font-size: var(--text-sm); font-weight: 600; }
+.draft-action.is-secondary { background: var(--primary-50); color: var(--primary-600); }
+.draft-action.is-link { background: transparent; color: var(--primary-600); }
+.draft-action.is-commit { border: 1px solid var(--primary-600); background: var(--surface); color: var(--primary-600); }
+.draft-action.is-answer { padding: 0 var(--space-6); border-radius: var(--radius-pill); background: var(--primary-600); color: var(--surface); }
 
-.draft-record {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--primary-200);
-  border-radius: var(--radius-pill);
-  background: var(--primary-50);
-  color: var(--primary-700);
-  font-size: var(--text-sm);
-  white-space: nowrap;
-}
-.draft-record:hover:not(:disabled) { background: var(--primary-100); }
-.draft-record.running {
-  border-color: var(--danger-100);
-  background: var(--danger-100);
-  color: var(--danger-700);
-}
-.draft-record:disabled { opacity: 0.5; cursor: not-allowed; }
+.draft-recording { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: 1px solid var(--danger-600); border-radius: var(--radius-sm); background: var(--surface); }
+.draft-recording-meter { display: flex; align-items: center; gap: var(--space-3); }
+.draft-timer { color: var(--danger-600); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.draft-wave { width: 72px; height: 24px; color: var(--danger-600); }
+.draft-stop { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; margin-left: auto; padding: 0 var(--space-5); border: 0; border-radius: var(--radius-sm); background: var(--danger-600); color: var(--surface); font-size: var(--text-md); font-weight: 600; }
+.draft-live-text { margin: 0; color: var(--ink-700); font-size: var(--text-md); line-height: 1.7; }
 
-.draft-list {
-  margin: 0;
-  padding: var(--space-2);
-  list-style: none;
-  overflow: auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
+.draft-empty { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-4); border: 1px dashed var(--primary-500); border-radius: var(--radius-sm); }
+.draft-empty small { color: var(--ink-400); font-size: var(--text-xs); text-align: center; }
+.draft-none { margin: 0; color: var(--ink-400); font-size: var(--text-sm); }
 
-.draft-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--line-200);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  transition: border-color 0.16s ease;
-}
-.draft-card:hover { border-color: var(--primary-200); }
-.draft-card.is-review { border-color: var(--warning-100); background: var(--warning-100); }
-.draft-card.is-buffered { border-color: var(--primary-200); background: var(--primary-50); }
-
-.draft-card-head { display: flex; align-items: flex-start; gap: var(--space-2); }
-
-.draft-ordinal {
-  flex: 0 0 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--surface-muted);
-  color: var(--ink-500);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.draft-card.is-recorded .draft-ordinal { background: var(--success-100); color: var(--success-700); }
-.draft-card.is-review .draft-ordinal { background: var(--warning-100); color: var(--warning-700); }
-
-.draft-question {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink-900);
-  font-size: var(--text-base);
-  line-height: 1.5;
-  text-align: left;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.draft-question:hover { color: var(--primary-600); }
-
-.draft-state {
-  flex: 0 0 auto;
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-muted);
-  color: var(--ink-400);
-  font-size: var(--text-xs);
-  white-space: nowrap;
-}
-.draft-card.is-recorded .draft-state { background: var(--success-100); color: var(--success-700); }
-.draft-card.is-buffered .draft-state { background: var(--primary-100); color: var(--primary-700); }
-.draft-card.is-review .draft-state { background: var(--warning-100); color: var(--warning-700); }
-
-.draft-answer-field { display: flex; align-items: flex-start; gap: var(--space-2); }
-.draft-answer-label { flex: 0 0 auto; padding-top: 6px; color: var(--ink-400); font-size: var(--text-sm); }
-.draft-answer-field textarea {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: var(--surface-sunken);
-  color: var(--ink-700);
-  font-size: var(--text-base);
-  line-height: 1.6;
-  resize: vertical;
-}
-.draft-answer-field textarea:hover:not([readonly]) { border-color: var(--line-300); }
-.draft-answer-field textarea:focus { border-color: var(--primary-200); background: var(--surface); }
-.draft-answer-field textarea[readonly] { color: var(--ink-500); }
-
-.draft-empty {
-  margin: 0;
-  padding: var(--space-6) var(--space-4);
-  color: var(--ink-300);
-  font-size: var(--text-sm);
-  text-align: center;
-}
+.draft-add { display: flex; gap: var(--space-2); }
+.draft-add-hold { display: inline-flex; flex: 1; align-items: center; justify-content: center; gap: var(--space-1); min-height: 44px; border: 1px dashed var(--primary-500); border-radius: var(--radius-sm); background: var(--surface); color: var(--primary-600); font-size: var(--text-sm); font-weight: 600; touch-action: none; user-select: none; }
+.draft-add-hold.is-holding { border-style: solid; background: var(--danger-100); color: var(--danger-600); }
+.draft-add-type { min-height: 44px; padding: 0 var(--space-3); border: 0; background: transparent; color: var(--ink-500); font-size: var(--text-xs); }
+.draft-add-form { display: flex; gap: var(--space-2); }
+.draft-add-form input { flex: 1; min-height: 44px; padding: 0 var(--space-3); border: 1px solid var(--primary-500); border-radius: var(--radius-sm); font: inherit; font-size: var(--text-md); }
 </style>

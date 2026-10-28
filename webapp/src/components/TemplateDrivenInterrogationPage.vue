@@ -25,8 +25,6 @@ import type {
   TemplateWorkspace,
 } from '../types/templateInterrogation'
 import FormalTemplatePanel from './FormalTemplatePanel.vue'
-import LiveDialoguePanel from './LiveDialoguePanel.vue'
-import QuestionPreparationPanel from './QuestionPreparationPanel.vue'
 import DraftQuestionRail from './DraftQuestionRail.vue'
 import FactCoverageBar from './FactCoverageBar.vue'
 import RecordArchivePage from './RecordArchivePage.vue'
@@ -36,6 +34,8 @@ import RecordSigningPage from './RecordSigningPage.vue'
 import type { RecordMode } from '../flow/steps'
 import { cssToken } from '../utils/cssToken'
 import { reviewAutoChecks } from '../utils/reviewChecks'
+import { factCoverage } from '../utils/factCoverage'
+import { TEMPLATE_CATALOG } from '../config/templateCatalog'
 import { freezeBlockReason, orderedReviewFragments } from '../utils/recordCompletion'
 import './templateInterrogation.css'
 
@@ -61,6 +61,10 @@ const props = defineProps<{
   questionDictationDraft: string
   questionDictationError: string
   recorderName?: string
+  /** 逐题录音：正在为哪道题录音、是否在按住说话追加一问、本次录音的实时文字 */
+  recordingQuestionId?: string | null
+  questionRecording?: boolean
+  liveText?: string
   completionMode: RecordMode
   officers?: Array<{ officerId: string; officerName: string }>
 }>()
@@ -89,7 +93,24 @@ const emit = defineEmits<{
   updateHeader: [target: 'case' | 'fact', key: string, value: string]
   'update:completionMode': [mode: RecordMode]
   back: []
+  answerStart: [questionId: string, replace: boolean]
+  answerStop: []
+  questionHoldStart: [afterQuestionId: string | null]
+  questionHoldEnd: []
+  togglePause: []
 }>()
+
+const missingElements = computed(() => factCoverage(props.facts).missing.length)
+const templateTitle = computed(() => TEMPLATE_CATALOG.find((item) => item.backendKey === props.workspace.templateKey)?.title || '嫌疑人询问')
+/** 正本的最近保存时间：取问题与问答轮次的最新更新时间。 */
+const savedAtText = computed(() => {
+  const stamps = [...props.workspace.questions.map((item) => item.updatedAt), ...props.workspace.rounds.map((item) => item.updatedAt)]
+    .map((value) => (value ? Date.parse(value) : NaN))
+    .filter((value) => Number.isFinite(value))
+  if (!stamps.length) return ''
+  const date = new Date(Math.max(...stamps))
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+})
 
 type SignaturePoint = { x: number; y: number; t: number; p: number }
 
@@ -105,7 +126,12 @@ const mode = computed<RecordMode>({
 })
 const freezeChecks = ref([false, false, false, false, false])
 let signingRequest = 0
-const reviewFragments = computed(() => orderedReviewFragments(props.dialogueHistory, false))
+/** 逐题录音已挂到题目回答上的片段视为已处理（与后端冻结校验一致），不再列入待确认转写。 */
+const attachedFragmentIds = computed(() => new Set(props.workspace.rounds
+  .filter((round) => round.status !== 'DETACHED')
+  .flatMap((round) => round.answerFragmentIds)))
+const reviewFragments = computed(() => orderedReviewFragments(props.dialogueHistory, false)
+  .filter((item) => !attachedFragmentIds.value.has(item.id)))
 const unresolvedFragments = computed(() => reviewFragments.value.filter(item => item.state !== 'CONFIRMED' || !item.confirmedMessageId).length)
 const unresolvedQa = computed(() => props.workspace.qaUnits.filter(item => ['OPEN', 'CLOSED', 'ROUTING', 'NEEDS_REVIEW'].includes(item.status)).length)
 const completionBusy = computed(() => props.templateBusy || props.captureBusy || reviewBusy.value || !!signingBusy.value)
@@ -200,15 +226,6 @@ function locateQuestion(questionId: string) {
 function updateFreezeCheck(index: number, checked: boolean) {
   if (index < 0 || index >= 5 || documentFrozen.value || completionBusy.value) return
   freezeChecks.value[index] = checked
-}
-
-function toggleCapture() {
-  if (documentFrozen.value) {
-    signingError.value = '笔录已经冻结，不能继续录音。'
-    return
-  }
-  if (props.capture.running) emit('captureStop', undefined)
-  else emit('captureStart')
 }
 
 async function finishAndFreeze() {
@@ -416,8 +433,22 @@ async function confirmSignature() {
       @sign="mode = 'sign'"
     />
 
-    <div v-else class="template-interrogation-grid" :class="{ 'record-review-grid': mode === 'review', 'draft-first': mode === 'interrogation' }">
-      <div class="formal-column">
+    <header v-if="mode === 'interrogation'" class="dictation-heading record-no-print">
+      <div>
+        <h1>③ 智能工作台 · 问答录入</h1>
+        <p>左栏操作作答与归纳 · 右栏实时预览正本 · 整理定稿由民警完成</p>
+      </div>
+      <span class="dictation-mode">人工操作模式 · 正式询问</span>
+      <button type="button" class="dictation-finalize" :disabled="!!recordingQuestionId || questionRecording" @click="mode = 'review'">{{ missingElements ? `定稿并校验 · 缺 ${missingElements} 项` : '定稿并校验' }}</button>
+    </header>
+
+    <div v-if="mode === 'review' || mode === 'interrogation'" class="template-interrogation-grid" :class="{ 'record-review-grid': mode === 'review', 'draft-first': mode === 'interrogation' }">
+      <div class="formal-column" :class="{ 'is-dictation': mode === 'interrogation' }">
+        <header v-if="mode === 'interrogation'" class="formal-heading record-no-print">
+          <strong>正本 · 询问笔录</strong>
+          <span class="formal-template-chip">模板 · {{ templateTitle }}</span>
+          <small v-if="savedAtText">已自动保存 · {{ savedAtText }}</small>
+        </header>
         <header v-if="mode === 'review'" class="review-formal-heading record-no-print"><strong>询问笔录 · 复核中</strong><span>修改内容离开输入框后保存</span></header>
         <FactCoverageBar v-if="mode === 'interrogation'" :facts="facts" @fill="mode = 'review'" />
 
@@ -470,60 +501,28 @@ async function confirmSignature() {
         </details>
       </div>
       <div v-else class="dialogue-column draft-column">
-        <details v-if="session.status === 'READY'" class="record-preparation-drawer draft-preparation record-no-print">
-          <summary>问题准备 / 常用问题库</summary>
-        <QuestionPreparationPanel
-          :library="questionLibrary"
-          :busy="templateBusy || reviewBusy || signingLoading || !!signingLoadError"
-          :voice-available="questionDictationAvailable"
-          :voice-busy="questionDictationActive || questionDictationBusy"
-          :voice-draft="questionDictationDraft"
-          :voice-error="questionDictationError"
-          @load-library="emit('loadLibrary', $event)"
-          @add-question="emit('createQuestion', $event)"
-          @voice-start="emit('questionDictationStart')"
-          @voice-stop="emit('questionDictationStop')"
-        />
-        </details>
-
         <DraftQuestionRail
           :questions="workspace.questions"
-          :qa-units="workspace.qaUnits"
-          :pending-questions="workspace.pendingQuestions"
-          :capture-running="capture.running"
+          :session-status="session.status"
+          :recording-question-id="recordingQuestionId ?? null"
+          :question-recording="questionRecording"
           :capture-busy="captureBusy"
-          :capture-available="nativeCaptureAvailable && canRecord"
+          :capture-available="nativeCaptureAvailable"
           :capture-elapsed-ms="captureElapsedMs"
-          :locked="documentFrozen || completionBusy"
+          :audio-levels="capture.audioLevels"
+          :live-text="liveText"
+          :locked="documentFrozen || templateBusy"
           @locate="locateQuestion"
+          @record="(questionId, replace) => emit('answerStart', questionId, replace)"
+          @stop="emit('answerStop')"
+          @commit="(questionId, text) => emit('updateAnswer', questionId, text)"
+          @update-draft="(roundId, text) => emit('updateAnswer', roundId, text)"
           @update-answer="(questionId, text) => emit('updateAnswer', questionId, text)"
-          @capture-toggle="toggleCapture"
+          @add-question="(text, afterQuestionId) => emit('createQuestion', { text, source: 'LIVE', afterQuestionId })"
+          @question-hold-start="emit('questionHoldStart', $event)"
+          @question-hold-end="emit('questionHoldEnd')"
+          @toggle-pause="emit('togglePause')"
         />
-
-        <details class="raw-transcript" :open="capture.running">
-          <summary>原始转写与说话人识别<small>波形 · 转写 · 说话人 · QA 归档</small></summary>
-
-        <LiveDialoguePanel
-          :case-id="caseId"
-          :dialogue="dialogueHistory"
-          :fragment-history="fragmentHistory"
-          :partial-text="capture.partialText"
-          :pending-questions="workspace.pendingQuestions"
-          :qa-units="workspace.qaUnits"
-          :questions="workspace.questions"
-          :suspect-name="summary.suspectName"
-          :capture-running="capture.running"
-          :capture-status="capture"
-          :capture-busy="captureBusy"
-          :capture-available="nativeCaptureAvailable && canRecord && !documentFrozen"
-          :capture-elapsed-ms="captureElapsedMs"
-          @capture-toggle="toggleCapture"
-          @resolve-pending="(id, resolution) => emit('resolvePending', id, resolution)"
-          @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)"
-          @rollback-qa-unit="(id) => emit('rollbackQaUnit', id)"
-          @correct-fragment="(id, speaker, reason) => emit('correctFragment', id, speaker, reason)"
-        />
-        </details>
       </div>
     </div>
 

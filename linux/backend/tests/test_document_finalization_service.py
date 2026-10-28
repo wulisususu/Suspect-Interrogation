@@ -6,10 +6,12 @@ from app.database.models import (
     ASRCaptureSession,
     ASRFragment,
     Case,
+    CaseQuestion,
     DocumentSnapshot,
     InterrogationSession,
     Message,
     QAUnit,
+    QuestionRound,
 )
 from app.database.session import init_database, make_engine, make_session_factory
 from app.domain.enums import SessionStatus, WorkflowState
@@ -243,4 +245,72 @@ def test_finalize_accepts_explicitly_resolved_transcript_fragments(tmp_path: Pat
 
         assert result["status"] == "FROZEN"
         assert db.query(DocumentSnapshot).filter_by(case_id=case_id).count() == 1
+    engine.dispose()
+
+
+def test_finalize_accepts_unknown_speaker_fragment_attached_to_a_question(tmp_path: Path):
+    """逐题录音：没有声纹的片段说话人为 UNKNOWN，挂到题目回答后即视为已处理。"""
+    engine, factory, case_id, session_id = seed(tmp_path)
+    events: list[str] = []
+    with factory() as db:
+        db.add(ASRCaptureSession(
+            id="CAPTURE-CARD",
+            case_id=case_id,
+            interrogation_session_id=session_id,
+            status="COMPLETE",
+            sample_rate=16000,
+            recording_status="COMPLETE",
+            asr_status="COMPLETE",
+            speaker_status="COMPLETE",
+        ))
+        for ordinal, fragment_id in enumerate(("FRAGMENT-CARD", "FRAGMENT-LOOSE")):
+            db.add(ASRFragment(
+                id=fragment_id,
+                capture_session_id="CAPTURE-CARD",
+                case_id=case_id,
+                ordinal=ordinal,
+                started_at_ms=ordinal * 1000,
+                ended_at_ms=ordinal * 1000 + 800,
+                raw_text="锁了，锁在柱子上。",
+                edited_text="锁了，锁在柱子上。",
+                speaker="UNKNOWN",
+                speaker_source="UNASSIGNED",
+                voiceprint_verified=False,
+                low_confidence=False,
+                state="PENDING",
+                model_id="test-model",
+            ))
+        db.add(CaseQuestion(id="Q-CARD", case_id=case_id, source="CASE", text="车辆当时锁了吗？", sort_order=1))
+        db.flush()
+        db.add(QuestionRound(
+            id="ROUND-CARD",
+            case_id=case_id,
+            session_id=session_id,
+            case_question_id="Q-CARD",
+            round_no=1,
+            actual_question_text="车辆当时锁了吗？",
+            answer_text="锁了，锁在柱子上。",
+            answer_fragment_ids_json='["FRAGMENT-CARD"]',
+            status="CLOSED",
+        ))
+        db.commit()
+
+        service = DocumentFinalizationService(
+            db,
+            capture_service=FakeCaptureService(events),
+            routing_coordinator=FakeRoutingCoordinator(events),
+        )
+        with pytest.raises(DomainError) as exc:
+            service.finalize(case_id)
+        assert exc.value.code == "ASR_FRAGMENT_REVIEW_REQUIRED"
+        assert exc.value.data == {"fragment_ids": ["FRAGMENT-LOOSE"]}
+
+        db.get(ASRFragment, "FRAGMENT-LOOSE").state = "DISCARDED"
+        db.commit()
+        result = DocumentFinalizationService(
+            db,
+            capture_service=FakeCaptureService(events),
+            routing_coordinator=FakeRoutingCoordinator(events),
+        ).finalize(case_id)
+        assert result["status"] == "FROZEN"
     engine.dispose()

@@ -21,6 +21,7 @@ import {
   updateCaseQuestion as updateCaseQuestionApi,
   updateRoundAnswer as updateRoundAnswerApi,
   upsertQuestionAnswer as upsertQuestionAnswerApi,
+  type AttachAnswerOptions,
 } from '../api/templateInterrogation'
 import type { TemporaryAsrFragment } from '../types/interrogation'
 import type {
@@ -268,8 +269,8 @@ export const useTemplateInterrogationStore = defineStore('template-interrogation
     })
   }
 
-  async function attachFragmentAnswer(questionId: string, fragmentIds: string[]) {
-    await runMutation((scope) => attachQuestionAnswerFragments(scope.caseId, questionId, fragmentIds))
+  async function attachFragmentAnswer(questionId: string, fragmentIds: string[], options: AttachAnswerOptions = {}) {
+    await runMutation((scope) => attachQuestionAnswerFragments(scope.caseId, questionId, fragmentIds, options))
   }
 
   async function loadQuestionLibrary(category?: string) {
