@@ -9,6 +9,7 @@ import {
   discardAsrFragment,
   fetchAsrCaptureStatus,
   fetchCase,
+  fetchCaseOfficers,
   fetchFacts,
   fetchMessages,
   fetchOfficerVoiceprints,
@@ -17,7 +18,6 @@ import {
   fetchSessionState,
   fetchVoiceprintEnrollmentStatus,
   fetchVoiceprintReadiness,
-  fetchVoiceprintRoleDraft,
   finishSession as finishSessionApi,
   markTranscriptMessage,
   normalizeTemporaryAsrFragment,
@@ -36,6 +36,7 @@ import {
   updateTranscriptMessage,
   updateVoiceprintAssignments,
   updateVoiceprintRoleDraft,
+  type CaseOfficer,
 } from '../api/interrogation'
 import { resetCurrentOperator, setCurrentOperator } from '../api/operator'
 import {
@@ -191,6 +192,8 @@ export const useInterrogationStore = defineStore('interrogation', () => {
   const facts = ref<FactItem[]>([])
   const voiceprintReadiness = ref<VoiceprintReadiness>(emptyVoiceprintReadiness())
   const officerVoiceprints = ref<OfficerVoiceprint[]>([])
+  /** 本案绑定的询问人/记录员。签署页名单与操作人身份取自这里，不再查声纹库。 */
+  const caseOfficers = ref<CaseOfficer[]>([])
   const selectedInterrogatorOfficerId = ref<string | null>(null)
   const selectedRecorderOfficerId = ref<string | null>(null)
   const voiceprintEnrollmentState = ref<VoiceprintEnrollmentState>(idleEnrollmentState())
@@ -299,6 +302,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     facts.value = []
     voiceprintReadiness.value = emptyVoiceprintReadiness()
     officerVoiceprints.value = []
+    caseOfficers.value = []
     selectedInterrogatorOfficerId.value = null
     selectedRecorderOfficerId.value = null
     resetCurrentOperator()
@@ -703,14 +707,12 @@ export const useInterrogationStore = defineStore('interrogation', () => {
 
       const runtimeCapabilities = await fetchRuntimeCapabilities()
       captureAvailable.value = runtimeCapabilities.recording.state === 'AVAILABLE' || runtimeCapabilities.asr.state === 'AVAILABLE'
-      const [messages, factItems, sessionState, captureStatus, readiness, officers, roleDraft] = await Promise.all([
+      const [messages, factItems, sessionState, captureStatus, officerBinding] = await Promise.all([
         fetchMessages(requestedCaseId),
         fetchFacts(requestedCaseId),
         fetchSessionState(requestedCaseId),
         captureAvailable.value ? fetchAsrCaptureStatus(requestedCaseId) : Promise.resolve(null),
-        fetchVoiceprintReadiness(requestedCaseId),
-        fetchOfficerVoiceprints(true),
-        fetchVoiceprintRoleDraft(requestedCaseId),
+        fetchCaseOfficers(requestedCaseId),
       ])
 
       if (!isCurrentScope(scope)) return
@@ -721,11 +723,13 @@ export const useInterrogationStore = defineStore('interrogation', () => {
       transcript.value = messages
       facts.value = factItems
       session.value = sessionState
-      voiceprintReadiness.value = readiness
-      officerVoiceprints.value = officers
-      selectedInterrogatorOfficerId.value = roleDraft.interrogatorOfficerId
-      selectedRecorderOfficerId.value = roleDraft.recorderOfficerId
-      setCurrentOperator(roleDraft.interrogatorOfficerId)
+      caseOfficers.value = [officerBinding.interrogator, officerBinding.recorder]
+        .filter((officer): officer is CaseOfficer => officer !== null)
+      selectedInterrogatorOfficerId.value = officerBinding.interrogator?.officerId ?? null
+      selectedRecorderOfficerId.value = officerBinding.recorder?.officerId ?? null
+      // 审计操作人只能来自真实的民警绑定；未绑定就留空，由后端记为"未记录人员"，
+      // 不能用"当前警官"这类占位文字顶替。
+      setCurrentOperator(officerBinding.interrogator?.officerId)
       initializeRuntimeEvents(scope)
       if (captureStatus) applyCaptureStatus(captureStatus, scope)
     } catch (err) {
@@ -1304,6 +1308,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     selectedFragmentIds,
     voiceprintReadiness,
     officerVoiceprints,
+    caseOfficers,
     selectedInterrogatorOfficerId,
     selectedRecorderOfficerId,
     voiceprintEnrollmentState,

@@ -490,7 +490,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
         <div v-else class="interrogation-workspace-stack">
           <TemplateDrivenInterrogationPage
             :case-id="store.caseId"
-            :officers="store.officerVoiceprints"
+            :officers="store.caseOfficers"
             :summary="store.caseSummary"
             :facts="store.facts"
             :session="store.session"

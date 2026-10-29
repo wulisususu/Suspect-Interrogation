@@ -72,6 +72,9 @@ function endpoint(operation: RuntimeOperation, payload: Record<string, unknown>)
       return { method: 'GET', url: '/api/v1/cases', params }
     }
     case 'case.get': return { method: 'GET', url: `/api/v1/cases/${caseId}` }
+    // 本案绑定的询问人/记录员（民警名录）。签署页名单与操作人身份都取自这里，
+    // 不再借用声纹库的 officer-voiceprints。
+    case 'case.officers': return { method: 'GET', url: `/api/v1/cases/${caseId}/officers` }
     case 'case.update': return { method: 'PUT', url: `/api/v1/cases/${caseId}`, data: { ...(payload.patch ?? {} as Record<string, unknown>), ...actorBody(payload) } }
     case 'message.list': return { method: 'GET', url: `/api/v1/cases/${caseId}/messages`, params: { limit: payload.limit ?? 1000 } }
     case 'message.add': return { method: 'POST', url: `/api/v1/cases/${caseId}/messages`, data: { text: payload.text, speaker: payload.speaker, ...actorBody(payload) } }

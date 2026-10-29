@@ -416,6 +416,39 @@ export async function fetchCases(limit = 50, query = ''): Promise<CaseSummary[]>
 export async function fetchCase(caseId: string): Promise<CaseSummary> { return normalizeCaseSummary(await runtime().invoke<unknown>('case.get', { caseId }), { id: caseId }) }
 export function fetchMessages(caseId: string): Promise<TranscriptMessage[]> { return runtime().invoke<TranscriptMessage[]>('message.list', { caseId, limit: 1000 }) }
 export function fetchFacts(caseId: string): Promise<FactItem[]> { return runtime().invoke<FactItem[]>('fact.list', { caseId }) }
+
+export interface CaseOfficer {
+  officerId: string
+  officerName: string
+  unit: string
+}
+
+export interface CaseOfficerBinding {
+  interrogator: CaseOfficer | null
+  recorder: CaseOfficer | null
+}
+
+function normalizeCaseOfficer(value: unknown): CaseOfficer | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = asRecord(value)
+  const badge = String(raw.badgeNumber ?? raw.officerId ?? '').trim()
+  const name = String(raw.name ?? raw.officerName ?? '').trim()
+  if (!badge || !name) return null
+  return { officerId: badge, officerName: name, unit: String(raw.unit ?? '') }
+}
+
+/**
+ * 本案绑定的询问人/记录员，取自民警名录（GET /cases/{id}/officers）。
+ * 这是签署页民警名单与审计操作人身份的唯一来源；声纹库不再参与办理流程。
+ */
+export async function fetchCaseOfficers(caseId: string): Promise<CaseOfficerBinding> {
+  const raw = asRecord(await runtime().invoke<unknown>('case.officers', { caseId }))
+  return {
+    interrogator: normalizeCaseOfficer(raw.interrogator),
+    recorder: normalizeCaseOfficer(raw.recorder),
+  }
+}
+
 export async function fetchSessionState(caseId: string): Promise<SessionState> { return normalizeSessionState(await runtime().invoke<unknown>('session.get', { caseId }), caseId) }
 export function persistQuestionOrAnswer(caseId: string, text: string, speaker: '民警' | '嫌疑人'): Promise<TranscriptMessage> { return runtime().invoke<TranscriptMessage>('message.add', { caseId, text, speaker, actorId: currentOperatorId() }) }
 export function updateTranscriptMessage(caseId: string, messageId: string, text: string): Promise<TranscriptMessage> { return runtime().invoke<TranscriptMessage>('message.update', { caseId, messageId, text, reason: '警官在审讯工作台修订', actorId: currentOperatorId() }) }

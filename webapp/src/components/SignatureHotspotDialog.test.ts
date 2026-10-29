@@ -25,6 +25,6 @@ describe('SignatureHotspotDialog (design P14)', () => {
   })
 
   it('explains when no officer is on file', async () => {
-    expect(await render({ role: 'OFFICER' })).toContain('民警声纹库中暂无民警')
+    expect(await render({ role: 'OFFICER' })).toContain('本案尚未绑定询问民警')
   })
 })
