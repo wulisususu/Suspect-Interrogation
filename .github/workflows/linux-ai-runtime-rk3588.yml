@@ -148,7 +148,7 @@ jobs:
             export SUSPECT_DATA_DIR="$AI_TEST_ROOT/data"
             export SUSPECT_LOG_DIR="$AI_TEST_ROOT/log"
             export SUSPECT_DB_PATH="$AI_TEST_ROOT/interrogation.db"
-            export SUSPECT_MIN_FREE_MB=0
+            export SUSPECT_MIN_FREE_MB=1
             PYTHONPATH=. python3 -m pytest \
               tests/test_ai_mock.py \
               tests/test_mock_engines.py \
@@ -238,6 +238,8 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.suspect_wavs != ''
         shell: bash
         env:
+          SUSPECT_LEGACY_VOICEPRINT_ENABLED: 'true'
+          SUSPECT_ERES2NET_MODEL_DIR: ${{ env.ERES2NET_MODEL_DIR }}
           SUSPECT_WAV_INPUT: ${{ inputs.suspect_wavs }}
           INTERROGATOR_WAV_INPUT: ${{ inputs.interrogator_wavs }}
           RECORDER_WAV_INPUT: ${{ inputs.recorder_wavs }}

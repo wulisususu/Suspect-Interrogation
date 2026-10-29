@@ -13,6 +13,16 @@ from app.services.durable_audio_archive import DurableAudioArchive
 from app.services.template_catalog_service import TemplateCatalogService
 
 
+def test_recording_checksum_works_on_board_python_without_file_digest(tmp_path, monkeypatch):
+    from app.services.recording_service import RecordingService
+
+    monkeypatch.delattr(hashlib, 'file_digest', raising=False)
+    source = tmp_path / 'audio-evidence.bin'
+    content = b'preserved-audio-evidence' * 65536
+    source.write_bytes(content)
+    assert RecordingService._digest(source) == hashlib.sha256(content).hexdigest()
+
+
 @pytest.fixture
 def environment(tmp_path):
     import app.database.recording_models

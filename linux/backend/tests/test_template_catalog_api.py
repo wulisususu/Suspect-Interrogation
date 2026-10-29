@@ -5,16 +5,7 @@ from app.main import create_app
 
 
 def client_app(tmp_path):
-    from app.api.template_catalog import router as template_router
-    from app.api.knowledge import router as knowledge_router
-
-    app = create_app(database_url=f"sqlite:///{tmp_path / 'catalog-api.db'}", hardware_gateway=MockHardwareGateway(simulated=True))
-    paths = {route.path for route in app.routes}
-    if '/api/v1/templates/catalog' not in paths:
-        app.include_router(template_router, prefix='/api/v1')
-    if '/api/v1/knowledge/entries' not in paths:
-        app.include_router(knowledge_router, prefix='/api/v1')
-    return app
+    return create_app(database_url=f"sqlite:///{tmp_path / 'catalog-api.db'}", hardware_gateway=MockHardwareGateway(simulated=True))
 
 
 def data(response):

@@ -106,7 +106,7 @@ jobs:
           export SUSPECT_DATA_DIR="$TEST_RUNTIME_ROOT/data"
           export SUSPECT_LOG_DIR="$TEST_RUNTIME_ROOT/log"
           export SUSPECT_DB_PATH="$TEST_RUNTIME_ROOT/interrogation.db"
-          export SUSPECT_MIN_FREE_MB=0
+          export SUSPECT_MIN_FREE_MB=1
           export PYTHONPATH="$PWD/linux/backend"
           python3 -m pytest linux/backend/tests -q
           python3 -m pytest tests/release tests/e2e tests/reliability -q

@@ -72,7 +72,7 @@ def test_server_round_trip_uses_unix_socket_and_session_lifecycle(tmp_path: Path
         assert health["sessions"] == 0
 
         opened = client.open_session("case-1", sample_rate=16000)
-        assert opened == {"session_id": "case-1", "sample_rate": 16000, "speaker_backend": "eres2net_large"}
+        assert opened == {"session_id": "case-1", "sample_rate": 16000, "speaker_backend": "eres2net_large", "backend": "funasr"}
 
         start_events = client.push_pcm("case-1", _pcm(200))
         assert [event.type for event in start_events] == [SpeechEventType.VAD_START]

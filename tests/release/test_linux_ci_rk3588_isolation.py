@@ -1,4 +1,8 @@
 from pathlib import Path
+import re
+import sys
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "linux-ci.yml"
@@ -10,8 +14,24 @@ def test_rk3588_tests_use_isolated_mutable_runtime_paths():
     assert 'export SUSPECT_DATA_DIR="$RK3588_TEST_ROOT/data"' in workflow
     assert 'export SUSPECT_LOG_DIR="$RK3588_TEST_ROOT/log"' in workflow
     assert 'export SUSPECT_DB_PATH="$RK3588_TEST_ROOT/interrogation.db"' in workflow
-    assert 'export SUSPECT_MIN_FREE_MB=0' in workflow
+    assert 'export SUSPECT_MIN_FREE_MB=1' in workflow
     assert 'rm -rf "$RK3588_TEST_ROOT"' in workflow
+
+
+@pytest.mark.parametrize("workflow_name", [
+    "linux-ai-runtime-rk3588.yml", "linux-ci.yml", "rk3588-service-bootstrap.yml",
+])
+def test_ci_storage_overrides_satisfy_runtime_settings(workflow_name):
+    backend = str(ROOT / "linux" / "backend")
+    if backend not in sys.path:
+        sys.path.insert(0, backend)
+    from app.runtime_settings import RuntimeSettings
+
+    workflow = (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+    overrides = re.findall(r"export SUSPECT_MIN_FREE_MB=(\d+)", workflow)
+    assert overrides, "CI must explicitly isolate its disk reserve from production"
+    for value in overrides:
+        assert RuntimeSettings(min_free_mb=int(value)).min_free_mb == 1
 
 
 def test_rk3588_checkout_falls_back_to_sha_pinned_source_archive():

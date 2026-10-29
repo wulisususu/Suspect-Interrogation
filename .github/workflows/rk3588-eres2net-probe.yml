@@ -49,6 +49,7 @@ jobs:
     runs-on: [self-hosted, rk3588]
     timeout-minutes: 25
     env:
+      SUSPECT_LEGACY_VOICEPRINT_ENABLED: 'true'
       PYTHONDONTWRITEBYTECODE: '1'
       MODELSCOPE_OFFLINE: '1'
       HF_HUB_OFFLINE: '1'

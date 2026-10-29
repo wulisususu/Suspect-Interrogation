@@ -140,7 +140,7 @@ jobs:
           export SUSPECT_DATA_DIR="$VISUAL_ROOT/data"
           export SUSPECT_LOG_DIR="$VISUAL_ROOT/log"
           export SUSPECT_DB_PATH="$VISUAL_ROOT/interrogation.db"
-          export SUSPECT_MIN_FREE_MB=0
+          export SUSPECT_MIN_FREE_MB=1
 
           python -m uvicorn app.main:app --app-dir linux/backend --host 127.0.0.1 --port 8080 >"$VISUAL_ROOT/api.log" 2>&1 &
           API_PID=$!
@@ -378,7 +378,7 @@ jobs:
           export SUSPECT_DATA_DIR="$RK3588_TEST_ROOT/data"
           export SUSPECT_LOG_DIR="$RK3588_TEST_ROOT/log"
           export SUSPECT_DB_PATH="$RK3588_TEST_ROOT/interrogation.db"
-          export SUSPECT_MIN_FREE_MB=0
+          export SUSPECT_MIN_FREE_MB=1
           export PYTHONPATH="$PWD/linux/backend"
           python3 -m pytest linux/backend/tests -q
 

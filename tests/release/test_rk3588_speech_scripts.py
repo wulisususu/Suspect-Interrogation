@@ -95,6 +95,15 @@ def test_ai_runtime_workflow_has_explicit_local_calibration_inputs_and_never_upl
     assert "sudo -n ss -ltnp 'sport = :8000'" in bootstrap
 
 
+def test_manual_calibration_enables_legacy_only_for_its_temporary_worker():
+    workflow = AI_WORKFLOW.read_text(encoding="utf-8")
+    regular_steps, calibration = workflow.split("      - name: RK3588 speech calibration and real smoke", 1)
+    assert "SUSPECT_LEGACY_VOICEPRINT_ENABLED" not in regular_steps
+    assert "SUSPECT_LEGACY_VOICEPRINT_ENABLED: 'true'" in calibration
+    assert "SUSPECT_ERES2NET_MODEL_DIR: ${{ env.ERES2NET_MODEL_DIR }}" in calibration
+    assert 'SOCKET="$RUNNER_TEMP/rk3588-speech.sock"' in calibration
+
+
 def test_ai_runtime_cancels_stale_pr_runs_before_they_starve_single_rk3588_runner():
     workflow = AI_WORKFLOW.read_text(encoding="utf-8")
     assert "concurrency:" in workflow
