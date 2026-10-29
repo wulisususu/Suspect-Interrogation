@@ -508,3 +508,19 @@ describe('clean stop handshake', () => {
     expect(source).toContain("this.kind === 'FORMAL'")
   })
 })
+
+describe('duplicate capture socket', () => {
+  it('stops quietly when the server refuses a second connection to the same capture', async () => {
+    const source = (await import('./browserAsrCapture.ts?raw')).default
+    const start = source.indexOf('if (event.code === 4429)')
+    expect(start).toBeGreaterThan(-1)
+    const branch = source.slice(start, source.indexOf('if (event.code === 4410)'))
+    expect(branch).toContain('this.stopped = true')
+    expect(branch).toContain('this.stopAudioGraph()')
+    expect(branch).toContain('this.onSuperseded?.')
+    expect(branch).toContain('return')
+    // 报 incomplete 会把另一窗口正在录的那一路标成未完成；重连会与对方互抢。
+    expect(branch).not.toContain('failIncomplete')
+    expect(branch).not.toContain('scheduleReconnect')
+  })
+})

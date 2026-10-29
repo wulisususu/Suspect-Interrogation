@@ -610,6 +610,7 @@ class BrowserPcmStreamer {
   onAudioLevel: ((sample: BrowserAudioLevelSample) => void) | null = null
   onUnexpectedClose: (() => void) | null = null
   onIncomplete: ((message: string) => void) | null = null
+  onSuperseded: ((reason: string) => void) | null = null
 
   async start(url: string, kind: CaptureKind, captureKey?: string, captureLease?: BrowserFormalCaptureLease) {
     this.kind = kind
@@ -775,6 +776,15 @@ class BrowserPcmStreamer {
       this.clearFormalAckTimer()
       this.incompleteMarker.onSocketClosed()
       if (this.stopped) return
+      if (event.code === 4429) {
+        // 另一路连接已经占用这路采集。停止本页但不报 incomplete：否则会把
+        // 正在录音的那一路标成未完成，也不自动重连，避免两页互抢。
+        this.stopped = true
+        this.stopAudioGraph()
+        this.captureLease?.release()
+        this.onSuperseded?.(event.reason || '同一路采集已有其它连接在录音')
+        return
+      }
       if (event.code === 4410) {
         this.failIncomplete(event.reason || '服务器检测到音频不连续')
       }
@@ -1086,8 +1096,10 @@ let pendingFormalOutboxFinalization: {
 
 type UnexpectedCloseListener = () => void
 type IncompleteCaptureListener = (message: string) => void
+type SupersededListener = (reason: string) => void
 let formalUnexpectedCloseListener: UnexpectedCloseListener | null = null
 let formalIncompleteCaptureListener: IncompleteCaptureListener | null = null
+let formalSupersededListener: SupersededListener | null = null
 
 /**
  * Fired when the formal browser ASR audio socket closes without the caller
@@ -1099,6 +1111,16 @@ export function setBrowserAsrUnexpectedCloseListener(listener: UnexpectedCloseLi
 
 export function setBrowserAsrIncompleteCaptureListener(listener: IncompleteCaptureListener | null) {
   formalIncompleteCaptureListener = listener
+}
+
+/**
+ * Fired when the server refuses this socket because another connection already
+ * streams the same capture. The page must stop quietly: reporting
+ * capture_incomplete here would mark the *other* window's healthy recording as
+ * broken, and auto-restarting would fight over the same capture forever.
+ */
+export function setBrowserAsrSupersededListener(listener: SupersededListener | null) {
+  formalSupersededListener = listener
 }
 
 async function startCapture(
@@ -1160,6 +1182,9 @@ async function startCapture(
         }
         streamer.onIncomplete = (message) => {
           if (activeCapture?.streamer === streamer) formalIncompleteCaptureListener?.(message)
+        }
+        streamer.onSuperseded = (reason) => {
+          if (activeCapture?.streamer === streamer) formalSupersededListener?.(reason)
         }
       }
       await streamer.start(url, kind, captureKey, captureLease)

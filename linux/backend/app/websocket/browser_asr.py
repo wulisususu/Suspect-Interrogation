@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 import struct
+import threading
+import time
 from collections.abc import Callable
 
 from fastapi import APIRouter, WebSocket
@@ -24,6 +26,54 @@ async def _close(websocket: WebSocket, capture_id: str, code: int, reason: str) 
 
 def _browser_input(websocket: WebSocket):
     return getattr(websocket.app.state, "browser_audio_input", None)
+
+
+# One live audio socket per capture. A second window on the same case used to be
+# accepted, replay sequences that the archive had already stored, and get closed
+# with 4410 "source_sequence was replayed with conflicting audio" — which marked the
+# capture that was actually recording as INCOMPLETE. The duplicate now loses the
+# lease instead of corrupting the real stream.
+_LEASE_ATTR = "browser_asr_socket_leases"
+_LEASE_LOCK = threading.Lock()
+_LEASE_STALE_SECONDS = 60.0
+
+
+def _leases(app) -> dict:
+    leases = getattr(app.state, _LEASE_ATTR, None)
+    if leases is None:
+        leases = {}
+        setattr(app.state, _LEASE_ATTR, leases)
+    return leases
+
+
+def _claim_socket(app, key: str):
+    """Take the capture's socket lease, or return None when another socket holds it."""
+    now = time.monotonic()
+    with _LEASE_LOCK:
+        leases = _leases(app)
+        entry = leases.get(key)
+        if entry is not None and now - entry["touched"] <= _LEASE_STALE_SECONDS:
+            return None
+        token = object()
+        leases[key] = {"token": token, "touched": now}
+        return token
+
+
+def _touch_socket(app, key: str, token) -> bool:
+    with _LEASE_LOCK:
+        entry = _leases(app).get(key)
+        if entry is None or entry["token"] is not token:
+            return False
+        entry["touched"] = time.monotonic()
+        return True
+
+
+def _release_socket(app, key: str, token) -> None:
+    with _LEASE_LOCK:
+        leases = _leases(app)
+        entry = leases.get(key)
+        if entry is not None and entry["token"] is token:
+            del leases[key]
 
 
 def _is_active_browser_capture(websocket: WebSocket, case_id: str, capture_id: str) -> bool:
@@ -47,6 +97,7 @@ async def _stream_browser_pcm(
     websocket: WebSocket,
     *,
     capture_id: str = "-",
+    capture_key: str | None = None,
     accepts_pcm: Callable[[], bool] | None = None,
     frame_ingress: Callable[[int, int, bytes], dict[str, int]] | None = None,
     incomplete_sink: Callable[[str], bool] | None = None,
@@ -65,6 +116,14 @@ async def _stream_browser_pcm(
 
     await websocket.accept()
     logger.info("browser asr ws %s accepted", capture_id)
+    lease_token = None
+    if capture_key is not None:
+        lease_token = _claim_socket(websocket.app, capture_key)
+        if lease_token is None:
+            # Refuse rather than share: a duplicate stream cannot be merged, and letting
+            # it in used to destroy the recording that was already running.
+            await _close(websocket, capture_id, 4429, "capture is already streaming from another connection")
+            return
     # The browser drains its durable outbox and then declares a clean stop before
     # closing the socket. Without this flag an ordinary stop looks identical to a
     # dropped connection, and every clean capture would be persisted as INCOMPLETE
@@ -73,6 +132,10 @@ async def _stream_browser_pcm(
     try:
         while True:
             message = await websocket.receive()
+            if lease_token is not None and capture_key is not None:
+                if not _touch_socket(websocket.app, capture_key, lease_token):
+                    await _close(websocket, capture_id, 4410, "superseded by a newer audio connection")
+                    return
             if message.get("type") == "websocket.disconnect":
                 logger.info("browser asr ws %s client disconnected", capture_id)
                 raise WebSocketDisconnect(code=message.get("code", 1000))
@@ -219,6 +282,9 @@ async def _stream_browser_pcm(
                 await asyncio.to_thread(incomplete_sink, "browser audio connection disconnected")
             except Exception:
                 logger.exception("failed to persist browser audio disconnect for %s", capture_id)
+    finally:
+        if lease_token is not None and capture_key is not None:
+            _release_socket(websocket.app, capture_key, lease_token)
 
 
 @router.websocket("/ws/asr/cases/{case_id}/capture/{capture_id}")
@@ -237,6 +303,7 @@ async def browser_asr_capture_socket(
     await _stream_browser_pcm(
         websocket,
         capture_id=capture_id,
+        capture_key=f"{case_id}:{capture_id}",
         accepts_pcm=lambda: _is_active_browser_capture(websocket, case_id, capture_id),
         frame_ingress=lambda sequence, start_sample, pcm: ingest(
             case_id, capture_id, sequence, start_sample, pcm
@@ -261,5 +328,8 @@ async def browser_question_preparation_socket(
     case_id: str,
     capture_id: str,
 ):
-    del case_id
-    await _stream_browser_pcm(websocket, capture_id=capture_id)
+    await _stream_browser_pcm(
+        websocket,
+        capture_id=capture_id,
+        capture_key=f"{case_id}:{capture_id}",
+    )

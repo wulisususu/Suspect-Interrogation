@@ -43,6 +43,7 @@ import {
   clearBrowserAsrCaptureLeaseRefusal,
   BrowserFormalCaptureLeaseError,
   setBrowserAsrIncompleteCaptureListener,
+  setBrowserAsrSupersededListener,
   setBrowserAsrUnexpectedCloseListener,
   startBrowserAsrCapture,
 } from '../audio/browserAsrCapture'
@@ -846,6 +847,15 @@ export const useInterrogationStore = defineStore('interrogation', () => {
         if (isCurrentScope(scope)) capture.value.error = message
       })()
     }
+  })
+
+  // 同一路采集只允许一个连接。被拒的这一页必须停手：既不能上报 incomplete
+  // （会把另一窗口正常录音判成不完整），也不能调 stop（会把对方录音停掉）。
+  setBrowserAsrSupersededListener((reason) => {
+    const scope = currentScope()
+    if (!isCurrentScope(scope)) return
+    capture.value.error = `${reason}；本页不再采集，请到正在录音的窗口继续`
+    feedbackIfCurrent(scope, capture.value.error, true)
   })
 
   async function updatePendingFragment(fragmentId: string, editedText: string, speaker: TemporaryAsrSpeaker) {

@@ -483,3 +483,46 @@ def test_formal_browser_socket_still_marks_a_silent_disconnect_incomplete():
     assert app.state.asr_capture_service.incomplete == [
         ("CASE-A", "CAPTURE-A", "browser audio connection disconnected")
     ]
+
+
+def test_second_socket_for_the_same_capture_is_refused_without_touching_the_first():
+    """A duplicate window must not steal or invalidate the recording in progress."""
+    app, _browser_input = make_app({
+        "CASE-A": {"active": True, "captureSessionId": "CAPTURE-A", "source": "BROWSER"},
+    })
+    pcm = b"\x01\x00" * 160
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/asr/cases/CASE-A/capture/CAPTURE-A") as first:
+            first.send_bytes(struct.pack("<IQ", 1, 0) + pcm)
+            assert first.receive_json() == {"ackSequence": 1, "durableSampleEnd": 160}
+
+            with client.websocket_connect("/ws/asr/cases/CASE-A/capture/CAPTURE-A") as second:
+                with pytest.raises(WebSocketDisconnect) as refusal:
+                    second.receive_json()
+            assert refusal.value.code == 4429
+            # 被拒的第二路不得影响第一路的状态
+            assert app.state.asr_capture_service.incomplete == []
+
+            first.send_bytes(struct.pack("<IQ", 2, 160) + pcm)
+            assert first.receive_json() == {"ackSequence": 2, "durableSampleEnd": 320}
+
+    assert app.state.asr_capture_service.frames == [
+        ("CASE-A", "CAPTURE-A", 1, 0, pcm),
+        ("CASE-A", "CAPTURE-A", 2, 160, pcm),
+    ]
+
+
+def test_capture_socket_lease_is_released_when_the_stream_ends():
+    app, _browser_input = make_app({
+        "CASE-A": {"active": True, "captureSessionId": "CAPTURE-A", "source": "BROWSER"},
+    })
+    pcm = b"\x01\x00" * 160
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/asr/cases/CASE-A/capture/CAPTURE-A") as first:
+            first.send_bytes(struct.pack("<IQ", 1, 0) + pcm)
+            assert first.receive_json() == {"ackSequence": 1, "durableSampleEnd": 160}
+        with client.websocket_connect("/ws/asr/cases/CASE-A/capture/CAPTURE-A") as second:
+            second.send_bytes(struct.pack("<IQ", 2, 160) + pcm)
+            assert second.receive_json() == {"ackSequence": 2, "durableSampleEnd": 320}
