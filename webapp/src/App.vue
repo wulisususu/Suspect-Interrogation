@@ -14,6 +14,8 @@ import KioskHomeView from './views/KioskHomeView.vue'
 import LoginView from './views/LoginView.vue'
 import InterrogationWorkspace from './views/InterrogationWorkspace.vue'
 import KnowledgeAdminView from './views/KnowledgeAdminView.vue'
+import OfficerSignatureAdminView from './views/OfficerSignatureAdminView.vue'
+import RecordingAdminView from './views/RecordingAdminView.vue'
 import { parseRootRoute, rootRouteUrl, type AdminPanel, type RootRoute } from './utils/rootRoute'
 
 const route = ref<RootRoute>(parseRootRoute(location.search))
@@ -64,7 +66,7 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
   <LockScreen v-if="locked" @unlock="unlock" />
   <MaintenanceGate v-else>
     <InterrogationWorkspace v-if="route.page === 'case'" :key="route.caseId" :case-id="route.caseId" :start-at-template="freshCaseId === route.caseId" @back="openCases" />
-    <LoginView v-else-if="route.page === 'login'" @back="openHome" @admin="openAdmin" />
+    <LoginView v-else-if="route.page === 'login'" @back="openHome" @authenticated="openAdmin" />
     <KioskHomeView v-else-if="route.page === 'home'" @start="startNewRecord" @police-entry="openLogin" />
     <AdminShell v-else-if="route.page === 'admin'" title="管理面板" back-label="返回大厅" @back="openHome" @lock="lock">
       <AdminPanelView
@@ -85,6 +87,8 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
     </AdminShell>
     <AdminShell v-else-if="route.page === 'admin-placeholder'" :title="PANEL_TITLES[route.panel]" @back="openAdmin" @lock="lock">
       <KnowledgeAdminView v-if="route.panel === 'knowledge'" />
+      <OfficerSignatureAdminView v-else-if="route.panel === 'signatures'" @login="openLogin" />
+      <RecordingAdminView v-else-if="route.panel === 'recordings'" @login="openLogin" />
       <AdminPlaceholderView v-else :key="route.panel" :kind="route.panel" @open="openPlaceholder" />
     </AdminShell>
     <AdminShell v-else title="全部案件记录" @back="openAdmin" @lock="lock">

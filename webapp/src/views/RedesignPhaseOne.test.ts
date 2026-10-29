@@ -17,10 +17,11 @@ describe('PDF phase-one frontend redesign', () => {
     expect(dashboardSource).not.toContain('fetchRuntimeCapabilities')
   })
 
-  it('does not pretend a frontend-only credential form is an authentication boundary', () => {
+  it('authenticates against the backend session instead of faking a frontend check', () => {
     expect(loginSource).toContain('type="password"')
-    expect(loginSource).toContain('尚未接入警号密码认证接口')
-    expect(loginSource).toContain('前端预览模式')
+    expect(loginSource).toContain('loginOfficer(')
+    expect(loginSource).toContain('fetchAuthSession')
+    expect(loginSource).not.toContain('尚未接入警号密码认证接口')
     expect(loginSource).not.toContain('localStorage')
     expect(loginSource).not.toContain('sessionStorage')
   })

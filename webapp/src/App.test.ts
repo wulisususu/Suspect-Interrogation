@@ -17,4 +17,16 @@ describe('root navigation query handling', () => {
     expect(source).toContain("route.panel === 'knowledge'")
     expect(source).toContain('KnowledgeAdminView')
   })
+
+  it('routes signature and recording panels to their real views', () => {
+    expect(source).toContain("route.panel === 'signatures'")
+    expect(source).toContain('OfficerSignatureAdminView')
+    expect(source).toContain("route.panel === 'recordings'")
+    expect(source).toContain('RecordingAdminView')
+  })
+
+  it('treats a successful login as entering the admin panel', () => {
+    expect(source).toContain('@authenticated="openAdmin"')
+    expect(source).not.toContain('@admin="openAdmin"')
+  })
 })

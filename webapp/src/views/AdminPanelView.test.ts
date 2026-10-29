@@ -6,11 +6,13 @@ import AdminPanelView from './AdminPanelView.vue'
 import LoginView from './LoginView.vue'
 
 describe('admin shell (design P19 top bar)', () => {
-  it('names the back-office, says authentication is not wired and offers manual lock', async () => {
+  it('names the back-office, shows the session state placeholder and offers manual lock', async () => {
     const html = await renderToString(createSSRApp({ render: () => h(AdminShell, { title: '管理面板' }, { default: () => '内容' }) }))
     expect(html).toContain('公安笔录一体机 · 后台管理')
     expect(html).toContain('管理面板')
-    expect(html).toContain('认证尚未接入')
+    // 服务端渲染时尚未取到会话，顶栏不能编造“已验证”
+    expect(html).toContain('身份待确认')
+    expect(html).not.toContain('认证尚未接入')
     expect(html).toContain('锁定面板')
     expect(html).toContain('内容')
   })
@@ -31,12 +33,12 @@ describe('AdminPanelView (design P19)', () => {
 })
 
 describe('LoginView (design P18)', () => {
-  it('asks for badge number and password and never pretends to authenticate', async () => {
+  it('asks for badge number and password and no longer offers an unauthenticated preview', async () => {
     const html = await renderToString(createSSRApp(LoginView))
     expect(html).toContain('民警身份验证')
-    expect(html).toContain('警号')
+    expect(html).toContain('民警警号')
     expect(html).toContain('type="password"')
     expect(html).toContain('验证并进入')
-    expect(html).toContain('进入管理面板（预览 · 未认证）')
+    expect(html).not.toContain('预览 · 未认证')
   })
 })
