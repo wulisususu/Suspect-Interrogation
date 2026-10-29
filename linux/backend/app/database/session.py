@@ -47,6 +47,9 @@ def init_database(engine: Engine) -> None:
     from app.database import case_management_models, catalog_models, document_export_models, document_mark_models, officer_models, recording_models, recognition_models, voiceprint_models  # noqa: F401
 
     Base.metadata.create_all(engine)
+    from app.database.knowledge_fts import ensure_knowledge_fts
+
+    ensure_knowledge_fts(engine)
 
 
 def session_scope(factory: sessionmaker[Session]) -> Iterator[Session]:

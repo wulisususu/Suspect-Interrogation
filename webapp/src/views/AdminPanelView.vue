@@ -38,7 +38,7 @@ const caseStats = computed(() => {
 
 const entries = computed(() => [
   { key: 'cases', title: '案件记录', desc: '全部案件查询与归档 · 导出 Word/PDF、打印', icon: Archive, tone: 'primary', tags: ['案件查询', '归档管理', '导出与打印'], stats: caseStats.value, open: () => emit('cases') },
-  { key: 'knowledge', title: '知识库管理', desc: '问话知识条目增删改查 · 纯后台管理', icon: BookOpen, tone: 'success', tags: ['条目增删改', '版本留痕', '热词同步'], stats: [['状态', '功能待接入']], open: () => emit('placeholder', 'knowledge') },
+  { key: 'knowledge', title: '知识库管理', desc: '问话知识条目增删改查 · 纯后台管理', icon: BookOpen, tone: 'success', tags: ['条目增删改', '版本留痕', '热词同步'], stats: [['状态', '可导入 Vault']], open: () => emit('placeholder', 'knowledge') },
   { key: 'signatures', title: '民警签名管理', desc: '民警签名预先录入 · 管理与调用', icon: PenLine, tone: 'warning', tags: ['签名预录入', '管理与调用', '调用记录留痕'], stats: [['状态', '功能待接入']], open: () => emit('placeholder', 'signatures') },
   { key: 'recordings', title: '录音查看', desc: '双通道录音 · 分段转写与全程原始文件', icon: AudioLines, tone: 'primary', tags: ['双通道录音', '分段转写', '全程原始文件'], stats: [['状态', '功能待接入']], open: () => emit('placeholder', 'recordings') },
 ])

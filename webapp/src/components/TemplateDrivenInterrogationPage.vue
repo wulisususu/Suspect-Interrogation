@@ -27,6 +27,7 @@ import type {
 import LongPressButton from './LongPressButton.vue'
 import DictationRecordPreview from './DictationRecordPreview.vue'
 import DraftQuestionRail from './DraftQuestionRail.vue'
+import KnowledgeAssistPanel from './KnowledgeAssistPanel.vue'
 import FactCoverageBar from './FactCoverageBar.vue'
 import FinalizeDrawer from './FinalizeDrawer.vue'
 import RecordArchivePage from './RecordArchivePage.vue'
@@ -494,6 +495,14 @@ async function confirmSignature() {
       </div>
 
       <div class="dialogue-column draft-column">
+        <KnowledgeAssistPanel
+          :case-id="summary.id"
+          :questions="workspace.questions"
+          :recording-question-id="recordingQuestionId ?? null"
+          :live-text="liveText ?? ''"
+          :locked="documentFrozen || templateBusy"
+          @use-suggestion="(text) => emit('createQuestion', { text, source: 'LIVE', afterQuestionId: null })"
+        />
         <DraftQuestionRail
           :questions="workspace.questions"
           :session-status="session.status"

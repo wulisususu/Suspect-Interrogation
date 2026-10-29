@@ -13,6 +13,7 @@ import CaseDashboardView from './views/CaseDashboardView.vue'
 import KioskHomeView from './views/KioskHomeView.vue'
 import LoginView from './views/LoginView.vue'
 import InterrogationWorkspace from './views/InterrogationWorkspace.vue'
+import KnowledgeAdminView from './views/KnowledgeAdminView.vue'
 import { parseRootRoute, rootRouteUrl, type AdminPanel, type RootRoute } from './utils/rootRoute'
 
 const route = ref<RootRoute>(parseRootRoute(location.search))
@@ -83,7 +84,8 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
       <AdminAuditView />
     </AdminShell>
     <AdminShell v-else-if="route.page === 'admin-placeholder'" :title="PANEL_TITLES[route.panel]" @back="openAdmin" @lock="lock">
-      <AdminPlaceholderView :key="route.panel" :kind="route.panel" @open="openPlaceholder" />
+      <KnowledgeAdminView v-if="route.panel === 'knowledge'" />
+      <AdminPlaceholderView v-else :key="route.panel" :kind="route.panel" @open="openPlaceholder" />
     </AdminShell>
     <AdminShell v-else title="全部案件记录" @back="openAdmin" @lock="lock">
       <CaseDashboardView

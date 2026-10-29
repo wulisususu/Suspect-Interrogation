@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base, TimestampMixin
@@ -55,6 +57,15 @@ class KnowledgeEntry(TimestampMixin, Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Vault 同步元数据。手工新建的条目 origin=manual，导入器永不覆盖。
+    vault_uid: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default='faq')
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default='pending')
+    origin: Mapped[str] = mapped_column(String(16), nullable=False, default='manual')
+    source_path: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
+    source_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_ref: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
 
 
 class KnowledgeEntryVersion(TimestampMixin, Base):
@@ -66,3 +77,50 @@ class KnowledgeEntryVersion(TimestampMixin, Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     action: Mapped[str] = mapped_column(String(16), nullable=False)
     data_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class KnowledgeEntryLink(Base):
+    """Wiki 双链解析结果。目标条目尚未导入时 to_entry_id 为空，待下次解析。"""
+
+    __tablename__ = 'knowledge_entry_links'
+    __table_args__ = (UniqueConstraint('from_entry_id', 'target_title', name='uq_knowledge_link_target'),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    from_entry_id: Mapped[str] = mapped_column(ForeignKey('knowledge_entries.id'), nullable=False, index=True)
+    to_entry_id: Mapped[str | None] = mapped_column(ForeignKey('knowledge_entries.id'), nullable=True, index=True)
+    target_title: Mapped[str] = mapped_column(String(256), nullable=False)
+    relation: Mapped[str] = mapped_column(String(16), nullable=False, default='REFERENCES')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class KnowledgeSyncRun(Base):
+    """一次 Vault 导入的记录。dry-run 也落一条，便于核对将要发生的变更。"""
+
+    __tablename__ = 'knowledge_sync_runs'
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dry_run: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    actor_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_root: Mapped[str] = mapped_column(String(512), nullable=False)
+    added: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    disabled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    conflicts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rejected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    report_json: Mapped[str] = mapped_column(Text, nullable=False, default='{}')
+
+
+class AsrTermCorrection(TimestampMixin, Base):
+    """同音/专名纠错表。wrong_text 唯一；停用条目的纠错项随之停用。"""
+
+    __tablename__ = 'asr_term_corrections'
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    wrong_text: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    right_text: Mapped[str] = mapped_column(String(128), nullable=False)
+    category: Mapped[str] = mapped_column(String(32), nullable=False, default='TERM')
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    entry_id: Mapped[str | None] = mapped_column(ForeignKey('knowledge_entries.id'), nullable=True, index=True)
+

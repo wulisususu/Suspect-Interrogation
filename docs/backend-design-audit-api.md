@@ -60,7 +60,7 @@ Linux HAL 预留 `DeviceManager.capture_fingerprint()` 接口，当前仓库没�
 ## 迁移及部署边界
 
 迁移依次为：`0021_question_capture_ownership` → `0022_template_knowledge_catalog` → `0023_officer_identity` →
-`0024_case_management` → `0025_case_recordings` → `0026_document_exports` → `0027_document_fingerprints`。
+`0024_case_management` → `0025_case_recordings` → `0026_document_exports` → `0027_document_fingerprints` → `0028_knowledge_vault_sync`。
 部署先备份并执行 `python -m alembic upgrade head`，不得用 ORM create_all 替代迁移和回填。
 新增依赖 `python-docx/reportlab/Pillow`。板端 Python3.10 与 CI Python3.11 均需验收；录音校验使用流式 SHA-256，不依赖 Python3.11 才提供的文件摘要接口。
 

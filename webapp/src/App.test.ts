@@ -12,4 +12,9 @@ describe('root navigation query handling', () => {
     expect(source).not.toContain('SystemSettingsView')
     expect(source).not.toContain('@voiceprints')
   })
+
+  it('renders the real knowledge base page for the knowledge panel instead of the placeholder', () => {
+    expect(source).toContain("route.panel === 'knowledge'")
+    expect(source).toContain('KnowledgeAdminView')
+  })
 })

@@ -42,6 +42,6 @@ def test_alembic_head_contains_device_calibration_history_and_sample_fingerprint
 
         with engine.connect() as connection:
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-        assert revision == "0027_document_fingerprints"
+        assert revision == "0028_knowledge_vault_sync"
     finally:
         engine.dispose()

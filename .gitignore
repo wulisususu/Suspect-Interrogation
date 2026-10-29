@@ -33,3 +33,6 @@ linux/backend/**/*.db-shm
 webapp/.npmrc
 webapp/pnpm-lock.yaml
 webapp/pnpm-workspace.yaml
+
+# Obsidian 应用状态（用户打开 Vault 后生成，不进仓库）
+obsidian-vault/.obsidian/

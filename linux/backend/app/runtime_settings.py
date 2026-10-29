@@ -34,6 +34,8 @@ class RuntimeSettings(BaseSettings):
     db_path: Path = Path("/var/lib/suspect-interrogation/interrogation.db")
     model_path: Path | None = None
     web_dist_dir: Path = Path("/opt/suspect-interrogation/current/webapp/dist")
+    # Obsidian Vault 所在目录（单向导入源）。生产建议放在数据目录下，随备份走。
+    knowledge_vault_dir: Path = Path("/var/lib/suspect-interrogation/knowledge-vault")
     min_free_mb: int = 10_240
 
     @field_validator("audio_input_mode")

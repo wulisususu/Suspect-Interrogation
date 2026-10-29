@@ -45,7 +45,7 @@ REQUIRED_TABLES = (
     CALIBRATION_TABLES | RECOGNITION_EVIDENCE_TABLES | QWEN_ROUTING_TABLES |
     CASE_DRAFT_TABLES | DURABLE_LIVE_SPEECH_TABLES
 )
-ALEMBIC_HEAD = "0027_document_fingerprints"
+ALEMBIC_HEAD = "0028_knowledge_vault_sync"
 
 
 def _run_alembic(tmp_path, target: str):
