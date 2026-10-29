@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import struct
 
@@ -10,9 +11,14 @@ from app.main import create_app
 from app.repositories import asr_fragments as asr_repo
 from app.repositories import documents as document_repo
 from app.repositories import voiceprints as voiceprint_repo
+from app.runtime_settings import RuntimeSettings
 
 
 _TEST_VOICEPRINT = struct.pack("<4f", 1.0, 0.0, 0.0, 0.0)
+_TEST_SIGNATURE = "data:image/png;base64," + base64.b64encode(bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+    "0000000d49444154789c63606060f80f00010401005fe5c34b0000000049454e44ae426082"
+)).decode()
 
 
 def _payload(response):
@@ -26,6 +32,7 @@ def test_template_interrogation_release_lifecycle_preserves_raw_and_formal_recor
     app = create_app(
         database_url=f"sqlite:///{tmp_path / 'template-release-e2e.db'}",
         hardware_gateway=MockHardwareGateway(simulated=True),
+        runtime_settings=RuntimeSettings(data_dir=tmp_path / "data", min_free_mb=1),
     )
 
     try:
@@ -93,6 +100,7 @@ def test_template_interrogation_release_lifecycle_preserves_raw_and_formal_recor
 
             ordinal = 0
             fragment_ids: list[str] = []
+            officer_fragment_ids: list[str] = []
 
             def fragment(speaker: str, text: str) -> str:
                 nonlocal ordinal
@@ -115,6 +123,8 @@ def test_template_interrogation_release_lifecycle_preserves_raw_and_formal_recor
                     )
                     db.commit()
                     fragment_ids.append(row.id)
+                    if speaker == "INTERROGATOR":
+                        officer_fragment_ids.append(row.id)
                     return row.id
 
             def process(fragment_id: str):
@@ -206,6 +216,33 @@ def test_template_interrogation_release_lifecycle_preserves_raw_and_formal_recor
             assert reassociated["caseQuestionId"] != formal_question["id"]
             assert reassociated["actualQuestionText"] == "那你什么时候到现场的？"
 
+            # This fixture injects final ASR fragments directly. Complete its real
+            # archive and transcription checkpoint before asking the API to freeze.
+            archive = app.state.live_speech_coordinator.archive
+            archive.open_capture(capture_id, case_id=case_id)
+            for _ in range(ordinal + 1):
+                archive.append(capture_id, b"\x01\x00" * 16_000)
+            archive.finalize_capture(capture_id)
+            with app.state.session_factory() as db:
+                capture = asr_repo.get_capture_session(db, capture_id)
+                capture.asr_status = "COMPLETE"
+                capture.asr_cursor_sample = capture.audio_sample_count
+                capture.speaker_status = "DISABLED"
+                db.commit()
+
+            with app.state.session_factory() as db:
+                capture = asr_repo.get_capture_session(db, capture_id)
+                assert capture.status == "STOPPED"
+                assert capture.recording_status == "COMPLETE"
+                assert capture.asr_status == "COMPLETE"
+
+            reviewed = client.post(
+                f"/api/v1/cases/{case_id}/asr/fragments/confirm",
+                json={"fragment_ids": officer_fragment_ids},
+            )
+            assert reviewed.status_code == 200, reviewed.text
+            assert reviewed.json()["confirmedCount"] == len(officer_fragment_ids)
+
             finished = _payload(
                 client.post(
                     f"/api/v1/cases/{case_id}/session/finish",
@@ -229,7 +266,7 @@ def test_template_interrogation_release_lifecycle_preserves_raw_and_formal_recor
                     json={
                         "signerRole": "SUSPECT",
                         "signerName": "测试对象",
-                        "imageDataUrl": "data:image/png;base64,U1VTUEVDVA==",
+                        "imageDataUrl": _TEST_SIGNATURE,
                         "strokesJson": "[]",
                         "actorId": "officer-e2e",
                     },
@@ -244,7 +281,7 @@ def test_template_interrogation_release_lifecycle_preserves_raw_and_formal_recor
                     json={
                         "signerRole": "OFFICER",
                         "signerName": "测试警官",
-                        "imageDataUrl": "data:image/png;base64,T0ZGSUNFUg==",
+                        "imageDataUrl": _TEST_SIGNATURE,
                         "strokesJson": "[]",
                         "actorId": "officer-e2e",
                     },
