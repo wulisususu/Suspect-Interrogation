@@ -65,6 +65,11 @@ async def _stream_browser_pcm(
 
     await websocket.accept()
     logger.info("browser asr ws %s accepted", capture_id)
+    # The browser drains its durable outbox and then declares a clean stop before
+    # closing the socket. Without this flag an ordinary stop looks identical to a
+    # dropped connection, and every clean capture would be persisted as INCOMPLETE
+    # (which blocks record finalization later).
+    client_finalized = False
     try:
         while True:
             message = await websocket.receive()
@@ -100,6 +105,17 @@ async def _stream_browser_pcm(
                     await websocket.send_json({"type": "capture_incomplete_ack", "captureId": capture_id})
                     await _close(websocket, capture_id, 4410, "browser reported incomplete audio capture")
                     return
+                if control.get("type") == "capture_finalize" and incomplete_sink is not None:
+                    if accepts_pcm is not None and not accepts_pcm():
+                        await _close(websocket, capture_id, 4409, "capture session is no longer active")
+                        return
+                    client_finalized = True
+                    logger.info("browser asr ws %s declared a clean stop", capture_id)
+                    try:
+                        await websocket.send_json({"type": "capture_finalize_ack", "captureId": capture_id})
+                    except Exception:  # noqa: BLE001 - the client may close immediately after sending
+                        logger.info("browser asr ws %s closed before the finalize ack", capture_id)
+                    continue
                 if control.get("type") == "capture_recovery_complete" and recovery_complete_sink is not None:
                     try:
                         next_sequence = control.get("nextSequence")
@@ -192,7 +208,13 @@ async def _stream_browser_pcm(
                 await _close(websocket, capture_id, 1008, f"speech worker rejected audio: {exc}")
                 return
     except WebSocketDisconnect:
-        if frame_ingress is not None and incomplete_sink is not None and accepts_pcm is not None and accepts_pcm():
+        if (
+            not client_finalized
+            and frame_ingress is not None
+            and incomplete_sink is not None
+            and accepts_pcm is not None
+            and accepts_pcm()
+        ):
             try:
                 await asyncio.to_thread(incomplete_sink, "browser audio connection disconnected")
             except Exception:

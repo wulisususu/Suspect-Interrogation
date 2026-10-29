@@ -495,3 +495,16 @@ describe('cross-tab formal browser capture lease', () => {
     expect(lockHeld).toBe(false)
   })
 })
+
+describe('clean stop handshake', () => {
+  it('declares a clean stop before closing the formal socket', async () => {
+    const source = (await import('./browserAsrCapture.ts?raw')).default
+    const finalizeAt = source.indexOf("type: 'capture_finalize'")
+    const closeAt = source.indexOf("this.socket.close(1000, 'capture stopped')")
+    expect(finalizeAt).toBeGreaterThan(-1)
+    expect(closeAt).toBeGreaterThan(-1)
+    // 必须先声明干净停止再关闭：否则后端只能按断线处理，采集会被记为 INCOMPLETE。
+    expect(finalizeAt).toBeLessThan(closeAt)
+    expect(source).toContain("this.kind === 'FORMAL'")
+  })
+})

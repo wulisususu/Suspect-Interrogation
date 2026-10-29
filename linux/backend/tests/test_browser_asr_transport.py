@@ -406,3 +406,80 @@ def test_ordinary_browser_disconnect_marks_active_capture_incomplete():
     assert app.state.asr_capture_service.incomplete == [
         ('CASE-A', 'CAPTURE-A', 'browser audio connection disconnected')
     ]
+
+
+def test_formal_browser_socket_does_not_mark_a_declared_clean_stop_incomplete():
+    """A drained outbox plus an explicit clean stop must leave the capture completable."""
+    pcm = b"\x01\x00" * 160
+    frame = struct.pack("<IQ", 1, 0) + pcm
+
+    app, _browser_input = make_app({
+        "CASE-A": {"active": True, "captureSessionId": "CAPTURE-A", "source": "BROWSER"},
+    })
+
+    class FakeWebSocket:
+        def __init__(self):
+            self.app = app
+            self.messages = [
+                {"type": "websocket.receive", "bytes": frame},
+                {"type": "websocket.receive", "text": '{"type": "capture_finalize"}'},
+                {"type": "websocket.disconnect"},
+            ]
+            self.sent_json = []
+            self.closed = []
+
+        async def accept(self):
+            pass
+
+        async def receive(self):
+            return self.messages.pop(0)
+
+        async def send_json(self, payload):
+            self.sent_json.append(payload)
+
+        async def close(self, code, reason=None):
+            self.closed.append((code, reason))
+
+    socket = FakeWebSocket()
+    asyncio.run(router.routes[0].endpoint(socket, "CASE-A", "CAPTURE-A"))
+
+    service = app.state.asr_capture_service
+    assert service.frames == [("CASE-A", "CAPTURE-A", 1, 0, pcm)]
+    assert service.incomplete == []
+    assert socket.sent_json[-1] == {"type": "capture_finalize_ack", "captureId": "CAPTURE-A"}
+    assert socket.closed == []
+
+
+def test_formal_browser_socket_still_marks_a_silent_disconnect_incomplete():
+    pcm = b"\x01\x00" * 160
+    frame = struct.pack("<IQ", 1, 0) + pcm
+
+    app, _browser_input = make_app({
+        "CASE-A": {"active": True, "captureSessionId": "CAPTURE-A", "source": "BROWSER"},
+    })
+
+    class FakeWebSocket:
+        def __init__(self):
+            self.app = app
+            self.messages = [
+                {"type": "websocket.receive", "bytes": frame},
+                {"type": "websocket.disconnect"},
+            ]
+            self.sent_json = []
+
+        async def accept(self):
+            pass
+
+        async def receive(self):
+            return self.messages.pop(0)
+
+        async def send_json(self, payload):
+            self.sent_json.append(payload)
+
+        async def close(self, code, reason=None):
+            pass
+
+    asyncio.run(router.routes[0].endpoint(FakeWebSocket(), "CASE-A", "CAPTURE-A"))
+    assert app.state.asr_capture_service.incomplete == [
+        ("CASE-A", "CAPTURE-A", "browser audio connection disconnected")
+    ]

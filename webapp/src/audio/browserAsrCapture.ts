@@ -1027,7 +1027,21 @@ class BrowserPcmStreamer {
       this.stopped = true
       if (this.reconnectTimer !== undefined) window.clearTimeout(this.reconnectTimer)
       this.reconnectTimer = undefined
-      if (this.socket && this.socket.readyState < WebSocket.CLOSING) this.socket.close(1000, 'capture stopped')
+      if (this.socket && this.socket.readyState < WebSocket.CLOSING) {
+        // Declare a clean stop before closing: the backend cannot tell an ordinary
+        // stop from a dropped connection once the socket is gone, and would persist
+        // the capture as INCOMPLETE, blocking record finalization. Frames and the
+        // control message are ordered on the same connection, so the server sees
+        // this before the disconnect. Skipped when the outbox could not be drained.
+        if (this.kind === 'FORMAL' && !this.failed) {
+          try {
+            this.socket.send(JSON.stringify({ type: 'capture_finalize' }))
+          } catch {
+            // The server still completes the capture through the stop request.
+          }
+        }
+        this.socket.close(1000, 'capture stopped')
+      }
       this.stream = null
       this.context = null
       this.source = null
