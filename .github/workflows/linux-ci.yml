@@ -168,45 +168,23 @@ jobs:
             -H 'Content-Type: application/json' \
             -d "{\"case_id\":\"${CASE_ID}\",\"actor_id\":\"李警官\"}" >/dev/null
 
-          # Visual QA is not a biometric-quality test. Explicitly seed the
-          # mandatory prerequisite in this isolated temporary SQLite database;
-          # production session-start behavior remains fail-closed.
-          CASE_ID="$CASE_ID" python - <<'PY'
-          import os
-          import struct
-
-          from app.database.session import make_engine, make_session_factory
-          from app.repositories import voiceprints as voiceprint_repo
-
-          engine = make_engine(f"sqlite:///{os.environ['SUSPECT_DB_PATH']}")
-          session_factory = make_session_factory(engine)
-          with session_factory() as db:
-              voiceprint_repo.enroll_suspect(
-                  db,
-                  case_id=os.environ["CASE_ID"],
-                  embedding=struct.pack("<4f", 1.0, 0.0, 0.0, 0.0),
-                  embedding_dim=4,
-                  model_id="visual-qa-xvector",
-                  model_version="ci-fixture",
-                  enrollment_quality="CI_FIXTURE",
-                  usable_duration_ms=20_000,
-              )
-              db.commit()
-          engine.dispose()
-          PY
-
-          curl -fsS -X POST "http://127.0.0.1:8080/api/v1/cases/${CASE_ID}/questions" \
+          QUESTION_RESPONSE=$(curl -fsS -X POST "http://127.0.0.1:8080/api/v1/cases/${CASE_ID}/questions" \
             -H 'Content-Type: application/json' \
-            -d '{"text":"你什么时候到现场？","source":"CASE","regexPatterns":["什么时候.*现场"]}' >/dev/null
+            -d '{"text":"你什么时候到现场？","source":"CASE","elementKey":"time","regexPatterns":["什么时候.*现场"]}')
+          QUESTION_ID=$(printf '%s' "$QUESTION_RESPONSE" | python -c 'import json,sys; print(json.load(sys.stdin)["data"]["id"])')
+          curl -fsS -X PUT "http://127.0.0.1:8080/api/v1/cases/${CASE_ID}/questions/${QUESTION_ID}/answer" \
+            -H 'Content-Type: application/json' -d '{"answerText":"晚上八点左右。"}' >/dev/null
           SESSION_RESPONSE=$(curl -fsS -X POST "http://127.0.0.1:8080/api/v1/cases/${CASE_ID}/session/start" \
             -H 'Content-Type: application/json' -d '{}')
           SESSION_ID=$(printf '%s' "$SESSION_RESPONSE" | python -c 'import json,sys; p=json.load(sys.stdin); d=p.get("data",p); print(d["id"])')
 
-          FRAGMENT_IDS=$(CASE_ID="$CASE_ID" SESSION_ID="$SESSION_ID" python - <<'PY'
+          # Use the current dictation/review contracts, without biometric fixtures.
+          CASE_ID="$CASE_ID" SESSION_ID="$SESSION_ID" python - <<'PY'
           import os
 
           from app.database.session import make_engine, make_session_factory
           from app.repositories import asr_fragments as asr_repo
+          from app.repositories import qa_units as qa_repo
 
           engine = make_engine(f"sqlite:///{os.environ['SUSPECT_DB_PATH']}")
           session_factory = make_session_factory(engine)
@@ -235,22 +213,27 @@ jobs:
                       raw_text=text,
                       speaker=speaker,
                       speaker_source="MANUAL",
-                      voiceprint_verified=True,
+                      voiceprint_verified=False,
                       low_confidence=False,
                       model_id="visual-qa-asr",
                       model_version="ci-fixture",
                   )
                   db.flush()
                   fragment_ids.append(fragment.id)
+              unit = qa_repo.create_open(db, case_id=os.environ["CASE_ID"], session_id=os.environ["SESSION_ID"], started_at=capture.started_at)
+              qa_repo.refresh_text(db, unit, raw_question_text="你把钥匙放到哪里去了？", raw_answer_text="我放在门口鞋柜里了。")
+              qa_repo.save_decision(db, unit, classification="NEEDS_REVIEW", target_question_id=None,
+                                   formal_question_text=None, formal_answer_text=None, confidence=None,
+                                   model_id="visual-qa-fixture", reason_code="NO_TEMPLATE_MATCH", status="NEEDS_REVIEW")
+              qa_repo.append_fragment(db, unit, fragment_id=fragment_ids[2], role="QUESTION", position=1)
+              qa_repo.append_fragment(db, unit, fragment_id=fragment_ids[3], role="ANSWER", position=2)
+              capture.status = "STOPPED"
+              capture.recording_status = "COMPLETE"
+              capture.asr_status = "COMPLETE"
               db.commit()
           engine.dispose()
-          print(" ".join(fragment_ids))
+          print("visual_qa_fixture=ready raw_fragments=4 pending_qa_units=1")
           PY
-          )
-          for FRAGMENT_ID in $FRAGMENT_IDS; do
-            curl -fsS -X POST "http://127.0.0.1:8080/api/v1/cases/${CASE_ID}/speech-fragments/${FRAGMENT_ID}/process" \
-              -H 'Content-Type: application/json' -d '{}' >/dev/null
-          done
 
           KIOSK_URL=http://127.0.0.1:5173 KIOSK_CASE_ID="$CASE_ID" node scripts/ci/capture-kiosk-screenshots.mjs
           curl -L --fail --retry 3 --connect-timeout 15 \

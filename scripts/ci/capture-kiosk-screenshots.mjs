@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 
 const baseUrl = process.env.KIOSK_URL || 'http://127.0.0.1:5173'
@@ -15,7 +17,6 @@ const visualFixture = {
   rawOfficerUnmatched: '你把钥匙放到哪里去了？',
   rawSuspectMatched: '晚上八点左右。',
   rawSuspectUnmatched: '我放在门口鞋柜里了。',
-  pendingTitle: '未匹配正式笔录问题',
 }
 
 if (!caseId) {
@@ -124,19 +125,23 @@ async function evaluate(client, expression) {
   return result.result?.value
 }
 
-async function inspectVisualFixture(client) {
+async function inspectVisualFixture(client, phase) {
   return evaluate(client, `(() => {
     const fixture = ${JSON.stringify(visualFixture)}
-    const questionValues = Array.from(document.querySelectorAll('.body-question .editable-question textarea'))
-      .map((item) => item.value || '')
-    const answerValues = Array.from(document.querySelectorAll('.body-question .record-answer textarea'))
-      .map((item) => item.value || '')
-    const rawTurns = Array.from(document.querySelectorAll('.dialogue-bubble'))
+    const phase = ${JSON.stringify(phase)}
+    const questionValues = Array.from(document.querySelectorAll('.record-preview .record-preview-q'))
       .map((item) => item.textContent || '')
-    const pendingTexts = Array.from(document.querySelectorAll('.pending-resolution-card'))
+    const answerValues = Array.from(document.querySelectorAll('.record-preview .record-preview-a'))
+      .map((item) => item.textContent || '')
+    const draftAnswers = Array.from(document.querySelectorAll('.draft-card .draft-answer'))
+      .map((item) => item.value || '')
+    const rawTurns = Array.from(document.querySelectorAll('.record-review-panel .fragment-text'))
+      .map((item) => item.textContent || '')
+    const pendingTexts = Array.from(document.querySelectorAll('.review-qa-units article'))
       .map((item) => item.textContent || '')
     const questionVisible = questionValues.some((value) => value.includes(fixture.formalQuestion))
     const answerVisible = answerValues.some((value) => value.includes(fixture.formalAnswer))
+    const draftAnswerVisible = draftAnswers.some((value) => value.includes(fixture.formalAnswer))
     const rawText = rawTurns.join('\\n')
     const rawVisible = [
       fixture.rawOfficerMatched,
@@ -144,17 +149,23 @@ async function inspectVisualFixture(client) {
       fixture.rawSuspectMatched,
       fixture.rawSuspectUnmatched,
     ].every((text) => rawText.includes(text))
-    const pendingCard = pendingTexts.some((text) => text.includes(fixture.pendingTitle)
-      && text.includes('加入本案笔录')
-      && text.includes('忽略'))
+    const pendingCard = pendingTexts.some((text) => text.includes(fixture.rawOfficerUnmatched)
+      && text.includes(fixture.rawSuspectUnmatched)
+      && text.includes('新增为现场问答')
+      && text.includes('忽略此组问答'))
     return {
-      complete: questionVisible && answerVisible && rawVisible && pendingCard,
+      complete: phase === 'dictation'
+        ? questionVisible && answerVisible && draftAnswerVisible
+        : rawVisible && pendingCard,
+      phase,
       questionVisible,
       answerVisible,
+      draftAnswerVisible,
       rawVisible,
       pendingCard,
       questionValues,
       answerValues,
+      draftAnswers,
       rawTurns,
       pendingTexts,
       bodyQuestionCount: questionValues.length,
@@ -181,7 +192,7 @@ async function waitForSelector(client, selector, timeoutMs = 30_000) {
       bodyText: (document.body?.innerText || '').slice(0, 4000),
       maintenance: Boolean(document.querySelector('.maintenance-shell')),
       caseRoot: Boolean(document.querySelector('.case-root-shell')),
-      caseList: Boolean(document.querySelector('.case-list-page')),
+      caseList: Boolean(document.querySelector('.case-ledger')),
       resources: performance.getEntriesByType('resource').map((entry) => entry.name).slice(-40),
     }))()`)
     console.error(`selector-timeout-diagnostic=${JSON.stringify(diagnostic)}`)
@@ -199,6 +210,29 @@ async function clickButtonContaining(client, text) {
   })()`
   const clicked = await waitFor(() => evaluate(client, expression), `button containing ${text}`)
   if (!clicked) throw new Error(`Could not click button containing ${text}`)
+}
+
+async function clickSelector(client, selector) {
+  await waitFor(() => evaluate(client, `(() => {
+    const target = document.querySelector(${JSON.stringify(selector)})
+    if (!target || target.disabled || target.getAttribute('aria-disabled') === 'true') return false
+    target.click()
+    return true
+  })()`), `enabled ${selector}`)
+}
+
+async function requireVisualFixture(client, phase) {
+  try {
+    const snapshot = await waitFor(async () => {
+      const snapshot = await inspectVisualFixture(client, phase)
+      return snapshot.complete ? snapshot : null
+    }, `populated ${phase} fixture`)
+    console.log(`kiosk-fixture-ready=${JSON.stringify(snapshot)}`)
+  } catch (error) {
+    console.error(`kiosk-fixture-timeout-diagnostic=${JSON.stringify(await inspectVisualFixture(client, phase))}`)
+    console.error(`browser-events-snapshot=${JSON.stringify(client.events.slice(-20))}`)
+    throw error
+  }
 }
 
 async function navigate(client, url, selector) {
@@ -237,6 +271,8 @@ async function screenshot(client, name, width, height) {
 
 await mkdir(outputDir, { recursive: true })
 const chrome = resolveChrome()
+// Each run owns an isolated profile, including on machines with Chrome already open.
+const profileDir = await mkdtemp(join(tmpdir(), 'kiosk-visual-qa-'))
 console.log(`chrome=${chrome}`)
 
 const browser = spawn(chrome, [
@@ -247,6 +283,7 @@ const browser = spawn(chrome, [
   '--hide-scrollbars',
   '--force-device-scale-factor=1',
   '--window-size=1920,1080',
+  `--user-data-dir=${profileDir}`,
   `--remote-debugging-port=${debugPort}`,
   '--remote-debugging-address=127.0.0.1',
   'about:blank',
@@ -273,7 +310,16 @@ try {
   await navigate(client, `${baseUrl}/?view=login`, '.login-preview-page')
   await screenshot(client, 'login-preview', 1920, 1080)
 
-  await navigate(client, `${baseUrl}/`, '.case-list-page')
+  await clickButtonContaining(client, '取消')
+  await waitForSelector(client, '.kiosk-home')
+  await screenshot(client, 'kiosk-home', 1920, 1080)
+  await clickButtonContaining(client, '民警入口')
+  await waitForSelector(client, '.login-preview-page')
+  await clickButtonContaining(client, '进入管理面板（预览')
+  await waitForSelector(client, '.admin-panel')
+  await screenshot(client, 'admin-panel', 1920, 1080)
+  await clickSelector(client, 'button[aria-label="进入案件记录"]')
+  await waitForSelector(client, '.case-ledger')
   await screenshot(client, 'case-list', 1920, 1080)
 
   await clickButtonContaining(client, '新建询问')
@@ -282,30 +328,31 @@ try {
   await screenshot(client, 'identity-card', 1920, 1080)
 
   await navigate(client, `${baseUrl}/?caseId=${encodeURIComponent(caseId)}`, '.workspace')
-  await clickButtonContaining(client, '审讯记录')
+  await clickSelector(client, '.step-button[aria-label="问答录入"]')
   await waitForSelector(client, '.template-interrogation-grid')
-  await waitForSelector(client, '.formal-record-shell')
-  await waitForSelector(client, '.live-dialogue-panel')
+  await waitForSelector(client, '.draft-rail')
+  await waitForSelector(client, '.record-preview')
   await sleep(700)
-
-  let fixtureSnapshot
-  try {
-    fixtureSnapshot = await waitFor(async () => {
-      const snapshot = await inspectVisualFixture(client)
-      return snapshot.complete ? snapshot : null
-    }, 'populated formal template, raw ASR dialogue, and unmatched-question action card')
-  } catch (error) {
-    const diagnostic = await inspectVisualFixture(client)
-    console.error(`kiosk-fixture-timeout-diagnostic=${JSON.stringify(diagnostic)}`)
-    console.error(`browser-events-snapshot=${JSON.stringify(client.events.slice(-20))}`)
-    throw error
-  }
-  console.log(`kiosk-fixture-ready=${JSON.stringify(fixtureSnapshot)}`)
+  await requireVisualFixture(client, 'dictation')
+  await evaluate(client, `Array.from(document.querySelectorAll('.draft-card')).find((card) =>
+    card.textContent.includes(${JSON.stringify(visualFixture.formalQuestion)}))?.scrollIntoView({ block: 'center' })`)
   await screenshot(client, 'interrogation', 1920, 1080)
   await screenshot(client, 'interrogation', 1920, 900)
+  await clickSelector(client, '.step-button[aria-label="定稿校验"]')
+  await waitForSelector(client, '.review-layout')
+  await clickSelector(client, 'details.raw-transcript > summary')
+  await waitForSelector(client, '.record-review-panel')
+  await requireVisualFixture(client, 'review')
+  await evaluate(client, `document.querySelector('.record-review-panel')?.scrollIntoView({ block: 'start' })`)
+  await screenshot(client, 'review-fragments', 1920, 1080)
+  await setViewport(client, 1920, 900)
+  await evaluate(client, `document.querySelector('.review-qa-units article button:last-child')?.scrollIntoView({ block: 'end' })`)
+  await screenshot(client, 'review-pending-qa', 1920, 900)
 } finally {
   client?.close()
   browser.kill('SIGTERM')
   await sleep(300)
   if (!browser.killed) browser.kill('SIGKILL')
+  if (dirname(resolve(profileDir)) !== resolve(tmpdir())) throw new Error('Unexpected Chrome profile directory')
+  await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }
