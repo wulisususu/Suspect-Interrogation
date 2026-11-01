@@ -1,10 +1,11 @@
 import os
+import time
 
 from starlette.requests import HTTPConnection
 from starlette.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
-from app.auth.context import actor_context
+from app.auth.context import actor_context, session_revocation_epoch
 from app.domain.errors import DomainError
 from app.services.officer_service import OfficerService
 
@@ -32,9 +33,14 @@ class OfficerAuthMiddleware:
     required flag can fail closed before provisioning, never disable an existing
     administrator's protection.
     """
-    def __init__(self, app, *, session_factory, required: bool | None = None):
+    def __init__(self, app, *, session_factory, required: bool | None = None, recheck_interval: float = 5.0):
         self.app = app
         self.session_factory = session_factory
+        # Audio sockets carry many frames per second. Re-authenticating each one
+        # hit SQLite twice per frame; instead recheck periodically (expiry and
+        # out-of-process roster edits) and immediately after an in-process
+        # lock/logout/roster change bumps the revocation epoch.
+        self.recheck_interval = max(0.0, float(recheck_interval))
         self.required = (os.getenv('SUSPECT_AUTH_REQUIRED', '').strip().lower() in {'1', 'true', 'yes'}) if required is None else required
 
     async def __call__(self, scope, receive, send):
@@ -59,7 +65,7 @@ class OfficerAuthMiddleware:
                     '/api/v1/auth/session', '/api/v1/auth/unlock', '/api/v1/auth/logout',
                 }
                 if token and authenticate_token:
-                    actor = service.authenticate(token, allow_locked=not protected)
+                    actor = service.authenticate(token, allow_locked=not protected, renew=protected)
                 elif protected and enforce:
                     raise DomainError('AUTH_SESSION_REQUIRED', '请先验证民警身份', 401)
         except DomainError as exc:
@@ -72,7 +78,14 @@ class OfficerAuthMiddleware:
         reset = actor_context.set(actor)
         try:
             if scope['type'] == 'websocket' and protected:
+                last_check = {'at': time.monotonic(), 'epoch': session_revocation_epoch()}
+
                 async def recheck():
+                    epoch = session_revocation_epoch()
+                    now = time.monotonic()
+                    if epoch == last_check['epoch'] and now - last_check['at'] < self.recheck_interval:
+                        return
+                    last_check['at'], last_check['epoch'] = now, epoch
                     try:
                         with self.session_factory() as db:
                             service = OfficerService(db)

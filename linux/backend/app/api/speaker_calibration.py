@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.ai.speech.fingerprint import fingerprint_microphone
-from app.api.deps import get_db
+from app.api.deps import get_db, require_admin
 from app.api.responses import envelope
 from app.domain.errors import DomainError
 from app.services.speaker_calibration_service import (
@@ -137,7 +137,7 @@ def calibration_history(
     return envelope(_service(request, db, backend).history(limit=limit))
 
 
-@router.post("/recompute")
+@router.post("/recompute", dependencies=[Depends(require_admin)])
 def recompute_calibration(
     request: Request,
     body: RecomputeBody | None = None,

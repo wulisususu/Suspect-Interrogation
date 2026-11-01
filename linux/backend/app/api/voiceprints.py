@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.errors import AIError, ResourceBusyError
 from app.ai.speech.fingerprint import fingerprint_microphone
-from app.api.deps import get_db
+from app.api.deps import get_db, require_admin
 from app.api.responses import envelope
 from app.domain.errors import DomainError
 from app.services.officer_voiceprint_library import OfficerVoiceprintLibraryService
@@ -318,7 +318,7 @@ def stop_officer_enrollment(
     return envelope(result, "民警声纹样本已添加")
 
 
-@router.delete("/officer-voiceprints/{officer_id}/samples/{sample_id}")
+@router.delete("/officer-voiceprints/{officer_id}/samples/{sample_id}", dependencies=[Depends(require_admin)])
 def disable_officer_voiceprint_sample(
     officer_id: str,
     sample_id: str,
@@ -337,7 +337,7 @@ def disable_officer_voiceprint_sample(
     )
 
 
-@router.delete("/officer-voiceprints/{officer_id}")
+@router.delete("/officer-voiceprints/{officer_id}", dependencies=[Depends(require_admin)])
 def revoke_officer_voiceprint(
     officer_id: str,
     request: Request,

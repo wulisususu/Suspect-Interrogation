@@ -100,7 +100,6 @@ def test_template_interrogation_release_lifecycle_preserves_raw_and_formal_recor
 
             ordinal = 0
             fragment_ids: list[str] = []
-            officer_fragment_ids: list[str] = []
 
             def fragment(speaker: str, text: str) -> str:
                 nonlocal ordinal
@@ -123,8 +122,6 @@ def test_template_interrogation_release_lifecycle_preserves_raw_and_formal_recor
                     )
                     db.commit()
                     fragment_ids.append(row.id)
-                    if speaker == "INTERROGATOR":
-                        officer_fragment_ids.append(row.id)
                     return row.id
 
             def process(fragment_id: str):
@@ -146,7 +143,8 @@ def test_template_interrogation_release_lifecycle_preserves_raw_and_formal_recor
             assert second_answer["round"]["id"] == first_round_id
             assert second_answer["round"]["answerText"] == "晚上八点左右。 我从北门进去的。"
 
-            continue_turn = process(fragment("INTERROGATOR", "继续说。"))
+            continue_officer = fragment("INTERROGATOR", "继续说。")
+            continue_turn = process(continue_officer)
             assert continue_turn == {"status": "RAW_ONLY"}
             workspace_after_continue = _payload(
                 client.get(f"/api/v1/cases/{case_id}/template-workspace")
@@ -236,12 +234,23 @@ def test_template_interrogation_release_lifecycle_preserves_raw_and_formal_recor
                 assert capture.recording_status == "COMPLETE"
                 assert capture.asr_status == "COMPLETE"
 
+            # Officer questions that already back a formal round are evidence, not
+            # loose transcript: they need no manual confirmation before freezing,
+            # and confirming them would duplicate the record as legacy messages.
             reviewed = client.post(
                 f"/api/v1/cases/{case_id}/asr/fragments/confirm",
-                json={"fragment_ids": officer_fragment_ids},
+                json={"fragment_ids": [first_officer]},
+            )
+            assert reviewed.status_code == 409, reviewed.text
+            assert reviewed.json()["code"] == "ASR_FRAGMENT_IN_FORMAL_RECORD"
+            # The loose "继续说" control prompt backs no round, so it still needs an
+            # explicit disposition like any other unattached transcript.
+            reviewed = client.post(
+                f"/api/v1/cases/{case_id}/asr/fragments/confirm",
+                json={"fragment_ids": [continue_officer]},
             )
             assert reviewed.status_code == 200, reviewed.text
-            assert reviewed.json()["confirmedCount"] == len(officer_fragment_ids)
+            assert reviewed.json()["confirmedCount"] == 1
 
             finished = _payload(
                 client.post(

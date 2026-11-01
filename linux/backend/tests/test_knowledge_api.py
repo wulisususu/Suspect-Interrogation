@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.hardware_gateway.mock import MockHardwareGateway
 from app.main import create_app
+from app.runtime_settings import RuntimeSettings
 
 
 VAULT_NOTE = '''---
@@ -42,19 +43,20 @@ def payload(response):
 
 def client(tmp_path):
     app = create_app(database_url=f"sqlite:///{tmp_path / 'knowledge-api.db'}",
-                     hardware_gateway=MockHardwareGateway(simulated=True))
+                     hardware_gateway=MockHardwareGateway(simulated=True),
+                     runtime_settings=RuntimeSettings(knowledge_vault_dir=tmp_path / 'vault'))
     return TestClient(app)
 
 
 def test_import_dry_run_apply_and_query_surfaces(tmp_path):
     root = build_vault(tmp_path)
     with client(tmp_path) as http:
-        dry = payload(http.post('/api/v1/knowledge/import', json={'root': str(root), 'dryRun': True}))
+        dry = payload(http.post('/api/v1/knowledge/import', json={'dryRun': True}))
         assert dry['dryRun'] is True
         assert len(dry['added']) == 1
         assert payload(http.get('/api/v1/knowledge/entries')) == []
 
-        applied = payload(http.post('/api/v1/knowledge/import', json={'root': str(root), 'dryRun': False}))
+        applied = payload(http.post('/api/v1/knowledge/import', json={'dryRun': False}))
         assert applied['runId']
         entries = payload(http.get('/api/v1/knowledge/entries'))
         assert len(entries) == 1
@@ -80,7 +82,7 @@ def test_import_dry_run_apply_and_query_surfaces(tmp_path):
 def test_term_corrections_crud_and_lookup(tmp_path):
     root = build_vault(tmp_path)
     with client(tmp_path) as http:
-        payload(http.post('/api/v1/knowledge/import', json={'root': str(root), 'dryRun': False}))
+        payload(http.post('/api/v1/knowledge/import', json={'dryRun': False}))
         items = payload(http.get('/api/v1/knowledge/term-corrections'))
         assert [(item['wrong'], item['right']) for item in items] == [('死老虎派出所', '紫琅湖派出所')]
 
@@ -124,3 +126,19 @@ def test_entry_crud_requires_known_fields_and_keeps_versions(tmp_path):
         deleted = payload(http.delete(f"/api/v1/knowledge/entries/{created['id']}"))
         assert deleted['deleted'] is True
         assert payload(http.get('/api/v1/knowledge/entries')) == []
+
+
+def test_import_rejects_client_chosen_root_and_symlinked_notes(tmp_path):
+    root = build_vault(tmp_path)
+    outside = tmp_path / 'outside'
+    (outside / 'secret').mkdir(parents=True)
+    (outside / 'secret' / 'leak.md').write_text(VAULT_NOTE.replace('faq-station', 'faq-leak'), encoding='utf-8')
+    (root / 'dict' / 'faq' / 'leak.md').symlink_to(outside / 'secret' / 'leak.md')
+    with client(tmp_path) as http:
+        rejected = http.post('/api/v1/knowledge/import', json={'root': str(outside), 'dryRun': True})
+        assert rejected.status_code == 400
+        assert rejected.json()['code'] == 'KNOWLEDGE_IMPORT_ROOT_FIXED'
+
+        report = payload(http.post('/api/v1/knowledge/import', json={'dryRun': True}))
+        assert len(report['added']) == 1
+        assert [item['path'] for item in report['rejected']] == ['dict/faq/leak.md']

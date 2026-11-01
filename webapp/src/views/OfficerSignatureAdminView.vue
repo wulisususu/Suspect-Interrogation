@@ -208,7 +208,7 @@ onMounted(boot)
             <tbody>
               <tr v-for="item in signatures" :key="item.id">
                 <td>v{{ item.version }}</td>
-                <td><img :src="item.imageData" alt="预录入签名" class="signature-thumb" /></td>
+                <td><img v-if="item.imageData" :src="item.imageData" alt="预录入签名" class="signature-thumb" /><span v-else class="page-note-inline">仅本人可见</span></td>
                 <td>{{ fmt(item.createdAt) }}</td>
                 <td><span class="badge" :class="item.enabled ? 'ok' : 'warn'">{{ item.enabled ? '可调用' : '已停用' }}</span></td>
                 <td>

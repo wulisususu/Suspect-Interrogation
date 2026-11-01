@@ -7,6 +7,7 @@
  */
 import { onMounted, ref } from 'vue'
 import { fetchAuthSession, loginOfficer } from '../api/officers'
+import { backendErrorMessage } from '../api/interrogation'
 
 const emit = defineEmits<{ back: []; authenticated: [] }>()
 
@@ -40,7 +41,7 @@ async function submitLogin() {
     password.value = ''
     emit('authenticated')
   } catch (err) {
-    feedback.value = err instanceof Error ? err.message : '身份验证失败'
+    feedback.value = backendErrorMessage(err) || '身份验证失败'
   } finally {
     password.value = ''
     busy.value = false

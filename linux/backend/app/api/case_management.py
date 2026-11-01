@@ -1,10 +1,10 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_db, require_admin
 from app.api.responses import envelope
 from app.api.schemas import FormalRequest
 from app.services.case_management_service import CaseManagementService
@@ -52,20 +52,40 @@ def get_case_management(case_id: str, db: Session = Depends(get_db)):
     return envelope(CaseManagementService(db).case_fields(case_id))
 
 
+def _require_case_officer_or_admin(request: Request, db: Session, case_id: str) -> None:
+    """Voiding ends a record for good: only its own interrogator/recorder or an administrator may do it."""
+    from app.auth.context import current_actor
+    from app.database.officer_models import CaseOfficerBinding
+    from app.domain.errors import DomainError
+
+    actor = current_actor()
+    if actor is None or actor.is_admin:
+        require_admin(request)
+        return
+    binding = db.get(CaseOfficerBinding, case_id)
+    if binding is None or actor.badge_number not in {binding.interrogator_badge_number, binding.recorder_badge_number}:
+        raise DomainError("CASE_VOID_FORBIDDEN", "仅本案询问人、记录员或管理员可以作废笔录", 403)
+
+
 @router.post("/cases/{case_id}/void")
-def void_case(case_id: str, body: VoidRequest, db: Session = Depends(get_db)):
+def void_case(case_id: str, body: VoidRequest, request: Request, db: Session = Depends(get_db)):
+    _require_case_officer_or_admin(request, db, case_id)
     result = CaseManagementService(db).void(case_id, reason=body.reason, actor_id=_actor_id())
     db.commit()
     return envelope(result, "笔录已作废，原记录保留")
 
 
 @router.get("/audit-logs")
-def query_audit(keyword: str | None = None, created_from: datetime | None = Query(None, alias="createdFrom"),
+def query_audit(request: Request, keyword: str | None = None, created_from: datetime | None = Query(None, alias="createdFrom"),
                 created_to: datetime | None = Query(None, alias="createdTo"), action: str | None = None,
                 actor_id: str | None = Query(None, alias="actorId"), result: str | None = None,
                 category: str | None = None, case_id: str | None = Query(None, alias="caseId"),
                 page: int = Query(1, ge=1), page_size: int = Query(50, alias="pageSize", ge=1, le=200),
                 db: Session = Depends(get_db)):
+    # Cross-case audit is roster-level oversight; a single case's trail stays
+    # readable to any officer, matching /cases/{case_id}/audit.
+    if not case_id:
+        require_admin(request)
     return envelope(CaseManagementService(db).query_audit(keyword=keyword, created_from=created_from,
         created_to=created_to, action=action, actor_id=actor_id, result=result, category=category,
         case_id=case_id, page=page, page_size=page_size))

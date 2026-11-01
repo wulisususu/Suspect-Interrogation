@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.api.responses import envelope
-from app.auth.context import current_actor, current_actor_id
+from app.auth.context import bump_session_revocation, current_actor, current_actor_id
 from app.auth.middleware import SESSION_COOKIE, request_token
 from app.domain.errors import DomainError
-from app.services.officer_service import OfficerService, SESSION_HOURS
+from app.services.officer_service import OfficerService, SESSION_MAX_HOURS
 
 
 router = APIRouter(tags=['officers'])
@@ -89,7 +89,7 @@ def session_status(request: Request, db: Session = Depends(get_db)):
 def login(body: LoginBody, request: Request, response: Response, db: Session = Depends(get_db)):
     result = OfficerService(db).login(body.badge_number, body.password)
     db.commit()
-    response.set_cookie(SESSION_COOKIE, result.pop('token'), max_age=SESSION_HOURS*3600, httponly=True,
+    response.set_cookie(SESSION_COOKIE, result.pop('token'), max_age=SESSION_MAX_HOURS*3600, httponly=True,
                         secure=request.url.scheme == 'https', samesite='strict', path='/')
     return envelope(result, '民警身份已验证')
 
@@ -99,6 +99,7 @@ def lock(request: Request, db: Session = Depends(get_db)):
     _actor()
     result = OfficerService(db).lock(request_token(request))
     db.commit()
+    bump_session_revocation()
     return envelope(result, '面板已锁定')
 
 
@@ -113,6 +114,7 @@ def unlock(request: Request, body: UnlockBody | None = None, db: Session = Depen
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     OfficerService(db).logout(request_token(request))
     db.commit()
+    bump_session_revocation()
     response.delete_cookie(SESSION_COOKIE, path='/')
     return envelope(None, '已退出验证')
 
@@ -136,6 +138,7 @@ def update_officer(badge_number: str, body: OfficerUpdateBody, db: Session = Dep
     _admin()
     result = OfficerService(db).update_officer(badge_number, **body.model_dump(exclude_unset=True))
     db.commit()
+    bump_session_revocation()
     return envelope(result, '民警名录已更新')
 
 
@@ -154,8 +157,8 @@ def bind_case_officers(case_id: str, body: CaseOfficersBody, db: Session = Depen
 
 @router.get('/officers/{badge_number}/signatures')
 def signatures(badge_number: str, db: Session = Depends(get_db)):
-    _actor()
-    return envelope(OfficerService(db).list_signatures(badge_number))
+    actor = _actor()
+    return envelope(OfficerService(db).list_signatures(badge_number, include_images=actor.badge_number == badge_number))
 
 
 @router.post('/officers/{badge_number}/signatures')

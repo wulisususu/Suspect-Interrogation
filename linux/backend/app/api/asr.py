@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.database.session import begin_sqlite_immediate
-from app.database.models import ASRCaptureSession, ASRFragment, ASRFragmentLineage, ProcessedSpeechFragment
+from app.database.models import ASRCaptureSession, ASRFragment, ASRFragmentLineage, ProcessedSpeechFragment, QAUnit, QAUnitFragment, QuestionRound
 from app.domain.errors import DomainError
 from app.repositories import asr_fragments as asr_repo
 from app.services.serializers import iso_utc
@@ -67,6 +68,26 @@ def _assert_unclaimed_for_legacy_action(db: Session, fragment_id: str) -> None:
     claim = asr_repo.get_processed(db, fragment_id)
     if claim is not None and claim.action in {"QUESTION_ANSWER", "LIVE_QUESTION"}:
         raise DomainError("ASR_FRAGMENT_ALREADY_PROCESSED", "片段已归属题目，请在对应题目内办理", 409)
+
+
+def _assert_not_formal_round_evidence(db: Session, fragment_id: str) -> None:
+    """A fragment already backing a formal round must neither be discarded nor duplicated as a legacy message."""
+    if _is_formal_round_evidence(db, fragment_id):
+        raise DomainError("ASR_FRAGMENT_IN_FORMAL_RECORD", "片段已作为正式问答的证据，无需确认或丢弃；如需撤销请回退本次匹配", 409)
+
+
+def _is_formal_round_evidence(db: Session, fragment_id: str) -> bool:
+    in_round = db.scalar(select(QuestionRound.id).where(
+        QuestionRound.status != "DETACHED",
+        or_(
+            QuestionRound.officer_fragment_id == fragment_id,
+            QuestionRound.answer_fragment_ids_json.contains(json.dumps(fragment_id), autoescape=True),
+        ),
+    ).limit(1))
+    in_unit = db.scalar(select(QAUnit.id).join(QAUnitFragment, QAUnitFragment.qa_unit_id == QAUnit.id).where(
+        QAUnitFragment.fragment_id == fragment_id, QAUnit.status == "APPLIED",
+    ).limit(1))
+    return bool(in_round or in_unit)
 
 
 def _fragment_payload(
@@ -361,6 +382,7 @@ def _confirm_one(db: Session, *, case_id: str, fragment_id: str, actor_id: str |
         raise DomainError("ASR_FRAGMENT_SUPERSEDED", "已被替换的 ASR 片段不能确认", 409)
     if fragment.state == "CONFIRMED":
         return fragment, False
+    _assert_not_formal_round_evidence(db, fragment.id)
     official_speaker = _official_message_speaker(fragment.speaker)
     message = MessageService(db).create(case_id, text=fragment.edited_text, speaker=official_speaker, actor_id=actor_id, commit=False)
     row = asr_repo.confirm_fragment(db, fragment_id=fragment.id, message_id=message["id"])
@@ -409,7 +431,11 @@ def apply_fragments(case_id: str, body: FragmentBatchRequest, db: Session = Depe
             ProcessedSpeechFragment.fragment_id == ASRFragment.id,
             ProcessedSpeechFragment.action.in_(("QUESTION_ANSWER", "LIVE_QUESTION")),
         ).exists()
-        fragment_ids = list(db.scalars(select(ASRFragment.id).where(ASRFragment.case_id == case_id, ASRFragment.state.in_(["PENDING", "EDITED"]), ~consumed).order_by(ASRFragment.created_at.asc(), ASRFragment.ordinal.asc())))
+        fragment_ids = [
+            fragment_id
+            for fragment_id in db.scalars(select(ASRFragment.id).where(ASRFragment.case_id == case_id, ASRFragment.state.in_(["PENDING", "EDITED"]), ~consumed).order_by(ASRFragment.created_at.asc(), ASRFragment.ordinal.asc()))
+            if not _is_formal_round_evidence(db, fragment_id)
+        ]
     return _confirm_batch(db, case_id=case_id, fragment_ids=fragment_ids, actor_id=body.actor_id)
 
 
@@ -418,6 +444,7 @@ def discard_fragment(case_id: str, fragment_id: str, db: Session = Depends(get_d
     fragment = _fragment_for_case(db, case_id, fragment_id)
     assert_formal_record_mutable(db, case_id)
     _assert_unclaimed_for_legacy_action(db, fragment.id)
+    _assert_not_formal_round_evidence(db, fragment.id)
     if fragment.state == "SUPERSEDED":
         raise DomainError("ASR_FRAGMENT_SUPERSEDED", "已被替换的 ASR 片段不能丢弃", 409)
     if fragment.state == "CONFIRMED":

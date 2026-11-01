@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 import json
 
-from app.database.models import ASRCaptureSession, ASRFragment, QAUnit, QuestionRound, ProcessedSpeechFragment
+from app.database.models import ASRCaptureSession, ASRFragment, QAUnit, QAUnitFragment, QuestionRound, ProcessedSpeechFragment
 from app.database.session import begin_sqlite_immediate
 from app.domain.enums import WorkflowState
 from app.domain.errors import DomainError
@@ -137,13 +137,22 @@ class DocumentFinalizationService:
                     ProcessedSpeechFragment.case_id == case_id,
                     ProcessedSpeechFragment.action == "LIVE_QUESTION",
                 )))
-                for raw in self.db.scalars(
-                    select(QuestionRound.answer_fragment_ids_json).where(
+                for officer_fragment_id, raw in self.db.execute(
+                    select(QuestionRound.officer_fragment_id, QuestionRound.answer_fragment_ids_json).where(
                         QuestionRound.case_id == case_id,
                         QuestionRound.status != "DETACHED",
                     )
                 ):
+                    if officer_fragment_id:
+                        attached_ids.add(str(officer_fragment_id))
                     attached_ids.update(str(value) for value in json.loads(raw or "[]"))
+                # 已处置的问答单元（归档、忽略、回退）里的提问、回答和控制片段都已有
+                # 明确去向；未处置单元由下方 FORMAL_RECORD_REVIEW_REQUIRED 单独拦截。
+                attached_ids.update(self.db.scalars(
+                    select(QAUnitFragment.fragment_id)
+                    .join(QAUnit, QAUnit.id == QAUnitFragment.qa_unit_id)
+                    .where(QAUnit.case_id == case_id, QAUnit.status.not_in(_UNRESOLVED_QA_STATUSES))
+                ))
                 unresolved_fragments = [
                     row for row in self.db.scalars(
                         select(ASRFragment).where(

@@ -163,14 +163,23 @@ const mode = computed<RecordMode>({
   set: (value) => emit('update:completionMode', value),
 })
 let signingRequest = 0
-/** 逐题录音已挂到题目回答上的片段视为已处理（与后端冻结校验一致），不再列入待确认转写。 */
-const attachedFragmentIds = computed(() => new Set(props.workspace.rounds
-  .filter((round) => round.status !== 'DETACHED')
-  .flatMap((round) => round.answerFragmentIds)))
+/**
+ * 已有去向的片段视为已处理（与后端冻结校验一致），不再列入待确认转写：
+ * 正式轮次的提问与回答片段，以及已处置（归档 / 忽略 / 回退）问答单元里的全部片段。
+ */
+const UNRESOLVED_QA_STATUSES = ['OPEN', 'CLOSED', 'ROUTING', 'NEEDS_REVIEW']
+const attachedFragmentIds = computed(() => new Set([
+  ...props.workspace.rounds
+    .filter((round) => round.status !== 'DETACHED')
+    .flatMap((round) => [...(round.officerFragmentId ? [round.officerFragmentId] : []), ...round.answerFragmentIds]),
+  ...props.workspace.qaUnits
+    .filter((unit) => !UNRESOLVED_QA_STATUSES.includes(unit.status))
+    .flatMap((unit) => [...unit.questionFragmentIds, ...unit.answerFragmentIds, ...(unit.controlFragmentIds ?? [])]),
+]))
 const reviewFragments = computed(() => orderedReviewFragments(props.dialogueHistory, false)
   .filter((item) => !attachedFragmentIds.value.has(item.id)))
 const unresolvedFragments = computed(() => reviewFragments.value.filter(item => item.state !== 'CONFIRMED' || !item.confirmedMessageId).length)
-const unresolvedQa = computed(() => props.workspace.qaUnits.filter(item => ['OPEN', 'CLOSED', 'ROUTING', 'NEEDS_REVIEW'].includes(item.status)).length)
+const unresolvedQa = computed(() => props.workspace.qaUnits.filter(item => UNRESOLVED_QA_STATUSES.includes(item.status)).length)
 const completionBusy = computed(() => props.templateBusy || props.captureBusy || reviewBusy.value || !!signingBusy.value)
 const freezeReason = computed(() => freezeBlockReason({
   sessionStatus: props.session.status, captureRunning: props.capture.running, busy: completionBusy.value,

@@ -33,18 +33,15 @@ describe('knowledge api client', () => {
     await expect(fetchKnowledgeEntry('missing')).rejects.toThrow('知识条目不存在')
   })
 
-  it('defaults the vault import to a dry run and only sends a root when provided', async () => {
+  it('defaults the vault import to a dry run and never sends a client-chosen root', async () => {
     post.mockResolvedValue(envelope({ dryRun: true }))
     const { runKnowledgeImport } = await import('./knowledge')
     await runKnowledgeImport()
     expect(post).toHaveBeenCalledWith('/api/v1/knowledge/import', { dryRun: true })
 
     post.mockResolvedValue(envelope({ dryRun: false }))
-    await runKnowledgeImport({ dryRun: false, root: '/var/lib/suspect-interrogation/knowledge-vault' })
-    expect(post).toHaveBeenLastCalledWith('/api/v1/knowledge/import', {
-      dryRun: false,
-      root: '/var/lib/suspect-interrogation/knowledge-vault',
-    })
+    await runKnowledgeImport({ dryRun: false })
+    expect(post).toHaveBeenLastCalledWith('/api/v1/knowledge/import', { dryRun: false })
   })
 
   it('skips the lookup round trip for blank recognition text', async () => {

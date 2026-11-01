@@ -13,7 +13,8 @@ export interface OfficerSignature {
   id: string
   badgeNumber: string
   version: number
-  imageData: string
+  /** 只有签名民警本人能取回图像，其他人（含管理员）为 null */
+  imageData: string | null
   enabled: boolean
   createdAt: string
 }

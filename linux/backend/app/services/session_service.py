@@ -29,7 +29,6 @@ class SessionService:
         self,
         case_id: str,
         actor_id: str | None = None,
-        allow_identity_bypass: bool = False,
         *,
         voiceprint_service=None,
         interrogator_officer_id: str | None = None,
@@ -42,13 +41,9 @@ class SessionService:
             if active:
                 return session_dict(active, case)
             state = WorkflowState(case.workflow_state)
+            # 所有入口（含旧兼容接口）都必须先完成身份确认，不再提供绕过。
             if state == WorkflowState.IDENTITY_REQUIRED:
-                if not allow_identity_bypass:
-                    raise DomainError("IDENTITY_REQUIRED", "请先完成身份读取再开始审讯", 409)
-                audit_repo.add(self.db, case_id=case_id, actor_id=actor_id, action="IDENTITY_BYPASS_LEGACY_COMPAT", target_type="CASE", target_id=case_id,
-                               detail={"reason": "legacy browser compatibility route"})
-                self._advance(case, WorkflowState.IDENTITY_READY)
-                state = WorkflowState.IDENTITY_READY
+                raise DomainError("IDENTITY_REQUIRED", "请先完成身份读取再开始审讯", 409)
             if state == WorkflowState.IDENTITY_READY:
                 self._advance(case, WorkflowState.CASE_CREATED)
                 state = WorkflowState.CASE_CREATED
