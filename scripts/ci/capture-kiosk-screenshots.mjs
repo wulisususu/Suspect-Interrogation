@@ -341,8 +341,11 @@ try {
   await screenshot(client, 'interrogation', 1920, 900)
   await clickSelector(client, '.step-button[aria-label="定稿校验"]')
   await waitForSelector(client, '.review-layout')
-  await clickSelector(client, 'details.raw-transcript > summary')
-  await waitForSelector(client, '.record-review-panel')
+  await sleep(500)
+  await screenshot(client, 'review', 1920, 1080)
+  // 未处理的转写 / 问答不常驻页面，从「定稿前检查」的「去处理」打开弹窗
+  await clickSelector(client, '.review-resolve')
+  await waitForSelector(client, '.review-resolve-modal .record-review-panel')
   await requireVisualFixture(client, 'review')
   await evaluate(client, `document.querySelector('.record-review-panel')?.scrollIntoView({ block: 'start' })`)
   await screenshot(client, 'review-fragments', 1920, 1080)
