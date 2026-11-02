@@ -206,8 +206,9 @@ onMounted(boot)
             <h2>通道① 问答分段录音（随题回听 · 对应转写）</h2>
             <span class="count">{{ questions.length }} 段</span>
           </header>
-          <EmptyState v-if="!questions.length" kind="empty" title="还没有分段录音" description="开始询问并按题作答后，这里会出现可回听的分段。" />
-          <table v-else class="data-table">
+          <div class="pane-body">
+            <EmptyState v-if="!questions.length" kind="empty" title="还没有分段录音" description="开始询问并按题作答后，这里会出现可回听的分段。" />
+            <table v-else class="data-table">
             <thead><tr><th>题号</th><th>题目</th><th>时长</th><th>状态</th><th>操作</th></tr></thead>
             <tbody>
               <tr v-for="row in questions" :key="`${row.questionId}-${row.captureSessionId}-${row.fragmentId ?? ''}`">
@@ -224,6 +225,7 @@ onMounted(boot)
               </tr>
             </tbody>
           </table>
+          </div>
         </article>
 
         <article class="pane">
@@ -232,24 +234,26 @@ onMounted(boot)
             <span class="count">{{ originals.length }} 个</span>
           </header>
           <p class="note">全程录音作为原始文件只做保存，不参与转写、不拆分、不修改；用于事后核对与防翻供。</p>
-          <EmptyState v-if="!originals.length" kind="empty" title="还没有全程原始录音" description="开启全程录音后的采集才会生成；关闭期间的采集只保留分段。" />
-          <ul v-else class="original-list">
-            <li v-for="row in originals" :key="row.captureSessionId">
-              <div class="original-head">
-                <strong>{{ row.filename }}</strong>
-                <span>{{ fmtSize(row.sizeBytes) }}</span>
-              </div>
-              <p>{{ row.durationMs }} ms · {{ fmt(row.startedAt) }}</p>
-              <p class="digest">sha256 {{ row.sha256.slice(0, 16) }}…</p>
-              <button
-                type="button"
-                class="ghost small"
-                :disabled="!isAdmin"
-                :title="isAdmin ? '' : '调阅全程原始录音需要管理员授权'"
-                @click="askOriginal(row)"
-              >调阅全程录音（需授权 · 留痕）</button>
-            </li>
-          </ul>
+          <div class="pane-body">
+            <EmptyState v-if="!originals.length" kind="empty" title="还没有全程原始录音" description="开启全程录音后的采集才会生成；关闭期间的采集只保留分段。" />
+            <ul v-else class="original-list">
+              <li v-for="row in originals" :key="row.captureSessionId">
+                <div class="original-head">
+                  <strong>{{ row.filename }}</strong>
+                  <span>{{ fmtSize(row.sizeBytes) }}</span>
+                </div>
+                <p>{{ row.durationMs }} ms · {{ fmt(row.startedAt) }}</p>
+                <p class="digest">sha256 {{ row.sha256.slice(0, 16) }}…</p>
+                <button
+                  type="button"
+                  class="ghost small"
+                  :disabled="!isAdmin"
+                  :title="isAdmin ? '' : '调阅全程原始录音需要管理员授权'"
+                  @click="askOriginal(row)"
+                >调阅全程录音（需授权 · 留痕）</button>
+              </li>
+            </ul>
+          </div>
         </article>
       </div>
 
@@ -277,25 +281,26 @@ onMounted(boot)
 </template>
 
 <style scoped>
-.recording-admin { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; }
-.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); }
+.recording-admin { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; height: 100%; min-height: 0; overflow: hidden; }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); flex: 0 0 auto; }
 .page-head h1 { margin: 0; color: var(--ink-900); font-size: var(--text-lg); }
 .page-head p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-xs); }
-.page-note { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; padding: var(--space-4); border: 1px solid var(--line-300); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink-600); font-size: var(--text-sm); }
+.page-note { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; padding: var(--space-4); border: 1px solid var(--line-300); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink-600); font-size: var(--text-sm); flex: 0 0 auto; }
 .page-note strong { color: var(--ink-900); }
 .page-note p { margin: 0; color: var(--ink-500); font-size: var(--text-xs); }
-.page-error { margin: 0; color: var(--danger-700); font-size: var(--text-xs); }
-.page-ok { margin: 0; color: var(--success-700); font-size: var(--text-xs); }
-.toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); }
+.page-error { margin: 0; color: var(--danger-700); font-size: var(--text-xs); flex: 0 0 auto; }
+.page-ok { margin: 0; color: var(--success-700); font-size: var(--text-xs); flex: 0 0 auto; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); flex: 0 0 auto; }
 .toolbar label { display: flex; flex-direction: column; gap: 4px; color: var(--ink-500); font-size: var(--text-xs); }
 .toolbar select { min-width: 320px; min-height: 40px; padding: 0 var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-md); background: var(--surface); color: var(--ink-800); font-size: var(--text-sm); }
 .switch { flex-direction: row !important; align-items: center; gap: var(--space-2); color: var(--ink-600); }
-.panes { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
-.pane { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-lg); background: var(--surface); }
-.pane header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.panes { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--space-4); align-items: stretch; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.pane { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-lg); background: var(--surface); min-height: 0; overflow: hidden; }
+.pane header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex: 0 0 auto; }
 .pane h2 { margin: 0; color: var(--ink-800); font-size: var(--text-base); }
 .count { color: var(--ink-400); font-size: var(--text-xs); }
-.note { margin: 0; color: var(--ink-500); font-size: var(--text-xs); }
+.note { margin: 0; color: var(--ink-500); font-size: var(--text-xs); flex: 0 0 auto; }
+.pane-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th { padding: var(--space-2); background: var(--surface-sunken); color: var(--ink-500); font-size: var(--text-xs); text-align: left; }
 .data-table td { padding: var(--space-2); border-top: 1px solid var(--line-200); color: var(--ink-700); font-size: var(--text-sm); vertical-align: top; }
@@ -305,7 +310,7 @@ onMounted(boot)
 .original-head { display: flex; justify-content: space-between; gap: var(--space-2); color: var(--ink-800); font-size: var(--text-sm); }
 .original-list p { margin: 0; color: var(--ink-500); font-size: var(--text-xs); }
 .digest { word-break: break-all; }
-.player { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-lg); background: var(--surface); }
+.player { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-lg); background: var(--surface); flex: 0 0 auto; }
 .player header { display: flex; align-items: center; justify-content: space-between; }
 .player strong { color: var(--ink-800); font-size: var(--text-sm); }
 .player audio { width: 100%; }
@@ -322,5 +327,5 @@ onMounted(boot)
 .reason-modal p { margin: 0; color: var(--ink-500); font-size: var(--text-xs); }
 .reason-modal input { min-height: 42px; padding: 0 var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-md); font-size: var(--text-sm); }
 .reason-modal footer { display: flex; justify-content: flex-end; gap: var(--space-2); }
-@media (max-width: 1200px) { .panes { grid-template-columns: 1fr; } }
+@media (max-width: 1200px) { .panes { grid-template-columns: 1fr; grid-auto-rows: minmax(0, 1fr); } }
 </style>
