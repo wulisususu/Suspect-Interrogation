@@ -2,7 +2,8 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ArrowRight, ChevronRight, FileText, Mic, Pause, Play, Plus, RotateCcw, Square } from '@lucide/vue'
 import type { AudioLevelSample } from '../types/interrogation'
-import type { FormalQuestion } from '../types/templateInterrogation'
+import type { FormalQuestion, FormalQuestionSection } from '../types/templateInterrogation'
+import { lastInsertableCardId } from '../utils/questionInsertion'
 import RecorderWaveformCanvas from './RecorderWaveformCanvas.vue'
 
 /**
@@ -62,7 +63,8 @@ const cards = computed(() => [...props.questions]
     if (props.recordingQuestionId === question.id) state = 'recording'
     else if (answer) state = 'recorded'
     else if (draft) state = 'draft'
-    return { id: question.id, ordinal: index + 1, text: question.text, answer, draft, roundId: round?.id ?? null, state }
+    const sectionType: FormalQuestionSection = question.sectionType ?? 'BODY'
+    return { id: question.id, ordinal: index + 1, text: question.text, answer, draft, roundId: round?.id ?? null, state, sectionType }
   }))
 
 /** 本地编辑：只保存真正改过的内容，避免服务端刷新冲掉正在输入的文字。 */
@@ -156,7 +158,8 @@ function commit(cardId: string) {
 /** 追加一问：按住说话、松开成卡；录音不可用或想打字时改为手动输入。 */
 const typing = ref(false)
 const newQuestion = ref('')
-const lastCardId = computed(() => cards.value.at(-1)?.id ?? null)
+// 插入点必须是最后一张非固定结尾的题卡：结尾是法定程式，动态问题插到正文段末尾。
+const lastCardId = computed(() => lastInsertableCardId(cards.value))
 let holding = false
 
 function holdStart(event: PointerEvent) {

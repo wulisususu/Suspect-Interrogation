@@ -180,6 +180,10 @@ export const useInterrogationStore = defineStore('interrogation', () => {
   const captureBusy = ref(false)
   const captureInsertionReceipt = ref<AsrInsertionReceipt | null>(null)
   const captureClock = ref(Date.now())
+  // 录音计时锚点：running 上升沿锁定为本机时间（与后端 startedAt 取较早者）。
+  // 板钟/局域网浏览器钟存在秒级偏差，直接拿后端 startedAt 减本机 Date.now()
+  // 会算出负数被钳成 0，表现为"按住说话一直是 00:00"（实测板钟快 9 秒）。
+  const captureElapsedBaseMs = ref<number | null>(null)
   const selectedFragmentIds = ref<string[]>([])
   const capture = ref<AsrCaptureStatus>(emptyCapture(caseId.value))
   const archivedFragments = ref<Record<string, TemporaryAsrFragment>>({})
@@ -224,9 +228,11 @@ export const useInterrogationStore = defineStore('interrogation', () => {
   })
   const stageText = computed(() => stageTextMap[session.value.stage])
   const canRecord = computed(() => session.value.status === 'RUNNING')
-  const captureElapsedMs = computed(() => capture.value.running && capture.value.startedAt
-    ? Math.max(0, captureClock.value - capture.value.startedAt)
-    : 0)
+  const captureElapsedMs = computed(() => {
+    if (!capture.value.running) return 0
+    const base = captureElapsedBaseMs.value ?? capture.value.startedAt
+    return base ? Math.max(0, captureClock.value - base) : 0
+  })
   const activeFragments = computed(() => capture.value.fragments.filter((fragment) => fragment.state !== 'SUPERSEDED'))
 
   function captureWorkflowNeedsSync(status = capture.value) {
@@ -290,6 +296,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     captureBusy.value = false
     captureInsertionReceipt.value = null
     captureClock.value = Date.now()
+    captureElapsedBaseMs.value = null
     selectedFragmentIds.value = []
     capture.value = emptyCapture(nextCaseId)
     archivedFragments.value = {}
@@ -332,6 +339,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
 
   function applyCaptureStatus(status: AsrCaptureStatus, scope = currentScope()) {
     if (!isCurrentScope(scope) || status.caseId !== scope.caseId) return
+    const wasRunning = capture.value.running
     const sameCapture = Boolean(status.captureSessionId && status.captureSessionId === capture.value.captureSessionId)
     const audioLevels = sameCapture ? capture.value.audioLevels ?? [] : []
     const audioLevelUpdatedAt = sameCapture ? capture.value.audioLevelUpdatedAt ?? null : null
@@ -354,6 +362,17 @@ export const useInterrogationStore = defineStore('interrogation', () => {
       partialEndedAtMs,
       liveTranscriptStatus,
       fragments: status.fragments.filter((fragment) => fragment.state !== 'SUPERSEDED'),
+    }
+    if (status.running) {
+      if (!wasRunning) {
+        // 计时锚点只认 running 的上升沿：取后端 startedAt 与本机当前时间的较早者，
+        // 之后 elapsed = 本机单调时钟 − 锚点，永不为负、不受跨机钟差影响。
+        captureElapsedBaseMs.value = status.startedAt != null
+          ? Math.min(status.startedAt, Date.now())
+          : Date.now()
+      }
+    } else {
+      captureElapsedBaseMs.value = null
     }
     if (!status.running) {
       browserResumeGate.reset()

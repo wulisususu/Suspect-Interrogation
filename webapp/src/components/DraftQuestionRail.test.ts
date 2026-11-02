@@ -69,6 +69,15 @@ describe('DraftQuestionRail cards (design P07, states A/B)', () => {
     expect(html).toContain('手动输入')
   })
 
+  it('never anchors the appended question on a fixed closing card (AAC708 regression)', async () => {
+    // 嫌疑人询问模板的最后一张卡是固定结尾（签字捺印），旧逻辑拿它当插入点，
+    // 后端必然拒绝：动态问题不能插入固定结尾之后。现在插入点由
+    // lastInsertableCardId 选取，经 utils/questionInsertion.test.ts 单测守护。
+    const source = (await import('./DraftQuestionRail.vue?raw')).default
+    expect(source).toContain('lastInsertableCardId(cards.value)')
+    expect(source).toContain("question.sectionType ?? 'BODY'")
+  })
+
   it('explains why the hold-to-talk entry is unavailable instead of failing silently', async () => {
     // 冻结 / 会话结束 / 暂停时按钮置灰或降级输入框，原因必须在页面上可见。
     expect(await render({ locked: true })).toContain('笔录已冻结')
