@@ -158,6 +158,7 @@ const signingError = ref('')
 const signingLoading = ref(true)
 const signingLoadError = ref('')
 const reviewBusy = ref(false)
+const resolveOpen = ref(false)
 const mode = computed<RecordMode>({
   get: () => props.completionMode,
   set: (value) => emit('update:completionMode', value),
@@ -554,11 +555,8 @@ async function confirmSignature() {
             :unresolved-fragments="unresolvedFragments"
             :unresolved-qa="unresolvedQa"
             :auto-checks="autoChecks"
+            @resolve="resolveOpen = true"
           />
-          <details v-if="unresolvedFragments || unresolvedQa" class="raw-transcript review-fragments" :open="unresolvedFragments > 0">
-            <summary>处理未完成的转写 {{ unresolvedFragments }} 条 · 问答 {{ unresolvedQa }} 组{{ unresolvedFragments ? '（确认或丢弃后才能定稿）' : '' }}</summary>
-            <RecordReviewPanel :fragments="reviewFragments" :qa-units="workspace.qaUnits" :busy="completionBusy || signingLoading || !!signingLoadError" :frozen="documentFrozen" @confirm="reviewAction($event)" @discard="reviewAction([$event], true)" @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)" @correct="(id, speaker, reason, text) => emit('correctFragment', id, speaker, reason, text)" />
-          </details>
         </div>
         <ReviewRecordPreview :questions="workspace.questions" />
       </div>
@@ -567,6 +565,16 @@ async function confirmSignature() {
         <span>定稿后笔录即冻结，不可再编辑；签名与指纹在 ⑤ 签署归档完成<template v-if="!documentFrozen"> · 长按「确认定稿」0.8 秒即定稿</template></span>
         <span v-if="savedAtText">已自动保存 · {{ savedAtText }}</span>
       </footer>
+
+      <div v-if="resolveOpen && (unresolvedFragments || unresolvedQa)" class="review-resolve-modal record-no-print" role="dialog" aria-modal="true" aria-label="处理未完成的转写与问答">
+        <section class="review-resolve-dialog">
+          <header>
+            <h2>处理未完成的转写 {{ unresolvedFragments }} 条 · 问答 {{ unresolvedQa }} 组</h2>
+            <button type="button" @click="resolveOpen = false">关闭</button>
+          </header>
+          <RecordReviewPanel :fragments="reviewFragments" :qa-units="workspace.qaUnits" :busy="completionBusy || signingLoading || !!signingLoadError" :frozen="documentFrozen" @confirm="reviewAction($event)" @discard="reviewAction([$event], true)" @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)" @correct="(id, speaker, reason, text) => emit('correctFragment', id, speaker, reason, text)" />
+        </section>
+      </div>
     </template>
 
     <div v-if="signatureRole" class="signature-modal" role="dialog" aria-modal="true" aria-label="电子签名">

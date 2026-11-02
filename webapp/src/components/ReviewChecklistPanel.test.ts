@@ -51,6 +51,13 @@ describe('ReviewChecklistPanel (design P13 / state C)', () => {
     expect(html).toContain('转写片段未处理 · 3 条，需确认或丢弃后才能定稿')
     expect(html).toContain('还有 3 条转写片段待确认或丢弃')
   })
+
+  it('offers 去处理 only on unresolved transcript / QA blockers, never after freezing', async () => {
+    expect(await render()).not.toContain('去处理')
+    const blocked = await render({ unresolvedFragments: 2, unresolvedQa: 1 })
+    expect(blocked.match(/去处理/g)).toHaveLength(2)
+    expect(await render({ unresolvedFragments: 2, frozen: true })).not.toContain('去处理')
+  })
 })
 
 describe('ReviewRecordPreview (design P13 right column)', () => {

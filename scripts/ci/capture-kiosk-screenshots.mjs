@@ -315,8 +315,9 @@ try {
   await screenshot(client, 'kiosk-home', 1920, 1080)
   await clickButtonContaining(client, '民警入口')
   await waitForSelector(client, '.login-preview-page')
-  await clickButtonContaining(client, '进入管理面板（预览')
-  await waitForSelector(client, '.admin-panel')
+  // 登录页已是真实警号 + 密码验证，不再有「预览进入」按钮。CI 未配置民警名录
+  // （预览模式，后端不强制鉴权），直接打开管理面板。
+  await navigate(client, `${baseUrl}/?view=admin`, '.admin-panel')
   await screenshot(client, 'admin-panel', 1920, 1080)
   await clickSelector(client, 'button[aria-label="进入案件记录"]')
   await waitForSelector(client, '.case-ledger')
@@ -340,8 +341,11 @@ try {
   await screenshot(client, 'interrogation', 1920, 900)
   await clickSelector(client, '.step-button[aria-label="定稿校验"]')
   await waitForSelector(client, '.review-layout')
-  await clickSelector(client, 'details.raw-transcript > summary')
-  await waitForSelector(client, '.record-review-panel')
+  await sleep(500)
+  await screenshot(client, 'review', 1920, 1080)
+  // 未处理的转写 / 问答不常驻页面，从「定稿前检查」的「去处理」打开弹窗
+  await clickSelector(client, '.review-resolve')
+  await waitForSelector(client, '.review-resolve-modal .record-review-panel')
   await requireVisualFixture(client, 'review')
   await evaluate(client, `document.querySelector('.record-review-panel')?.scrollIntoView({ block: 'start' })`)
   await screenshot(client, 'review-fragments', 1920, 1080)
