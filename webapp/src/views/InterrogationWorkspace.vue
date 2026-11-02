@@ -81,13 +81,26 @@ const officerText = computed(() => officerDisplayName(store.caseSummary.officerN
 const recorderName = computed(() => factValue('recorder_name') || '未指定')
 const archived = computed(() => store.caseSummary.workflowState === 'REPORT_GENERATED')
 
+/** 通道②全程录音的状态：询问进行中一直在录，断网会自动重连补发。 */
+const segmentRecordingText = computed(() => {
+  const recorder = store.segmentRecorder
+  if (!store.session.recordingSegmentId) return ''
+  if (recorder.state === 'recording') return '全程录音中'
+  if (recorder.state === 'reconnecting') return '全程录音连接中'
+  if (recorder.state === 'error') return `全程录音未开启：${recorder.error}`
+  return ''
+})
+
 /** 顶栏右侧的办理状态（样板各页顶栏）。 */
 const statusText = computed(() => {
   const step = flowStep.value
   if (step === 'template') return '新案建立 · 待选模板'
   if (step === 'intake') return flowProgress.value.completed.includes('intake') ? '建档完成 · 可开始询问' : '建档中 · 待补全信息'
   if (step === 'dictation') {
-    if (store.session.status === 'RUNNING') return store.capture.running ? '● 已联网 · 实时转写中' : '● 已联网 · 询问进行中'
+    if (store.session.status === 'RUNNING') {
+      const base = store.capture.running ? '● 已联网 · 实时转写中' : '● 已联网 · 询问进行中'
+      return segmentRecordingText.value ? `${base} · ${segmentRecordingText.value}` : base
+    }
     if (store.session.status === 'PAUSED') return '询问已暂停'
     return '待开始询问'
   }

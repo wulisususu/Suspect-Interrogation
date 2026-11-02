@@ -62,6 +62,8 @@ export interface SessionState {
   pausedAt: number | null
   endedAt: number | null
   updatedAt: number
+  /** 通道②：本次询问正在录的全程录音段（询问进行中才有）。 */
+  recordingSegmentId?: string | null
 }
 
 export interface RecordRevision {

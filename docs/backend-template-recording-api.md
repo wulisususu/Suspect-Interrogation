@@ -56,15 +56,27 @@
 | --- | --- |
 | `GET /cases/{id}/recording-options` | `{caseId, fullRecordingEnabled}` |
 | `PATCH /cases/{id}/recording-options` | `{fullRecordingEnabled: boolean}` |
-| `GET /cases/{id}/recordings` | `{caseId, fullRecordingEnabled, questions, originals, originalAccessRequiresAdmin}` |
+| `GET /cases/{id}/recordings` | `{caseId, fullRecordingEnabled, questions, segments, originals, originalAccessRequiresAdmin}` |
 | `GET /cases/{id}/recordings/questions/{questionId}/captures/{captureId}/audio` | 本题采集完整分段 WAV |
 | `GET /cases/{id}/recordings/questions/{questionId}/captures/{captureId}/fragments/{fragmentId}/audio` | 旧问答轮次关联片段范围 WAV |
-| `GET /cases/{id}/recordings/originals/{captureId}/audio?reason=核对录音` | 管理员凭认证会话调阅原始全程文件，原因必填 |
+| `GET /cases/{id}/recordings/segments/{segmentId}/audio?reason=核对录音` | 管理员凭认证会话调阅一段通道②全程录音，原因必填 |
+| `GET /cases/{id}/recordings/originals/{captureId}/audio?reason=核对录音` | 管理员调阅按次采集的原始文件（全程录音上线前的案件），原因必填 |
+| `WS /ws/recording/cases/{id}/segments/{segmentId}` | 浏览器推送通道②全程录音（见下） |
 
 `questions` 每条包含 `questionId/questionNumber/question/questionActive/captureSessionId/fragmentId/startSample/endSample/startMs/durationMs/startedAt/status/available/audioUrl`。`questionNumber` 是当前可见题号；历史已删除题的题号为 `null`，`questionActive=false`。新采集按后端保存的目标题归属，旧记录按问答轮次片段归属。只有完整保存的真实录音有可播放 `audioUrl`。
 
+### 通道②全程录音（按询问段）
+
+每次「开始询问 / 继续询问」在同一事务里开一段 `RECORDING`，「暂停询问 / 结束询问」（以及作废）把它转为 `CLOSING`；一个案件多次询问就有多段，`ordinal` 从 1 递增。会话接口返回的 `recordingSegment` 是当前正在录的段，浏览器据此在询问进行中保持麦克风常开，与通道①的按次采集互不干扰。
+
+推流协议：连上后先发 `{"type":"segment_open","fresh":bool}`，服务端回 `segment_opened{status, clientSampleEnd, nextSequence}`；音频帧与正式采集同格式（`<IQ` 序号/起始样本 + PCM16，16 kHz 单声道），每帧 fsync 落盘后回 `ack{ackSequence, durableSampleEnd}`，重复帧幂等确认。暂停后浏览器送完缓存发 `segment_finalize`，服务端把整段写成 `original.wav` 并固化 sha256，状态 `COMPLETE`（没收到音频则 `EMPTY`）。浏览器 20 秒内没来确认的段由服务端按已收到的音频收尾（`tailConfirmed=false`），收尾在启动时和列录音时执行。
+
+断线不补静音冒充录音：同一页面的重连会补发内存里缓存的帧；刷新页面后新录音器从服务端位置接着录，按墙钟估算的缺口（`BROWSER_RESTARTED`）和浏览器缓存溢出丢掉的音频（`BROWSER_BUFFER_DROPPED`）都记入 `gaps[{atMs, missingMs, reason, at}]`，调阅页逐条展示。
+
+`segments` 每条包含 `segmentId/ordinal/sessionId/status/startedAt/endedAt/endReason/durationMs/sizeBytes/sha256/filename/gaps/tailConfirmed/available/accessRequiresAdmin`。审计动作：`RECORDING_SEGMENT_START`、`RECORDING_SEGMENT_STOP`、`RECORDING_SEGMENT_SAVED`，调阅记 `RECORDING_ORIGINAL_ACCESS`（`target_type=RECORDING_SEGMENT`）。
+
 `originals` 每条包含 `captureSessionId/filename/durationMs/sizeBytes/sha256/startedAt/accessRequiresAdmin`。每次采集独立保存原始 WAV，案件可能有多个文件。调阅成功后落审计记录，包含真实民警警号、原因、采集编号与校验值。普通民警不能调阅通道②原始文件。
 
-全程开关默认开启以保持旧行为；每次开始采集时保存当时开关快照。关闭时仍保留保障转写和逐题回听所需的耐久分段，但不生成通道②原始文件。后来重新打开不会追溯生成此前关闭采集的原始文件。采集中、冻结后或作废后不能改开关。
+全程开关默认开启以保持旧行为；关闭后下一次开始/继续询问不再开全程录音段，询问进行中不能改开关。按次采集仍在开始采集时保存当时开关快照。关闭时仍保留保障转写和逐题回听所需的耐久分段，但不生成通道②原始文件。后来重新打开不会追溯生成此前关闭采集的原始文件。采集中、冻结后或作废后不能改开关。
 
 文件生成和回听使用耐久存档的实际采样数据，并校验完整性。没有录音不返回示例文件；存档损坏返回 `RECORDING_INTEGRITY_ERROR`。音频响应禁止共享缓存。录音服务未就绪返回 503，未认证返回 401，原始文件权限不足返回 403。

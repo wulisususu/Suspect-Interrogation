@@ -8,6 +8,7 @@ from app.repositories import audit as audit_repo
 from app.repositories import cases as case_repo
 from app.repositories import sessions as session_repo
 from app.repositories import voiceprints as voiceprint_repo
+from app.services import session_recording_service as session_recording
 from app.services.serializers import session_dict
 from app.services.case_management_service import assert_case_not_void
 from app.ai.legacy_voiceprint import legacy_voiceprint_enabled
@@ -81,6 +82,7 @@ class SessionService:
                     commit=False,
                 )
             audit_repo.add(self.db, case_id=case_id, actor_id=actor_id, action="SESSION_START", target_type="SESSION", target_id=row.id)
+            session_recording.open_segment(self.db, case_id, row, actor_id)
             self.db.commit()
             return session_dict(row, case)
         except Exception:
@@ -96,6 +98,7 @@ class SessionService:
         row.status = SessionStatus.PAUSED.value
         row.paused_at = utc_now()
         audit_repo.add(self.db, case_id=case_id, actor_id=actor_id, action="SESSION_PAUSE", target_type="SESSION", target_id=row.id)
+        session_recording.close_segment(self.db, case_id, "PAUSED", actor_id)
         self.db.commit()
         return session_dict(row, case)
 
@@ -108,6 +111,7 @@ class SessionService:
         row.status = SessionStatus.RUNNING.value
         row.paused_at = None
         audit_repo.add(self.db, case_id=case_id, actor_id=actor_id, action="SESSION_RESUME", target_type="SESSION", target_id=row.id)
+        session_recording.open_segment(self.db, case_id, row, actor_id)
         self.db.commit()
         return session_dict(row, case)
 
@@ -124,6 +128,7 @@ class SessionService:
         row.ended_at = utc_now()
         row.paused_at = None
         audit_repo.add(self.db, case_id=case_id, actor_id=actor_id, action="SESSION_FINISH", target_type="SESSION", target_id=row.id)
+        session_recording.close_segment(self.db, case_id, "FINISHED", actor_id)
         if commit:
             self.db.commit()
         return session_dict(row, case)

@@ -3,7 +3,8 @@
  * 录音查看（真实功能，替代 P27 占位）
  *
  * 通道①：按题/片段的分段录音，可回听并对应转写；
- * 通道②：全程原始文件，只做保存，调阅须管理员 + 填写原因并留痕。
+ * 通道②：全程原始文件——每次「开始/继续询问 → 暂停/结束询问」一条连续录音，
+ *        只做保存，调阅须管理员 + 填写原因并留痕。
  * 所有音频请求都带会话 Cookie，后端会写访问审计。
  */
 import { computed, onMounted, ref } from 'vue'
@@ -13,10 +14,13 @@ import {
   fetchCaseRecordings,
   originalAudioUrl,
   questionAudioUrl,
+  segmentAudioUrl,
   updateRecordingOptions,
   type CaseRecordings,
   type RecordingOriginal,
   type RecordingQuestion,
+  type RecordingSegment,
+  type RecordingSegmentGap,
 } from '../api/recordings'
 import { fetchAuthSession, type AuthSession } from '../api/officers'
 import type { CaseSummary } from '../types/interrogation'
@@ -39,10 +43,16 @@ const playerTitle = ref('')
 const reasonOpen = ref(false)
 const reasonText = ref('核对录音')
 const pendingOriginal = ref<RecordingOriginal | null>(null)
+const pendingSegment = ref<RecordingSegment | null>(null)
 
 const isAdmin = computed(() => Boolean(session.value?.officer?.isAdmin))
 const questions = computed(() => recordings.value?.questions ?? [])
 const originals = computed(() => recordings.value?.originals ?? [])
+const segments = computed(() => recordings.value?.segments ?? [])
+/** 全程录音上线前的案件没有询问段，只保留按次采集的原始文件。 */
+const legacyOriginals = computed(() => !segments.value.length)
+const SEGMENT_STATUS: Record<string, string> = { RECORDING: '录音中', CLOSING: '保存中', COMPLETE: '已保存', EMPTY: '无音频' }
+const GAP_REASON: Record<string, string> = { BROWSER_RESTARTED: '页面刷新或重开', BROWSER_BUFFER_DROPPED: '断网过久、缓存溢出' }
 
 async function boot() {
   gate.value = 'loading'
@@ -118,18 +128,34 @@ function playQuestion(row: RecordingQuestion) {
 }
 
 function askOriginal(row: RecordingOriginal) {
+  pendingSegment.value = null
   pendingOriginal.value = row
   reasonText.value = '核对录音'
   reasonOpen.value = true
 }
 
+function askSegment(row: RecordingSegment) {
+  pendingOriginal.value = null
+  pendingSegment.value = row
+  reasonText.value = '核对录音'
+  reasonOpen.value = true
+}
+
 function confirmOriginal() {
+  const reason = reasonText.value.trim()
+  const segment = pendingSegment.value
   const row = pendingOriginal.value
-  if (!row || !reasonText.value.trim()) return
-  playerUrl.value = originalAudioUrl(caseId.value, row.captureSessionId, reasonText.value.trim())
-  playerTitle.value = `通道② · ${row.filename}`
+  if (!reason || (!segment && !row)) return
+  if (segment) {
+    playerUrl.value = segmentAudioUrl(caseId.value, segment.segmentId, reason)
+    playerTitle.value = `通道② · 第 ${segment.ordinal} 次询问 · ${fmtDuration(segment.durationMs)}`
+  } else if (row) {
+    playerUrl.value = originalAudioUrl(caseId.value, row.captureSessionId, reason)
+    playerTitle.value = `通道② · ${row.filename}`
+  }
   reasonOpen.value = false
   pendingOriginal.value = null
+  pendingSegment.value = null
   message.value = '已发起调阅，访问已记入审计'
 }
 
@@ -137,6 +163,26 @@ function fmt(value?: string | number | null) {
   if (value === null || value === undefined || value === '') return '—'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false })
+}
+
+function fmtTime(value?: string | null) {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString('zh-CN', { hour12: false })
+}
+
+function fmtDuration(ms: number) {
+  const total = Math.round(ms / 1000)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  const mmss = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  return hours ? `${hours}:${mmss}` : mmss
+}
+
+function gapText(gap: RecordingSegmentGap) {
+  const lost = gap.missingMs === null ? '时长未知' : `约 ${Math.max(1, Math.round(gap.missingMs / 1000))} 秒`
+  return `${fmtDuration(gap.atMs)} 处缺 ${lost}（${GAP_REASON[gap.reason] ?? gap.reason}）`
 }
 
 function fmtSize(bytes: number) {
@@ -154,7 +200,7 @@ onMounted(boot)
     <header class="page-head">
       <div>
         <h1>录音查看 · 双通道双文件</h1>
-        <p>通道①问答分段录音可回听、对应转写；通道②全程录音作原始文件只做保存</p>
+        <p>通道①问答分段录音可回听、对应转写；通道②每次询问（开始/继续 → 暂停/结束）一条连续全程录音，作原始文件只做保存</p>
       </div>
       <button type="button" class="ghost" @click="boot">刷新</button>
     </header>
@@ -193,7 +239,7 @@ onMounted(boot)
         </label>
         <label v-if="recordings" class="switch">
           <input type="checkbox" :checked="recordings.fullRecordingEnabled" :disabled="busy" @change="toggleFullRecording" />
-          <span>开启全程录音（下次采集生效，采集过程中不可改）</span>
+          <span>开启全程录音（下次开始/继续询问生效，录音过程中不可改）</span>
         </label>
       </div>
 
@@ -231,11 +277,32 @@ onMounted(boot)
         <article class="pane">
           <header>
             <h2>通道② 全程录音（原始文件）</h2>
-            <span class="count">{{ originals.length }} 个</span>
+            <span class="count">{{ legacyOriginals ? originals.length : segments.length }} 个</span>
           </header>
-          <p class="note">全程录音作为原始文件只做保存，不参与转写、不拆分、不修改；用于事后核对与防翻供。</p>
+          <p class="note">每次点「开始询问 / 继续询问」起录，点「暂停询问 / 结束询问」整段保存为一个文件；不参与转写、不拆分、不修改，用于事后核对与防翻供。</p>
           <div class="pane-body">
-            <EmptyState v-if="!originals.length" kind="empty" title="还没有全程原始录音" description="开启全程录音后的采集才会生成；关闭期间的采集只保留分段。" />
+            <ul v-if="segments.length" class="original-list">
+              <li v-for="row in segments" :key="row.segmentId" class="segment-item">
+                <div class="original-head">
+                  <strong>第 {{ row.ordinal }} 次询问</strong>
+                  <span class="segment-status" :class="`is-${row.status.toLowerCase()}`">{{ SEGMENT_STATUS[row.status] ?? row.status }}</span>
+                </div>
+                <p>{{ fmt(row.startedAt) }} – {{ row.endedAt ? fmtTime(row.endedAt) : '进行中' }} · 录音 {{ fmtDuration(row.durationMs) }}<template v-if="row.sizeBytes"> · {{ fmtSize(row.sizeBytes) }}</template></p>
+                <p v-if="row.sha256" class="digest">sha256 {{ row.sha256.slice(0, 16) }}…</p>
+                <p v-if="row.status === 'EMPTY'" class="segment-warn">这段询问没有收到任何音频（麦克风未开启或浏览器未连上）。</p>
+                <p v-if="row.gaps.length" class="segment-warn">中断 {{ row.gaps.length }} 处：{{ row.gaps.map(gapText).join('；') }}</p>
+                <p v-if="row.status === 'COMPLETE' && !row.tailConfirmed" class="segment-warn">结尾未经浏览器确认（暂停时连接中断），已由服务端按已收到的音频保存。</p>
+                <button
+                  v-if="row.available"
+                  type="button"
+                  class="ghost small"
+                  :disabled="!isAdmin"
+                  :title="isAdmin ? '' : '调阅全程原始录音需要管理员授权'"
+                  @click="askSegment(row)"
+                >调阅全程录音（需授权 · 留痕）</button>
+              </li>
+            </ul>
+            <EmptyState v-else-if="!originals.length" kind="empty" title="还没有全程录音" description="开启全程录音后，每次开始/继续询问到暂停询问会生成一个完整文件。" />
             <ul v-else class="original-list">
               <li v-for="row in originals" :key="row.captureSessionId">
                 <div class="original-head">
@@ -269,7 +336,7 @@ onMounted(boot)
     <div v-if="reasonOpen" class="reason-modal" role="dialog" aria-modal="true" aria-label="填写调阅原因">
       <section>
         <h2>调阅全程原始录音</h2>
-        <p>本次调阅会记入审计：操作人、原因、采集编号与文件校验值。原因必填。</p>
+        <p>本次调阅会记入审计：操作人、原因、录音编号与文件校验值。原因必填。</p>
         <input v-model="reasonText" maxlength="1000" placeholder="例如：核对笔录时间与录音是否一致" />
         <footer>
           <button type="button" class="ghost" @click="reasonOpen = false">取消</button>
@@ -310,6 +377,10 @@ onMounted(boot)
 .original-head { display: flex; justify-content: space-between; gap: var(--space-2); color: var(--ink-800); font-size: var(--text-sm); }
 .original-list p { margin: 0; color: var(--ink-500); font-size: var(--text-xs); }
 .digest { word-break: break-all; }
+.segment-status { color: var(--ink-500); font-size: var(--text-xs); }
+.segment-status.is-recording { color: var(--danger-600); }
+.segment-status.is-complete { color: var(--success-700); }
+.segment-status.is-empty, .segment-warn { color: var(--warning-700); }
 .player { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-lg); background: var(--surface); flex: 0 0 auto; }
 .player header { display: flex; align-items: center; justify-content: space-between; }
 .player strong { color: var(--ink-800); font-size: var(--text-sm); }

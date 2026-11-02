@@ -6,7 +6,7 @@ import os
 import re
 import tempfile
 import wave
-from datetime import timedelta
+from datetime import timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import or_, select
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.context import current_actor
 from app.database.models import ASRCaptureSession, ASRFragment, CaseQuestion, QuestionRound
-from app.database.recording_models import CaptureRecording, CaseRecordingOptions
+from app.database.recording_models import CaptureRecording, CaseRecordingOptions, SessionRecordingSegment
 from app.database.session import begin_sqlite_immediate
 from app.domain.errors import DomainError
 from app.repositories import audit as audit_repo, cases as case_repo
@@ -47,9 +47,10 @@ def require_recording_actor(*, admin=False):
 
 
 class RecordingService:
-    def __init__(self, db: Session, archive):
+    def __init__(self, db: Session, archive, segment_store=None):
         self.db = db
         self.archive = archive
+        self.segment_store = segment_store
 
     def options(self, case_id: str) -> dict:
         case_repo.get(self.db, case_id)
@@ -62,7 +63,7 @@ class RecordingService:
         if not isinstance(enabled, bool):
             raise DomainError('INVALID_RECORDING_OPTION', '全程录音开关必须为布尔值', 400)
         active = self.db.scalar(select(ASRCaptureSession.id).where(ASRCaptureSession.case_id == case_id, or_(ASRCaptureSession.recording_status == 'CAPTURING', ASRCaptureSession.status.in_(['CAPTURING', 'RECORDING', 'RUNNING', 'STOPPING']))).limit(1))
-        if active:
+        if active or self.db.scalar(select(SessionRecordingSegment.id).where(SessionRecordingSegment.case_id == case_id, SessionRecordingSegment.status == 'RECORDING').limit(1)):
             raise DomainError('RECORDING_IN_PROGRESS', '采集过程中不能修改全程录音开关', 409)
         before = self.options(case_id)
         row = self.db.get(CaseRecordingOptions, case_id)
@@ -122,6 +123,9 @@ class RecordingService:
 
     def list_recordings(self, case_id: str) -> dict:
         require_recording_actor()
+        if self.segment_store is not None:
+            # 浏览器没来确认的暂停段在这里收尾，调阅页看到的总是已落盘的文件。
+            self.segment_store.sweep(case_id)
         options = self.options(case_id)
         rows = self._ranges(case_id)
         for row in rows:
@@ -132,7 +136,42 @@ class RecordingService:
             recording = self.db.get(CaptureRecording, capture.id)
             if recording is not None and recording.original_sha256:
                 originals.append(self._original_metadata(capture, recording))
-        return {**options, 'questions': rows, 'originals': originals, 'originalAccessRequiresAdmin': True}
+        segments = [self._segment_metadata(row) for row in self.db.scalars(
+            select(SessionRecordingSegment).where(SessionRecordingSegment.case_id == case_id).order_by(SessionRecordingSegment.ordinal))]
+        return {**options, 'questions': rows, 'segments': segments, 'originals': originals, 'originalAccessRequiresAdmin': True}
+
+    @staticmethod
+    def _segment_metadata(row: SessionRecordingSegment) -> dict:
+        gaps = json.loads(row.gaps_json or '[]')
+        # 文件名给办案人员看，用板端本地时间；数据库里存的是 UTC。
+        local_started = (row.started_at if row.started_at.tzinfo else row.started_at.replace(tzinfo=timezone.utc)).astimezone()
+        return {
+            'segmentId': row.id, 'ordinal': row.ordinal, 'sessionId': row.interrogation_session_id, 'status': row.status,
+            'startedAt': iso_utc(row.started_at), 'endedAt': iso_utc(row.ended_at), 'endReason': row.end_reason,
+            'durationMs': row.sample_count * 1000 // row.sample_rate, 'sizeBytes': row.size_bytes, 'sha256': row.sha256,
+            'filename': f"第{row.ordinal}次询问-{local_started.strftime('%Y%m%d-%H%M%S')}.wav",
+            'gaps': gaps, 'tailConfirmed': row.client_finalized, 'available': row.status == 'COMPLETE', 'accessRequiresAdmin': True,
+        }
+
+    def segment_audio(self, case_id: str, segment_id: str, *, reason: str) -> tuple[Path, str]:
+        require_recording_actor(admin=True)
+        if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 1000:
+            raise DomainError('RECORDING_ACCESS_REASON_REQUIRED', '调阅全程原始录音需要填写原因', 400)
+        row = self.db.get(SessionRecordingSegment, segment_id)
+        if row is None or row.case_id != case_id:
+            raise DomainError('RECORDING_NOT_FOUND', '全程录音不存在或不属于本案', 404)
+        if row.status != 'COMPLETE' or not row.sha256 or self.segment_store is None:
+            raise DomainError('RECORDING_NOT_READY', '这段全程录音尚未保存完成', 409)
+        path = self.segment_store.wav_path(row)
+        try:
+            valid = path.stat().st_size == row.size_bytes and self._digest(path) == row.sha256
+        except OSError:
+            valid = False
+        if not valid:
+            raise DomainError('RECORDING_INTEGRITY_ERROR', '原始录音文件缺失或完整性校验失败', 409)
+        audit_repo.add(self.db, case_id=case_id, action='RECORDING_ORIGINAL_ACCESS', target_type='RECORDING_SEGMENT', target_id=row.id,
+                       detail={'reason': reason.strip(), 'ordinal': row.ordinal, 'sha256': row.sha256, 'durationMs': row.sample_count * 1000 // row.sample_rate})
+        return path, self._segment_metadata(row)['filename']
 
     def _path(self, case_id: str, capture_id: str, filename: str) -> Path:
         if self.archive is None:
