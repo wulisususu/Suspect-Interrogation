@@ -16,6 +16,7 @@ from app.services.serializers import iso_utc
 from app.repositories import audit as audit_repo
 from app.repositories import cases as case_repo
 from app.repositories import recognition_evidence as evidence_repo
+from app.services.asr_fragment_supersede import supersede_duplicate_fragments
 from app.services.message_service import MessageService
 from app.services.formal_record_policy import assert_formal_record_mutable
 from app.services.speaker_mode import resolve_runtime_speaker_mode
@@ -378,6 +379,8 @@ def _confirm_one(db: Session, *, case_id: str, fragment_id: str, actor_id: str |
 @router.post("/cases/{case_id}/asr/fragments/{fragment_id}/confirm")
 def confirm_fragment(case_id: str, fragment_id: str, db: Session = Depends(get_db)):
     row, _ = _confirm_one(db, case_id=case_id, fragment_id=fragment_id, actor_id=None)
+    supersede_duplicate_fragments(db, case_id)
+    db.commit()
     return _fragment_payload(row, db)
 
 
@@ -391,6 +394,8 @@ def _confirm_batch(db: Session, *, case_id: str, fragment_ids: list[str], actor_
         row, created = _confirm_one(db, case_id=case_id, fragment_id=fragment_id, actor_id=actor_id, commit=False)
         rows.append(row)
         confirmed += int(created)
+    # 确认入库后顺手折叠同采集的重复残余，免得它们永远卡在定稿闸门前。
+    supersede_duplicate_fragments(db, case_id)
     db.commit()
     return {"confirmedCount": confirmed, "fragments": [_fragment_payload(row, db) for row in rows]}
 

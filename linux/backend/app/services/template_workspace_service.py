@@ -13,6 +13,7 @@ from app.repositories import cases as case_repo
 from app.repositories import qa_units as qa_repo
 from app.repositories import question_rounds as round_repo
 from app.repositories import template_questions as question_repo
+from app.services.asr_fragment_supersede import supersede_duplicate_fragments
 from app.services.formal_record_answer_service import FormalRecordAnswerService
 from app.services.formal_record_policy import assert_formal_record_mutable, is_formal_record_immutable
 from app.services.serializers import case_question_dict, iso_utc, pending_question_dict, qa_unit_dict, question_round_dict, standard_question_dict
@@ -443,6 +444,9 @@ class TemplateWorkspaceService:
                 answer_text=round_row.answer_text,
                 first_asked_at=round_row.started_at,
             )
+        # 声纹永久下线后，同一次录音里被 ASR 切成两段的重复残余不再有任何去处，
+        # 挂接完答案就地把它们折叠成 SUPERSEDED，不再挡定稿（详见模块说明）。
+        supersede_duplicate_fragments(self.db, case_id)
         return question_round_dict(round_row)
 
     def create_live_question_from_fragments(
@@ -502,6 +506,7 @@ class TemplateWorkspaceService:
                     asr_repo.mark_processed(self.db, fragment_id=fragment.id, case_id=case_id,
                                             action="LIVE_QUESTION", target_id=created["id"])
             self.db.flush()
+        supersede_duplicate_fragments(self.db, case_id)
         return {"question": created, "fragmentIds": [row.id for row in fragments]}
 
     def deactivate_case_question(self, case_id: str, question_id: str) -> dict:
