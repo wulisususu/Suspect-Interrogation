@@ -26,6 +26,11 @@ from app.services.serializers import iso_utc
 
 EXEMPTION_SECONDS = 600
 SESSION_HOURS = 8
+# Sessions slide while in use so a long interrogation is not cut off mid-recording,
+# but never outlive this absolute bound from the original login.
+SESSION_MAX_HOURS = 24
+LOGIN_LOCK_THRESHOLD = 5
+LOGIN_LOCK_MAX_MINUTES = 15
 PASSWORD_ITERATIONS = 600_000
 MAX_SIGNATURE_BYTES = 512_000
 
@@ -51,6 +56,9 @@ def _password_matches(password: str, encoded: str) -> bool:
         return hmac.compare_digest(digest.hex(), expected)
     except (ValueError, TypeError):
         return False
+
+
+_DUMMY_PASSWORD_HASH = f'pbkdf2_sha256${PASSWORD_ITERATIONS}${"00" * 16}${"00" * 32}'
 
 
 def _token_hash(token: str) -> str:
@@ -192,12 +200,17 @@ class OfficerService:
         now = _utc(self.now())
         if row is not None and row.login_blocked_until is not None and _utc(row.login_blocked_until) > now:
             raise DomainError('AUTH_RATE_LIMITED', '登录尝试过多，请稍后再试', 429)
-        if row is None or not row.enabled or not _password_matches(password, row.password_hash):
+        # Always pay for one PBKDF2 derivation so response time does not reveal
+        # whether a badge number exists or is enabled.
+        matches = _password_matches(password, row.password_hash if row is not None else _DUMMY_PASSWORD_HASH)
+        if row is None or not row.enabled or not matches:
             if row is not None:
                 row.failed_login_count += 1
-                if row.failed_login_count >= 5:
-                    row.login_blocked_until = now + timedelta(minutes=1)
-                    row.failed_login_count = 0
+                if row.failed_login_count >= LOGIN_LOCK_THRESHOLD:
+                    # Back off exponentially and keep counting until a success, so a
+                    # guesser cannot regain five fresh attempts every minute.
+                    minutes = min(LOGIN_LOCK_MAX_MINUTES, 2 ** (row.failed_login_count - LOGIN_LOCK_THRESHOLD))
+                    row.login_blocked_until = now + timedelta(minutes=minutes)
                 # Invalid credential attempts must survive the dependency rollback.
                 self.db.commit()
             raise DomainError('AUTH_INVALID_CREDENTIALS', '警号或密码错误', 401)
@@ -210,6 +223,8 @@ class OfficerService:
             raise DomainError('AUTH_NOT_CONFIGURED', '请先由管理员通过命令行配置民警账号', 503)
         officer = self._verify_credentials(badge_number, password)
         now = _utc(self.now())
+        for stale in self.db.scalars(select(OfficerSession).where(OfficerSession.expires_at <= now)):
+            self.db.delete(stale)
         token = secrets.token_urlsafe(32)
         row = OfficerSession(token_hash=_token_hash(token), badge_number=officer.badge_number, issued_at=now,
                              expires_at=now+timedelta(hours=SESSION_HOURS), exemption_until=now+timedelta(seconds=EXEMPTION_SECONDS), locked=False)
@@ -229,9 +244,22 @@ class OfficerService:
             raise DomainError('AUTH_SESSION_LOCKED', '面板已锁定，请先解锁', 423)
         return row, officer
 
-    def authenticate(self, token: str, *, allow_locked: bool = False) -> Actor:
-        _, officer = self._session(token, allow_locked=allow_locked)
+    def authenticate(self, token: str, *, allow_locked: bool = False, renew: bool = False) -> Actor:
+        row, officer = self._session(token, allow_locked=allow_locked)
+        if renew:
+            self._renew(row)
         return Actor(officer.badge_number, officer.name, officer.unit, officer.is_admin)
+
+    def _renew(self, row: OfficerSession) -> None:
+        """Slide an in-use session forward once less than half its window remains."""
+        now = _utc(self.now())
+        if _utc(row.expires_at) - now >= timedelta(hours=SESSION_HOURS / 2):
+            return
+        limit = _utc(row.issued_at) + timedelta(hours=SESSION_MAX_HOURS)
+        renewed = min(now + timedelta(hours=SESSION_HOURS), limit)
+        if renewed > _utc(row.expires_at):
+            row.expires_at = renewed
+            self.db.commit()
 
     def session_status(self, token: str | None, *, required: bool | None = None) -> dict:
         configured = self.configured()
@@ -313,12 +341,17 @@ class OfficerService:
                        target_type='OFFICER_SIGNATURE', target_id=row.id, after={'badgeNumber': badge_number, 'version': row.version})
         return self._signature_payload(row)
 
-    def list_signatures(self, badge_number: str | None = None) -> list[dict]:
+    def list_signatures(self, badge_number: str | None = None, *, include_images: bool = True) -> list[dict]:
         query = select(OfficerSignature).order_by(OfficerSignature.created_at.desc(), OfficerSignature.version.desc())
         if badge_number:
             self._officer(badge_number)
             query = query.where(OfficerSignature.badge_number == badge_number)
-        return [self._signature_payload(row) for row in self.db.scalars(query)]
+        rows = [self._signature_payload(row) for row in self.db.scalars(query)]
+        if not include_images:
+            # A saved signature is a reusable personal credential; its image never
+            # leaves the server for anyone but its owner.
+            rows = [{**row, 'imageData': None} for row in rows]
+        return rows
 
     def _signature(self, signature_id: str) -> OfficerSignature:
         row = self.db.get(OfficerSignature, signature_id)

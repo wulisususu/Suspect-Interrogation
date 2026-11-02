@@ -19,8 +19,11 @@ def test_backend_dev_smoke_contract_is_preserved(tmp_path, enroll_test_suspect_v
         case_id = created["id"]
         enroll_test_suspect_voiceprint(app, case_id)
 
-        # Legacy browser route may bypass only the historical identity call.
-        # The mandatory suspect voiceprint prerequisite remains explicit.
+        # The legacy route no longer bypasses identity confirmation.
+        refused = client.post(f"/api/cases/{case_id}/session/start", json={})
+        assert refused.status_code == 409
+        assert refused.json()["code"] == "IDENTITY_REQUIRED"
+        data(client.post("/api/v1/identity/confirm", json={"case_id": case_id, "name": "测试对象"}))
         session = data(client.post(f"/api/cases/{case_id}/session/start", json={}))
         assert session["status"] == "RUNNING"
 
@@ -50,7 +53,8 @@ def test_backend_dev_smoke_contract_is_preserved(tmp_path, enroll_test_suspect_v
 
         audit = data(client.get(f"/api/cases/{case_id}/audit"))
         assert len(audit) >= 6
-        assert any(x["action"] == "IDENTITY_BYPASS_LEGACY_COMPAT" for x in audit)
+        assert not any(x["action"] == "IDENTITY_BYPASS_LEGACY_COMPAT" for x in audit)
+        assert any(x["action"] == "IDENTITY_CONFIRM" for x in audit)
 
         assert client.get("/api/ai/settings").status_code == 404
         assert client.get(f"/work/case/{case_id}/session/message/inquiry", params={"message": "测试"}).status_code == 404

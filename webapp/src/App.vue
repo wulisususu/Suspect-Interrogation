@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref, watchEffect } from 'vue'
+import { fetchAuthSession } from './api/officers'
+import { authPrompt, authReasonForSession, autoPromptEnabled, requestOfficerAuth, settleOfficerAuth } from './auth/officerAuth'
 import AdminShell from './components/AdminShell.vue'
 import LockScreen from './components/LockScreen.vue'
+import OfficerAuthDialog from './components/OfficerAuthDialog.vue'
 import MaintenanceGate from './components/MaintenanceGate.vue'
 import OnScreenKeyboard from './components/OnScreenKeyboard.vue'
 import AdminAuditView from './views/AdminAuditView.vue'
@@ -19,6 +22,8 @@ import RecordingAdminView from './views/RecordingAdminView.vue'
 import { parseRootRoute, rootRouteUrl, type AdminPanel, type RootRoute } from './utils/rootRoute'
 
 const route = ref<RootRoute>(parseRootRoute(location.search))
+// 公共大厅和民警验证页不因后台请求失败自动弹出验证。
+watchEffect(() => { autoPromptEnabled.value = route.value.page !== 'home' && route.value.page !== 'login' })
 /** 大厅「开始新建笔录」进入台账时直接打开身份录入；仅本次导航有效，不写入地址栏。 */
 const startNew = ref(false)
 /** 手动锁屏：锁定期间业务页面整体卸载，只留锁屏遮罩。 */
@@ -39,17 +44,55 @@ function openNewCase(caseId: string) {
   freshCaseId.value = caseId
 }
 const openCases = () => go({ page: 'cases' })
-function startNewRecord() {
+async function startNewRecord() {
+  // 新建笔录要写案件数据：民警名录已配置时先验证身份，避免进入台账后每个请求都 401。
+  if (!(await ensureOfficerSession())) return
   go({ page: 'cases' })
   startNew.value = true
+}
+
+/** 需要时弹出验证；未配置民警名录或探测失败时不拦截（由后端决定）。 */
+async function ensureOfficerSession(): Promise<boolean> {
+  try {
+    const reason = authReasonForSession(await fetchAuthSession())
+    return reason ? await requestOfficerAuth(reason) : true
+  } catch {
+    return true
+  }
 }
 const openLogin = () => go({ page: 'login' })
 const openHome = () => go({ page: 'home' })
 const lock = () => { locked.value = true }
-function unlock() {
-  locked.value = false
-  openLogin()
+/** 解锁就地完成（免验期内无需密码），通过后回到锁定前的页面。 */
+async function unlock() {
+  try {
+    const session = await fetchAuthSession()
+    if (!session.configured) {
+      // 尚未配置民警名录时没有可验证的身份，沿用旧行为回到民警验证页提示配置。
+      locked.value = false
+      openLogin()
+      return
+    }
+  } catch {
+    // 探测失败时仍走解锁弹窗，由后端判定
+  }
+  if (await requestOfficerAuth('locked')) locked.value = false
 }
+
+/** 弹窗验证（登录或解锁）成功即说明服务端已解锁，同时撤下本地锁屏。 */
+function onAuthDone(ok: boolean) {
+  if (ok) locked.value = false
+  settleOfficerAuth(ok)
+}
+
+// 服务端锁定状态是事实来源：刷新页面不能绕过锁屏。
+onMounted(async () => {
+  try {
+    if ((await fetchAuthSession()).locked) locked.value = true
+  } catch {
+    // 会话探测失败不阻断页面
+  }
+})
 const openAdmin = () => go({ page: 'admin' })
 const openPlaceholder = (panel: AdminPanel) => go({ page: 'admin-placeholder', panel })
 
@@ -101,5 +144,6 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
       />
     </AdminShell>
   </MaintenanceGate>
+  <OfficerAuthDialog v-if="authPrompt" :key="authPrompt.reason" :reason="authPrompt.reason" @done="onAuthDone" />
   <OnScreenKeyboard />
 </template>

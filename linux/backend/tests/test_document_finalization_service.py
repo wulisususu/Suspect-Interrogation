@@ -11,6 +11,7 @@ from app.database.models import (
     InterrogationSession,
     Message,
     QAUnit,
+    QAUnitFragment,
     QuestionRound,
 )
 from app.database.session import init_database, make_engine, make_session_factory
@@ -311,6 +312,66 @@ def test_finalize_accepts_unknown_speaker_fragment_attached_to_a_question(tmp_pa
             db,
             capture_service=FakeCaptureService(events),
             routing_coordinator=FakeRoutingCoordinator(events),
+        ).finalize(case_id)
+        assert result["status"] == "FROZEN"
+    engine.dispose()
+
+
+def test_finalize_accepts_routed_question_and_dispositioned_unit_fragments(tmp_path: Path):
+    """自动归档轮次的民警提问片段、被忽略问答单元里的片段都已有去向，不再阻断冻结。"""
+    engine, factory, case_id, session_id = seed(tmp_path)
+    events: list[str] = []
+    with factory() as db:
+        db.add(ASRCaptureSession(
+            id="CAPTURE-ROUTED", case_id=case_id, interrogation_session_id=session_id, status="COMPLETE",
+            sample_rate=16000, recording_status="COMPLETE", asr_status="COMPLETE", speaker_status="COMPLETE",
+        ))
+        fragments = [
+            ("FRAGMENT-Q", "INTERROGATOR", "你因何事来公安机关？"),
+            ("FRAGMENT-A", "SUSPECT", "我偷了一个笔记本。"),
+            ("FRAGMENT-IGNORED-Q", "INTERROGATOR", "把水递一下。"),
+            ("FRAGMENT-IGNORED-A", "SUSPECT", "好的。"),
+            ("FRAGMENT-LOOSE", "SUSPECT", "还有一句。"),
+        ]
+        for ordinal, (fragment_id, speaker, text) in enumerate(fragments):
+            db.add(ASRFragment(
+                id=fragment_id, capture_session_id="CAPTURE-ROUTED", case_id=case_id, ordinal=ordinal,
+                started_at_ms=ordinal * 1000, ended_at_ms=ordinal * 1000 + 800, raw_text=text, edited_text=text,
+                speaker=speaker, speaker_source="SPEAKER_EMBEDDING", voiceprint_verified=True,
+                low_confidence=False, state="PENDING", model_id="test-model",
+            ))
+        db.add(CaseQuestion(id="Q-ROUTED", case_id=case_id, source="CASE", text="你因何事来公安机关？", sort_order=1))
+        db.add_all([
+            QAUnit(id="QA-APPLIED", case_id=case_id, session_id=session_id, status="APPLIED",
+                   raw_question_text="你因何事来公安机关？", raw_answer_text="我偷了一个笔记本。"),
+            QAUnit(id="QA-IGNORED", case_id=case_id, session_id=session_id, status="IGNORED",
+                   raw_question_text="把水递一下。", raw_answer_text="好的。"),
+        ])
+        db.flush()
+        db.add_all([
+            QAUnitFragment(qa_unit_id="QA-APPLIED", fragment_id="FRAGMENT-Q", role="QUESTION", position=0),
+            QAUnitFragment(qa_unit_id="QA-APPLIED", fragment_id="FRAGMENT-A", role="ANSWER", position=1),
+            QAUnitFragment(qa_unit_id="QA-IGNORED", fragment_id="FRAGMENT-IGNORED-Q", role="QUESTION", position=0),
+            QAUnitFragment(qa_unit_id="QA-IGNORED", fragment_id="FRAGMENT-IGNORED-A", role="ANSWER", position=1),
+        ])
+        db.add(QuestionRound(
+            id="ROUND-ROUTED", case_id=case_id, session_id=session_id, case_question_id="Q-ROUTED", round_no=1,
+            actual_question_text="你因何事来公安机关？", officer_fragment_id="FRAGMENT-Q",
+            answer_text="我偷了一个笔记本。", answer_fragment_ids_json='["FRAGMENT-A"]', status="CLOSED",
+        ))
+        db.commit()
+
+        with pytest.raises(DomainError) as exc:
+            DocumentFinalizationService(
+                db, capture_service=FakeCaptureService(events), routing_coordinator=FakeRoutingCoordinator(events),
+            ).finalize(case_id)
+        assert exc.value.code == "ASR_FRAGMENT_REVIEW_REQUIRED"
+        assert exc.value.data == {"fragment_ids": ["FRAGMENT-LOOSE"]}
+
+        db.get(ASRFragment, "FRAGMENT-LOOSE").state = "DISCARDED"
+        db.commit()
+        result = DocumentFinalizationService(
+            db, capture_service=FakeCaptureService(events), routing_coordinator=FakeRoutingCoordinator(events),
         ).finalize(case_id)
         assert result["status"] == "FROZEN"
     engine.dispose()

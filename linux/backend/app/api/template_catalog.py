@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_db, require_admin
 from app.api.responses import envelope
 from app.domain.errors import DomainError
 from app.services.template_catalog_service import TemplateCatalogService, get_case_snapshot
@@ -50,7 +50,7 @@ def templates(include_disabled: bool = Query(False, alias='includeDisabled'), db
     return envelope(result)
 
 
-@router.post('/templates')
+@router.post('/templates', dependencies=[Depends(require_admin)])
 def create_template(body: TemplateCreateRequest, db: Session = Depends(get_db)):
     result = TemplateCatalogService(db).create(template_id=body.id, backend_key=body.backend_key, catalog=body.catalog, structure=body.structure)
     db.commit()
@@ -71,14 +71,14 @@ def template_versions(template_id: str, db: Session = Depends(get_db)):
     return envelope(result)
 
 
-@router.post('/templates/{template_id}/versions')
+@router.post('/templates/{template_id}/versions', dependencies=[Depends(require_admin)])
 def save_template_version(template_id: str, body: TemplateVersionRequest, db: Session = Depends(get_db)):
     result = TemplateCatalogService(db).save_version(template_id, structure=body.structure, catalog=body.catalog)
     db.commit()
     return envelope(result, '已保存为新版本')
 
 
-@router.patch('/templates/{template_id}')
+@router.patch('/templates/{template_id}', dependencies=[Depends(require_admin)])
 def template_active(template_id: str, body: TemplateActiveRequest, db: Session = Depends(get_db)):
     result = TemplateCatalogService(db).set_active(template_id, body.active)
     db.commit()

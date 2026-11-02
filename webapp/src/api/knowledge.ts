@@ -194,10 +194,10 @@ export async function fetchDraftQuestions(payload: {
   return unwrap<DraftQuestion[]>(response.data)
 }
 
-export async function runKnowledgeImport(options: { dryRun?: boolean; root?: string } = {}): Promise<ImportReport> {
+/** 导入目录由部署配置（SUSPECT_KNOWLEDGE_VAULT_DIR）决定，前端不能指定。 */
+export async function runKnowledgeImport(options: { dryRun?: boolean } = {}): Promise<ImportReport> {
   const response = await http.post('/api/v1/knowledge/import', {
     dryRun: options.dryRun ?? true,
-    ...(options.root ? { root: options.root } : {}),
   })
   return unwrap<ImportReport>(response.data)
 }

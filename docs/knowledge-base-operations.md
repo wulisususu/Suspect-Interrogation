@@ -111,7 +111,9 @@ curl -s -X POST https://127.0.0.1:18080/api/v1/knowledge/import \
   --cacert /etc/suspect-interrogation/tls/ca.crt
 ```
 
-`root` 省略时用 `SUSPECT_KNOWLEDGE_VAULT`（默认 `/var/lib/suspect-interrogation/knowledge-vault`）。
+导入目录只取部署配置 `SUSPECT_KNOWLEDGE_VAULT_DIR`（默认 `/var/lib/suspect-interrogation/knowledge-vault`），
+请求中传 `root` 会被拒绝（`KNOWLEDGE_IMPORT_ROOT_FIXED`）；导入仅管理员可执行。Vault 内的符号链接或指向目录外的
+文件不导入，并在报告的 `rejected` 中列出。
 
 ### 4.3 导入行为
 

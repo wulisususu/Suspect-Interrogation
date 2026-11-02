@@ -106,7 +106,7 @@ def legacy_get_session(case_id: str, db: Session = Depends(get_db)):
 
 @router.post("/api/cases/{case_id}/session/start")
 def legacy_start(case_id: str, body: LegacyActorRequest | None = None, db: Session = Depends(get_db)):
-    return envelope(SessionService(db).start(case_id, body.actor_id if body else None, allow_identity_bypass=True), "审讯已开始")
+    return envelope(SessionService(db).start(case_id, body.actor_id if body else None), "审讯已开始")
 
 
 @router.post("/api/cases/{case_id}/session/pause")

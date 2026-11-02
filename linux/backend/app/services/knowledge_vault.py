@@ -212,9 +212,13 @@ def scan_vault(root: Path) -> tuple[list[VaultNote], list[dict]]:
     if not root.is_dir():
         raise DomainError('KNOWLEDGE_VAULT_NOT_FOUND', f'知识库目录不存在：{root}', 404)
     seen: dict[str, str] = {}
+    resolved_root = root.resolve()
     for path in sorted(root.rglob('*.md')):
         relative = path.relative_to(root)
         if any(part.startswith('.') for part in relative.parts):
+            continue
+        if path.is_symlink() or not path.resolve().is_relative_to(resolved_root):
+            rejected.append({'path': relative.as_posix(), 'reason': '符号链接或指向知识库目录之外的文件不导入'})
             continue
         if relative.parts and relative.parts[0] in SKIP_DIRS:
             continue

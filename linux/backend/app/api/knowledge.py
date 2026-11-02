@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_db, require_admin
 from app.api.responses import envelope
 from app.auth.context import current_actor_id
+from app.domain.errors import DomainError
 from app.services.knowledge_service import KnowledgeService
 
 router = APIRouter(tags=['knowledge'])
@@ -71,21 +72,21 @@ def categories(db: Session = Depends(get_db)):
     return envelope(result)
 
 
-@router.post('/knowledge/categories')
+@router.post('/knowledge/categories', dependencies=[Depends(require_admin)])
 def create_category(body: CategoryRequest, db: Session = Depends(get_db)):
     result = KnowledgeService(db).create_category(body.name)
     db.commit()
     return envelope(result, '分类已创建')
 
 
-@router.patch('/knowledge/categories/{category_id}')
+@router.patch('/knowledge/categories/{category_id}', dependencies=[Depends(require_admin)])
 def update_category(category_id: str, body: CategoryRequest, db: Session = Depends(get_db)):
     result = KnowledgeService(db).update_category(category_id, body.name)
     db.commit()
     return envelope(result, '分类已更新')
 
 
-@router.delete('/knowledge/categories/{category_id}')
+@router.delete('/knowledge/categories/{category_id}', dependencies=[Depends(require_admin)])
 def delete_category(category_id: str, db: Session = Depends(get_db)):
     result = KnowledgeService(db).delete_category(category_id)
     db.commit()
@@ -107,7 +108,7 @@ def entries(category_id: str | None = Query(None, alias='categoryId'), active: b
     return envelope(result)
 
 
-@router.post('/knowledge/entries')
+@router.post('/knowledge/entries', dependencies=[Depends(require_admin)])
 def create_entry(body: EntryCreateRequest, db: Session = Depends(get_db)):
     result = KnowledgeService(db).create_entry(title=body.title, category_id=body.category_id, content=body.content, keywords=body.keywords, active=body.active)
     db.commit()
@@ -119,14 +120,14 @@ def entry(entry_id: str, db: Session = Depends(get_db)):
     return envelope(KnowledgeService(db).detail(entry_id))
 
 
-@router.patch('/knowledge/entries/{entry_id}')
+@router.patch('/knowledge/entries/{entry_id}', dependencies=[Depends(require_admin)])
 def update_entry(entry_id: str, body: EntryUpdateRequest, db: Session = Depends(get_db)):
     result = KnowledgeService(db).update_entry(entry_id, body.model_dump(exclude_unset=True, by_alias=True))
     db.commit()
     return envelope(result, '条目已更新')
 
 
-@router.delete('/knowledge/entries/{entry_id}')
+@router.delete('/knowledge/entries/{entry_id}', dependencies=[Depends(require_admin)])
 def delete_entry(entry_id: str, db: Session = Depends(get_db)):
     result = KnowledgeService(db).delete_entry(entry_id)
     db.commit()
@@ -171,8 +172,10 @@ def entry_links(entry_id: str, db: Session = Depends(get_db)):
 def _vault_root(request: Request, override: str | None):
     from pathlib import Path
 
+    # The import source is a deployment setting, never a request parameter:
+    # a client-chosen path would read arbitrary Markdown on the server.
     if override:
-        return Path(override)
+        raise DomainError('KNOWLEDGE_IMPORT_ROOT_FIXED', '知识库导入目录由部署配置决定，不能在请求中指定', 400)
     settings = getattr(request.app.state, 'runtime_settings', None)
     configured = getattr(settings, 'knowledge_vault_dir', None)
     if configured is not None:
@@ -180,7 +183,7 @@ def _vault_root(request: Request, override: str | None):
     return Path.cwd() / 'obsidian-vault'
 
 
-@router.post('/knowledge/import')
+@router.post('/knowledge/import', dependencies=[Depends(require_admin)])
 def import_vault(body: ImportRequest, request: Request, db: Session = Depends(get_db)):
     service = KnowledgeService(db)
     result = service.import_vault(_vault_root(request, body.root), dry_run=body.dry_run, actor_id=current_actor_id())
@@ -212,7 +215,7 @@ def term_correction_export(db: Session = Depends(get_db)):
     return envelope(KnowledgeService(db).export_corrections())
 
 
-@router.post('/knowledge/term-corrections')
+@router.post('/knowledge/term-corrections', dependencies=[Depends(require_admin)])
 def term_correction_create(body: TermCorrectionRequest, db: Session = Depends(get_db)):
     result = KnowledgeService(db).upsert_term_correction(
         wrong=body.wrong, right=body.right, category=body.category, active=body.active, replace=body.replace,
@@ -221,7 +224,7 @@ def term_correction_create(body: TermCorrectionRequest, db: Session = Depends(ge
     return envelope(result, '热词已保存')
 
 
-@router.patch('/knowledge/term-corrections/{correction_id}')
+@router.patch('/knowledge/term-corrections/{correction_id}', dependencies=[Depends(require_admin)])
 def term_correction_patch(correction_id: str, body: TermCorrectionPatch, db: Session = Depends(get_db)):
     result = KnowledgeService(db).set_term_correction_active(correction_id, body.active)
     db.commit()

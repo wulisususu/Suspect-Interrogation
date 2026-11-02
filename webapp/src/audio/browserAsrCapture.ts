@@ -1,3 +1,4 @@
+import { probeOfficerAuth } from '../api/http'
 import { runtimeConfig } from '../config/runtime'
 import {
   Pcm16Resampler,
@@ -935,6 +936,8 @@ class BrowserPcmStreamer {
       this.bindSocket(socket)
       await this.pumpFormalOutbox()
     } catch {
+      // 会话过期或面板被锁时握手会被拒绝；探测后弹出验证，录音继续缓存在本地，验证通过后下一次重连即续传。
+      void probeOfficerAuth()
       this.scheduleReconnect()
     }
   }
