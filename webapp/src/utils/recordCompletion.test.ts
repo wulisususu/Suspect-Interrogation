@@ -42,4 +42,15 @@ describe('record completion safety and review ordering', () => {
     expect(freezeBlockReason({ ...ready, recordError: '读取失败' })).toContain('笔录')
     expect(freezeBlockReason({ ...ready, hasQuestions: false })).toContain('笔录')
   })
+
+  it('does not block on a speaker status the retired voiceprint stage will never advance', () => {
+    // 声纹下线后 SPEAKER 任务不再调度，采集的 speaker_status 长期停在 PENDING；
+    // 后端冻结也不校验它，所以 PENDING/NEEDS_REVIEW 都不能挡住定稿。
+    expect(freezeBlockReason({ ...ready, speakerStatus: 'PENDING' })).toBe('')
+    expect(freezeBlockReason({ ...ready, speakerStatus: 'NEEDS_REVIEW' })).toBe('')
+    expect(freezeBlockReason({ ...ready, speakerStatus: null })).toBe('')
+    // 真正在分析时才提示等待。
+    expect(freezeBlockReason({ ...ready, speakerStatus: 'PROCESSING' })).toContain('说话人分析')
+    expect(freezeBlockReason({ ...ready, speakerStatus: 'RUNNING' })).toContain('说话人分析')
+  })
 })

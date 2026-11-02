@@ -555,8 +555,8 @@ async function confirmSignature() {
             :unresolved-qa="unresolvedQa"
             :auto-checks="autoChecks"
           />
-          <details v-if="unresolvedFragments || unresolvedQa" class="raw-transcript review-fragments">
-            <summary>处理未完成的转写 {{ unresolvedFragments }} 条 · 问答 {{ unresolvedQa }} 组</summary>
+          <details v-if="unresolvedFragments || unresolvedQa" class="raw-transcript review-fragments" :open="unresolvedFragments > 0">
+            <summary>处理未完成的转写 {{ unresolvedFragments }} 条 · 问答 {{ unresolvedQa }} 组{{ unresolvedFragments ? '（确认或丢弃后才能定稿）' : '' }}</summary>
             <RecordReviewPanel :fragments="reviewFragments" :qa-units="workspace.qaUnits" :busy="completionBusy || signingLoading || !!signingLoadError" :frozen="documentFrozen" @confirm="reviewAction($event)" @discard="reviewAction([$event], true)" @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)" @correct="(id, speaker, reason, text) => emit('correctFragment', id, speaker, reason, text)" />
           </details>
         </div>

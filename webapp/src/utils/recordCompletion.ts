@@ -39,7 +39,10 @@ export function freezeBlockReason(value: {
   if (!['RUNNING', 'PAUSED', 'COMPLETED'].includes(value.sessionStatus)) return '尚未开始询问，没有可定稿的问答'
   if (value.recordingStatus === 'INCOMPLETE' || value.recordingStatus === 'CAPTURING') return '录音尚未完整归档，请先处理'
   if (value.asrStatus && value.asrStatus !== 'COMPLETE') return '文字转写尚未完成，请先处理'
-  if (value.speakerStatus && !['COMPLETE', 'NEEDS_REVIEW'].includes(value.speakerStatus)) return '说话人分析尚未完成，请先处理'
+  // 声纹已退出办理流程（SUSPECT_LEGACY_VOICEPRINT_ENABLED 默认关），扬声器分析任务不再调度，
+  // 采集的 speaker_status 会永远停在 PENDING。后端冻结也不校验它，所以这里只在真正分析中才拦，
+  // 否则每一场都会卡在"说话人分析尚未完成"而无法定稿。
+  if (value.speakerStatus && ['PROCESSING', 'RUNNING', 'QUEUED'].includes(value.speakerStatus)) return '说话人分析正在进行，请稍候'
   if (value.unresolvedFragments) return `还有 ${value.unresolvedFragments} 条转写片段待确认或丢弃`
   if (value.unresolvedQa) return `还有 ${value.unresolvedQa} 组问答待处置`
   return ''
