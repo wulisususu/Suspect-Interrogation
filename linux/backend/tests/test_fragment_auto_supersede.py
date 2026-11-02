@@ -53,18 +53,47 @@ def test_attach_answer_folds_similar_retranscription_in_same_capture(db):
     assert residual.state == 'SUPERSEDED'
 
 
-def test_similar_text_in_other_capture_is_preserved(db):
-    """跨采集的相似文字不折叠：可能是确实又照着说了一遍。"""
+def test_similar_retake_in_older_capture_is_folded(db):
+    """真实形态：每题录答是独立采集，重录后旧采集里的相似残余要折叠。"""
+    service = TemplateWorkspaceService(db)
+    q = question(db)
+    old_capture = asr_repo.create_capture_session(db, case_id='CASE-OWN', interrogation_session_id=None, sample_rate=16000)
+    remnant = fragment(db, old_capture, 0, '我看清楚了没有要求')
+    db.commit()
+    new_capture = asr_repo.create_capture_session(db, case_id='CASE-OWN', interrogation_session_id=None, sample_rate=16000)
+    kept = fragment(db, new_capture, 0, '听清楚了没有要求')
+    service.attach_case_question_answer_fragments('CASE-OWN', q['id'], fragment_ids=[kept.id], draft=True)
+    db.refresh(remnant)
+    assert remnant.state == 'SUPERSEDED'
+
+
+def test_similar_text_recorded_after_the_anchor_is_preserved(db):
+    """残余的采集晚于锚点时不按相似度折叠：可能是民警还想挂接的新识别。"""
     service = TemplateWorkspaceService(db)
     q = question(db)
     first = asr_repo.create_capture_session(db, case_id='CASE-OWN', interrogation_session_id=None, sample_rate=16000)
-    second = asr_repo.create_capture_session(db, case_id='CASE-OWN', interrogation_session_id=None, sample_rate=16000)
     kept = fragment(db, first, 0, '听清楚了没有要求')
-    repeated = fragment(db, second, 0, '我看清楚了没有要求')
+    db.commit()
+    second = asr_repo.create_capture_session(db, case_id='CASE-OWN', interrogation_session_id=None, sample_rate=16000)
+    later = fragment(db, second, 0, '我看清楚了没有要求')
     service.attach_case_question_answer_fragments('CASE-OWN', q['id'], fragment_ids=[kept.id], draft=True)
-    db.refresh(repeated)
-    assert repeated.state == 'PENDING'
-    assert _supersede_actions(db, repeated.id) == []
+    db.refresh(later)
+    assert later.state == 'PENDING'
+    assert _supersede_actions(db, later.id) == []
+
+
+def test_contained_text_in_other_capture_is_folded(db):
+    """逐字包含与采集先后无关：内容已被挂接答案完全覆盖。"""
+    service = TemplateWorkspaceService(db)
+    q = question(db)
+    first = asr_repo.create_capture_session(db, case_id='CASE-OWN', interrogation_session_id=None, sample_rate=16000)
+    kept = fragment(db, first, 0, '认识字体')
+    db.commit()
+    second = asr_repo.create_capture_session(db, case_id='CASE-OWN', interrogation_session_id=None, sample_rate=16000)
+    remnant = fragment(db, second, 0, '认识字')
+    service.attach_case_question_answer_fragments('CASE-OWN', q['id'], fragment_ids=[kept.id], draft=True)
+    db.refresh(remnant)
+    assert remnant.state == 'SUPERSEDED'
 
 
 def test_residual_with_extra_content_is_preserved(db):
