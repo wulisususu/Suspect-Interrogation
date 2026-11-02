@@ -707,10 +707,14 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     if (statusChanged) void refreshCase(scope).catch(() => undefined)
   }
 
-  async function initialize() {
+  /**
+   * ``background``：保存后的刷新只更新数据、不进入加载态。加载态会让工作台整体卸载重挂，
+   * 笔录页重挂时按会话状态重新推导形态，④ 定稿校验会被拽回 ③ 问答录入。
+   */
+  async function initialize(options: { background?: boolean } = {}) {
     const generation = caseGeneration
     const requestedCaseId = caseId.value
-    loading.value = true
+    if (!options.background) loading.value = true
     error.value = ''
 
     if (!requestedCaseId) {

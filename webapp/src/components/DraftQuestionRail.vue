@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { ArrowRight, ChevronRight, FileText, Mic, Pause, Play, Plus, RotateCcw, Square } from '@lucide/vue'
+import { ArrowRight, ChevronRight, FileText, Mic, Pause, Pencil, Play, Plus, RotateCcw, Square, Trash2 } from '@lucide/vue'
 import type { AudioLevelSample } from '../types/interrogation'
 import type { FormalQuestion, FormalQuestionSection } from '../types/templateInterrogation'
 import { lastInsertableCardId } from '../utils/questionInsertion'
@@ -36,6 +36,8 @@ const emit = defineEmits<{
   updateDraft: [roundId: string, answerText: string]
   updateAnswer: [questionId: string, answerText: string]
   addQuestion: [text: string, afterQuestionId: string | null]
+  editQuestion: [questionId: string, text: string]
+  removeQuestion: [questionId: string]
   questionHoldStart: [afterQuestionId: string | null]
   questionHoldEnd: []
   togglePause: []
@@ -64,7 +66,10 @@ const cards = computed(() => [...props.questions]
     else if (answer) state = 'recorded'
     else if (draft) state = 'draft'
     const sectionType: FormalQuestionSection = question.sectionType ?? 'BODY'
-    return { id: question.id, ordinal: index + 1, text: question.text, answer, draft, roundId: round?.id ?? null, state, sectionType }
+    // 与后端一致：固定程式题（locked）不可改不可删；开头 / 结尾段的题不可删。
+    const editable = !question.locked
+    const removable = !question.locked && sectionType === 'BODY'
+    return { id: question.id, ordinal: index + 1, text: question.text, answer, draft, roundId: round?.id ?? null, state, sectionType, editable, removable }
   }))
 
 /** 本地编辑：只保存真正改过的内容，避免服务端刷新冲掉正在输入的文字。 */
@@ -155,6 +160,37 @@ function commit(cardId: string) {
   emit('commit', cardId, text)
 }
 
+/**
+ * 改问题 / 删题：说错了、识别错了可以就地改字；删题只是移出笔录（后端保留历史与录音），
+ * 两步确认防误触。录音中的题不能改删，固定程式题按钮不出现。
+ */
+const questionEditId = ref<string | null>(null)
+const questionDraft = ref('')
+const removeConfirmId = ref<string | null>(null)
+const questionToolsDisabled = computed(() => props.locked || recording.value || Boolean(props.captureBusy))
+
+function startQuestionEdit(cardId: string, text: string) {
+  if (questionToolsDisabled.value) return
+  removeConfirmId.value = null
+  questionEditId.value = cardId
+  questionDraft.value = text
+  selectedId.value = cardId
+}
+function saveQuestionEdit(cardId: string) {
+  const card = cards.value.find((item) => item.id === cardId)
+  const next = questionDraft.value.trim()
+  questionEditId.value = null
+  if (!card || props.locked || !next || next === card.text) return
+  emit('editQuestion', cardId, next)
+}
+function confirmRemove(cardId: string) {
+  if (questionToolsDisabled.value) return
+  questionEditId.value = null
+  if (removeConfirmId.value !== cardId) { removeConfirmId.value = cardId; return }
+  removeConfirmId.value = null
+  emit('removeQuestion', cardId)
+}
+
 /** 追加一问：按住说话、松开成卡；录音不可用或想打字时改为手动输入。 */
 const typing = ref(false)
 const newQuestion = ref('')
@@ -211,9 +247,23 @@ function submitQuestion() {
         >
           <header class="draft-card-head">
             <span class="draft-ordinal">Q{{ card.ordinal }}</span>
-            <p class="draft-question">{{ card.text }}</p>
+            <form v-if="questionEditId === card.id" class="draft-question-edit" @submit.prevent="saveQuestionEdit(card.id)" @click.stop>
+              <input v-model="questionDraft" type="text" :aria-label="`修改第 ${card.ordinal} 题问题`" maxlength="500" />
+              <button type="submit" class="draft-action is-done" :disabled="!questionDraft.trim()">保存</button>
+              <button type="button" class="draft-action is-secondary" @click="questionEditId = null">取消</button>
+            </form>
+            <p v-else class="draft-question">{{ card.text }}</p>
+            <span v-if="questionEditId !== card.id && card.state !== 'recording' && (card.editable || card.removable)" class="draft-question-tools">
+              <button v-if="card.editable" type="button" class="draft-tool" :disabled="questionToolsDisabled" :aria-label="`修改第 ${card.ordinal} 题问题`" title="修改问题" @click.stop="startQuestionEdit(card.id, card.text)"><Pencil :size="15" aria-hidden="true" /></button>
+              <button v-if="card.removable" type="button" class="draft-tool is-danger" :disabled="questionToolsDisabled" :aria-label="`删除第 ${card.ordinal} 题`" title="删除此题" @click.stop="confirmRemove(card.id)"><Trash2 :size="15" aria-hidden="true" /></button>
+            </span>
             <span class="draft-state">{{ editingId === card.id ? '编辑中' : STATE_LABEL[card.state] }}<template v-if="card.state === 'draft' && selectedId === card.id && editingId !== card.id"> · 已选中</template></span>
           </header>
+          <div v-if="removeConfirmId === card.id" class="draft-remove-confirm" role="alert" @click.stop>
+            <span>删除第 {{ card.ordinal }} 题？{{ card.answer || card.draft ? '该题及其回答将移出笔录。' : '该题将移出笔录。' }}</span>
+            <button type="button" class="draft-action is-secondary" @click="removeConfirmId = null">取消</button>
+            <button type="button" class="draft-action is-danger" :disabled="questionToolsDisabled" @click="confirmRemove(card.id)">确认删除</button>
+          </div>
 
           <div v-if="card.state === 'recording'" class="draft-recording">
             <div class="draft-recording-meter">
@@ -311,6 +361,16 @@ function submitQuestion() {
 .draft-question { flex: 1; margin: 0; color: var(--ink-900); font-size: var(--text-md); line-height: 1.5; }
 .draft-card.is-empty .draft-question { color: var(--ink-500); }
 .draft-state { flex: none; color: var(--ink-400); font-size: var(--text-xs); }
+.draft-question-tools { display: inline-flex; flex: none; gap: var(--space-1); }
+.draft-tool { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-400); }
+.draft-tool:not(:disabled):hover { background: var(--primary-50); color: var(--primary-600); }
+.draft-tool.is-danger:not(:disabled):hover { background: var(--danger-100); color: var(--danger-600); }
+.draft-tool:disabled { opacity: .4; }
+.draft-question-edit { display: flex; flex: 1; gap: var(--space-2); }
+.draft-question-edit input { flex: 1; min-width: 0; min-height: 44px; padding: 0 var(--space-3); border: 2px solid var(--primary-600); border-radius: var(--radius-sm); font: inherit; font-size: var(--text-md); }
+.draft-remove-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--danger-100); color: var(--danger-600); font-size: var(--text-sm); }
+.draft-remove-confirm span { flex: 1; }
+.draft-action.is-danger { background: var(--danger-600); color: var(--surface); }
 .draft-card.is-recorded .draft-state { color: var(--success-700); }
 .draft-card.is-draft .draft-state { color: var(--warning-700); }
 .draft-card.is-recording .draft-state { color: var(--danger-600); }

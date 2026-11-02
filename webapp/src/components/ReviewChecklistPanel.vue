@@ -22,9 +22,6 @@ const props = defineProps<{
   unresolvedQa: number
   autoChecks?: ReviewAutoCheck[]
 }>()
-/** 未处理转写 / 问答不再常驻页面（样板无此栏），由对应检查项上的「去处理」打开处理弹窗。 */
-const emit = defineEmits<{ resolve: [] }>()
-const RESOLVABLE_CHECKS = new Set(['fragments', 'qa'])
 
 type ElementState = 'confirmed' | 'pending' | 'missing'
 const STATE_LABEL: Record<ElementState, string> = { confirmed: '已确认 ✓', pending: '待补', missing: '未获取' }
@@ -72,7 +69,7 @@ const CHECK_MARK = { pass: '✓', pending: '!', block: '!' } as const
 
     <h3>定稿前检查</h3>
     <ul class="review-checks">
-      <li v-for="item in checks" :key="item.key" :class="`is-${item.state}`"><b aria-hidden="true">{{ CHECK_MARK[item.state] }}</b><span>{{ item.detail ? `${item.title} · ${item.detail}` : item.title }}</span><button v-if="!frozen && RESOLVABLE_CHECKS.has(item.key)" type="button" class="review-resolve" @click="emit('resolve')">去处理</button></li>
+      <li v-for="item in checks" :key="item.key" :class="`is-${item.state}`"><b aria-hidden="true">{{ CHECK_MARK[item.state] }}</b><span>{{ item.detail ? `${item.title} · ${item.detail}` : item.title }}</span></li>
     </ul>
 
     <p v-if="frozen" class="review-block is-done">笔录已冻结，可进入 ⑤ 签署归档</p>
@@ -98,8 +95,6 @@ const CHECK_MARK = { pass: '✓', pending: '!', block: '!' } as const
 .review-checks .is-pass { color: var(--success-700); }
 .review-checks .is-pending { color: var(--warning-700); }
 .review-checks .is-block { color: var(--danger-600); }
-.review-checks li { align-items: center; }
-.review-resolve { flex: 0 0 auto; min-height: 36px; margin-left: auto; padding: 0 var(--space-4); border: 1px solid var(--primary-600); border-radius: var(--radius-sm); background: var(--surface); color: var(--primary-600); font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
 .review-block { margin: var(--space-2) 0 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); background: var(--warning-100); color: var(--warning-700); font-size: var(--text-sm); }
 .review-block.is-done { background: var(--success-100); color: var(--success-700); }
 </style>

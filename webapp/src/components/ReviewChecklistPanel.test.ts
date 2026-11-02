@@ -46,17 +46,18 @@ describe('ReviewChecklistPanel (design P13 / state C)', () => {
     expect(html).not.toContain('type="checkbox"')
   })
 
-  it('surfaces only the blockers the backend would reject', async () => {
-    const html = await render({ unresolvedFragments: 3, blockReason: '还有 3 条转写片段待确认或丢弃' })
-    expect(html).toContain('转写片段未处理 · 3 条，需确认或丢弃后才能定稿')
-    expect(html).toContain('还有 3 条转写片段待确认或丢弃')
+  it('surfaces the backend block reason when there is one', async () => {
+    const html = await render({ blockReason: '请先停止录音' })
+    expect(html).toContain('请先停止录音')
   })
 
-  it('offers 去处理 only on unresolved transcript / QA blockers, never after freezing', async () => {
-    expect(await render()).not.toContain('去处理')
-    const blocked = await render({ unresolvedFragments: 2, unresolvedQa: 1 })
-    expect(blocked.match(/去处理/g)).toHaveLength(2)
-    expect(await render({ unresolvedFragments: 2, frozen: true })).not.toContain('去处理')
+  it('only hints at transcripts that never reached the record — no triage, no blocking', async () => {
+    const html = await render({ unresolvedFragments: 3, unresolvedQa: 1 })
+    expect(html).toContain('未进入笔录的录音转写 · 3 段转写、1 组问答，定稿时如实标为未入笔录，原始录音保留')
+    expect(html).toMatch(/<li class="is-pending"[^>]*><b[^>]*>!<\/b><span[^>]*>未进入笔录的录音转写/)
+    expect(html).not.toContain('is-block')
+    expect(html).not.toContain('去处理')
+    expect(html).not.toContain('<button')
   })
 })
 

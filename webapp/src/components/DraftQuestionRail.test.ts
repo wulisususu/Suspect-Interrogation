@@ -107,3 +107,44 @@ describe('DraftQuestionRail cards (design P07, states A/B)', () => {
     expect(source).toContain('@focus="startEdit(card.id)"')
   })
 })
+
+describe('DraftQuestionRail question edit / remove', () => {
+  const extra = [
+    ...questions,
+    { id: 'q7', text: '你当时第一次实施盗窃是什么时候', source: 'LIVE', sectionType: 'BODY', locked: false, sortOrder: 7, active: true, formalAnswerText: '', rounds: [] },
+    { id: 'qf', text: '以上笔录你仔细阅看，若无误则签字捺印？', sectionType: 'CLOSING', locked: true, sortOrder: 9, active: true, formalAnswerText: '', rounds: [] },
+    { id: 'qc', text: '你还有什么要补充的？', sectionType: 'CLOSING', locked: false, sortOrder: 8, active: true, formalAnswerText: '', rounds: [] },
+  ]
+
+  it('offers 修改问题 and 删除此题 on every body card, including voice-appended LIVE ones', async () => {
+    const html = await render({ questions: extra })
+    for (const [ordinal, text] of [[1, '请讲一下事情的经过？'], [4, '你当时第一次实施盗窃是什么时候']] as const) {
+      const one = card(html, text)
+      expect(one).toContain(`aria-label="修改第 ${ordinal} 题问题"`)
+      expect(one).toContain(`aria-label="删除第 ${ordinal} 题"`)
+    }
+  })
+
+  it('follows the backend: fixed (locked) questions get neither, closing questions cannot be removed', async () => {
+    const html = await render({ questions: extra })
+    const fixed = card(html, '以上笔录你仔细阅看')
+    expect(fixed).not.toContain('修改第')
+    expect(fixed).not.toContain('删除第')
+    const closing = card(html, '你还有什么要补充的？')
+    expect(closing).toContain('修改第')
+    expect(closing).not.toContain('删除第')
+  })
+
+  it('disables question tools while recording or locked, and hides them on the card being recorded', async () => {
+    const recording = await render({ questions: extra, recordingQuestionId: 'q3' })
+    expect(card(recording, '你最后一次见到他是什么时候？')).not.toContain('修改第')
+    for (const button of card(recording, '请讲一下事情的经过？').match(/<button[^>]*class="draft-tool[^"]*"[^>]*>/g) ?? []) expect(button).toContain('disabled')
+    for (const button of (await render({ questions: extra, locked: true })).match(/<button[^>]*class="draft-tool[^"]*"[^>]*>/g) ?? []) expect(button).toContain('disabled')
+  })
+
+  it('removes only after a second, explicit confirmation', async () => {
+    const source = (await import('./DraftQuestionRail.vue?raw')).default
+    expect(source).toContain("if (removeConfirmId.value !== cardId) { removeConfirmId.value = cardId; return }")
+    expect(source).toContain('确认删除')
+  })
+})
