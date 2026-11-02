@@ -862,12 +862,5 @@ button:disabled {
 .review-layout { display: grid; flex: 1 1 auto; grid-template-columns: minmax(0, 42fr) minmax(0, 58fr); gap: var(--space-6); min-height: 0; padding: var(--space-5) var(--space-6); background: var(--surface-sunken); }
 .review-left { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; }
 .review-left > .review-checklist { flex: 1 1 auto; }
-/* 未处理转写 / 问答：样板无此栏，只在「去处理」时以弹窗出现，处理完自动消失 */
-.review-resolve-modal { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: var(--space-6); background: rgba(14, 27, 38, .56); }
-.review-resolve-dialog { display: flex; flex-direction: column; width: min(880px, 94vw); height: min(80vh, 900px); overflow: hidden; border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-pop); }
-.review-resolve-dialog > header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-6); border-bottom: 1px solid var(--line-200); }
-.review-resolve-dialog > header h2 { margin: 0; color: var(--ink-900); font-size: var(--text-lg); font-weight: 650; }
-.review-resolve-dialog > header button { min-height: 44px; padding: 0 var(--space-5); border: 1px solid var(--line-300); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink-700); font-size: var(--text-md); }
-.review-resolve-dialog > .record-review-panel { flex: 1 1 auto; min-height: 0; border-radius: 0; }
 .review-footer { display: flex; flex: 0 0 auto; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--line-200); background: var(--surface); color: var(--ink-500); font-size: var(--text-sm); }
 @media (max-width: 1280px) { .review-layout { grid-template-columns: 1fr; overflow: auto; } }

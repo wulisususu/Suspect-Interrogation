@@ -135,42 +135,30 @@ async function inspectVisualFixture(client, phase) {
       .map((item) => item.textContent || '')
     const draftAnswers = Array.from(document.querySelectorAll('.draft-card .draft-answer'))
       .map((item) => item.value || '')
-    const rawTurns = Array.from(document.querySelectorAll('.record-review-panel .fragment-text'))
-      .map((item) => item.textContent || '')
-    const pendingTexts = Array.from(document.querySelectorAll('.review-qa-units article'))
+    const checkTexts = Array.from(document.querySelectorAll('.review-checks li'))
       .map((item) => item.textContent || '')
     const questionVisible = questionValues.some((value) => value.includes(fixture.formalQuestion))
     const answerVisible = answerValues.some((value) => value.includes(fixture.formalAnswer))
     const draftAnswerVisible = draftAnswers.some((value) => value.includes(fixture.formalAnswer))
-    const rawText = rawTurns.join('\\n')
-    const rawVisible = [
-      fixture.rawOfficerMatched,
-      fixture.rawOfficerUnmatched,
-      fixture.rawSuspectMatched,
-      fixture.rawSuspectUnmatched,
-    ].every((text) => rawText.includes(text))
-    const pendingCard = pendingTexts.some((text) => text.includes(fixture.rawOfficerUnmatched)
-      && text.includes(fixture.rawSuspectUnmatched)
-      && text.includes('新增为现场问答')
-      && text.includes('忽略此组问答'))
+    // ④ 不再有转写分诊浮层：没进入笔录的片段 / 问答只在定稿前检查里提示条数，且不阻断定稿。
+    const leftoverHint = checkTexts.some((text) => text.includes('未进入笔录的录音转写')
+      && text.includes('4 段转写') && text.includes('1 组问答'))
+    const noTriage = !document.querySelector('.record-review-panel, .review-resolve, .review-resolve-modal')
     return {
       complete: phase === 'dictation'
         ? questionVisible && answerVisible && draftAnswerVisible
-        : rawVisible && pendingCard,
+        : leftoverHint && noTriage,
       phase,
       questionVisible,
       answerVisible,
       draftAnswerVisible,
-      rawVisible,
-      pendingCard,
+      leftoverHint,
+      noTriage,
       questionValues,
       answerValues,
       draftAnswers,
-      rawTurns,
-      pendingTexts,
+      checkTexts,
       bodyQuestionCount: questionValues.length,
-      dialogueCount: rawTurns.length,
-      pendingCount: pendingTexts.length,
       url: location.href,
     }
   })()`)
@@ -342,16 +330,10 @@ try {
   await clickSelector(client, '.step-button[aria-label="定稿校验"]')
   await waitForSelector(client, '.review-layout')
   await sleep(500)
-  await screenshot(client, 'review', 1920, 1080)
-  // 未处理的转写 / 问答不常驻页面，从「定稿前检查」的「去处理」打开弹窗
-  await clickSelector(client, '.review-resolve')
-  await waitForSelector(client, '.review-resolve-modal .record-review-panel')
   await requireVisualFixture(client, 'review')
-  await evaluate(client, `document.querySelector('.record-review-panel')?.scrollIntoView({ block: 'start' })`)
-  await screenshot(client, 'review-fragments', 1920, 1080)
+  await screenshot(client, 'review', 1920, 1080)
   await setViewport(client, 1920, 900)
-  await evaluate(client, `document.querySelector('.review-qa-units article button:last-child')?.scrollIntoView({ block: 'end' })`)
-  await screenshot(client, 'review-pending-qa', 1920, 900)
+  await screenshot(client, 'review', 1920, 900)
 } finally {
   client?.close()
   browser.kill('SIGTERM')

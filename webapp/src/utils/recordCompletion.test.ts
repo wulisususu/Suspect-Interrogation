@@ -32,7 +32,7 @@ describe('record completion safety and review ordering', () => {
     expect(fragmentNeedsReview({ ...retired, lowConfidence: true })).toBe(true)
   })
 
-  const ready = { sessionStatus: 'COMPLETED', captureRunning: false, busy: false, loading: false, loadError: '', recordError: '', hasQuestions: true, frozen: false, unresolvedFragments: 0, unresolvedQa: 0, asrStatus: 'COMPLETE', speakerStatus: 'COMPLETE', recordingStatus: 'COMPLETE' }
+  const ready = { sessionStatus: 'COMPLETED', captureRunning: false, busy: false, loading: false, loadError: '', recordError: '', hasQuestions: true, frozen: false, asrStatus: 'COMPLETE', speakerStatus: 'COMPLETE', recordingStatus: 'COMPLETE' }
   it('requires stopped, processed audio before freezing but no manual acknowledgement', () => {
     expect(freezeBlockReason(ready)).toBe('')
     // 定稿会由后端结束仍在进行的询问，进行中 / 暂停的会话可以直接确认定稿。
@@ -44,8 +44,6 @@ describe('record completion safety and review ordering', () => {
   })
 
   it('blocks unresolved or failed state, including missing server state', () => {
-    expect(freezeBlockReason({ ...ready, unresolvedFragments: 2 })).toContain('转写片段')
-    expect(freezeBlockReason({ ...ready, unresolvedQa: 1 })).toContain('问答')
     expect(freezeBlockReason({ ...ready, loadError: '网络异常' })).toContain('状态')
     expect(freezeBlockReason({ ...ready, sessionStatus: 'READY' })).toContain('尚未开始询问')
     expect(freezeBlockReason({ ...ready, frozen: true })).toContain('冻结')

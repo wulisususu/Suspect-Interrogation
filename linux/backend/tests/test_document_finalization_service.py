@@ -4,6 +4,7 @@ import pytest
 
 from app.database.models import (
     ASRCaptureSession,
+    AuditLog,
     ASRFragment,
     Case,
     CaseQuestion,
@@ -11,6 +12,7 @@ from app.database.models import (
     InterrogationSession,
     Message,
     QAUnit,
+    QAUnitFragment,
     QuestionRound,
 )
 from app.database.session import init_database, make_engine, make_session_factory
@@ -86,7 +88,8 @@ def test_finalize_stops_capture_drains_routing_then_finishes_and_freezes(tmp_pat
     engine.dispose()
 
 
-def test_finalize_refuses_to_freeze_unresolved_routing_work(tmp_path: Path):
+def test_finalize_excludes_unresolved_routing_work_with_audit(tmp_path: Path):
+    """④ 不再有人工分诊浮层：路由没放进笔录的问答在冻结时如实标为未入笔录并留痕。"""
     engine, factory, case_id, session_id = seed(tmp_path)
     events: list[str] = []
     with factory() as db:
@@ -100,16 +103,19 @@ def test_finalize_refuses_to_freeze_unresolved_routing_work(tmp_path: Path):
         ))
         db.commit()
 
-        with pytest.raises(DomainError) as exc:
-            DocumentFinalizationService(
-                db,
-                capture_service=FakeCaptureService(events),
-                routing_coordinator=FakeRoutingCoordinator(events),
-            ).finalize(case_id)
-        assert exc.value.code == "FORMAL_RECORD_REVIEW_REQUIRED"
-        assert db.get(Case, case_id).workflow_state == WorkflowState.QUESTIONING.value
-        assert db.get(InterrogationSession, session_id).status == SessionStatus.RUNNING.value
-        assert db.query(DocumentSnapshot).filter_by(case_id=case_id).count() == 0
+        result = DocumentFinalizationService(
+            db,
+            capture_service=FakeCaptureService(events),
+            routing_coordinator=FakeRoutingCoordinator(events),
+        ).finalize(case_id, actor_id="officer-1")
+
+        assert result["status"] == "FROZEN"
+        unit = db.get(QAUnit, "QA-REVIEW")
+        assert unit.status == "IGNORED"
+        assert unit.reason_code == "NOT_IN_FORMAL_RECORD_AT_FREEZE"
+        audit = db.query(AuditLog).filter_by(case_id=case_id, action="QA_UNIT_EXCLUDED_AT_FREEZE").one()
+        assert audit.target_id == "QA-REVIEW"
+        assert audit.actor_id == "officer-1"
     engine.dispose()
 
 
@@ -144,7 +150,7 @@ def test_finalize_refuses_to_freeze_incomplete_audio_archive(tmp_path: Path):
     engine.dispose()
 
 
-def test_finalize_refuses_to_freeze_unresolved_transcript_fragment(tmp_path: Path):
+def test_finalize_excludes_unattached_transcript_fragment_with_audit(tmp_path: Path):
     engine, factory, case_id, session_id = seed(tmp_path)
     events: list[str] = []
     with factory() as db:
@@ -176,18 +182,18 @@ def test_finalize_refuses_to_freeze_unresolved_transcript_fragment(tmp_path: Pat
         ))
         db.commit()
 
-        with pytest.raises(DomainError) as exc:
-            DocumentFinalizationService(
-                db,
-                capture_service=FakeCaptureService(events),
-                routing_coordinator=FakeRoutingCoordinator(events),
-            ).finalize(case_id)
+        result = DocumentFinalizationService(
+            db,
+            capture_service=FakeCaptureService(events),
+            routing_coordinator=FakeRoutingCoordinator(events),
+        ).finalize(case_id, actor_id="officer-1")
 
-        assert exc.value.code == "ASR_FRAGMENT_REVIEW_REQUIRED"
-        assert "确认" in exc.value.message and "丢弃" in exc.value.message
-        assert db.get(Case, case_id).workflow_state == WorkflowState.QUESTIONING.value
-        assert db.get(InterrogationSession, session_id).status == SessionStatus.RUNNING.value
-        assert db.query(DocumentSnapshot).filter_by(case_id=case_id).count() == 0
+        assert result["status"] == "FROZEN"
+        fragment = db.get(ASRFragment, "FRAGMENT-REVIEW")
+        assert fragment.state == "DISCARDED"
+        assert fragment.raw_text == "待确认内容"
+        audit = db.query(AuditLog).filter_by(case_id=case_id, action="ASR_FRAGMENT_EXCLUDED_AT_FREEZE").one()
+        assert audit.target_id == "FRAGMENT-REVIEW"
     engine.dispose()
 
 
@@ -295,22 +301,54 @@ def test_finalize_accepts_unknown_speaker_fragment_attached_to_a_question(tmp_pa
         ))
         db.commit()
 
-        service = DocumentFinalizationService(
-            db,
-            capture_service=FakeCaptureService(events),
-            routing_coordinator=FakeRoutingCoordinator(events),
-        )
-        with pytest.raises(DomainError) as exc:
-            service.finalize(case_id)
-        assert exc.value.code == "ASR_FRAGMENT_REVIEW_REQUIRED"
-        assert exc.value.data == {"fragment_ids": ["FRAGMENT-LOOSE"]}
-
-        db.get(ASRFragment, "FRAGMENT-LOOSE").state = "DISCARDED"
-        db.commit()
         result = DocumentFinalizationService(
             db,
             capture_service=FakeCaptureService(events),
             routing_coordinator=FakeRoutingCoordinator(events),
         ).finalize(case_id)
         assert result["status"] == "FROZEN"
+        assert db.get(ASRFragment, "FRAGMENT-CARD").state == "PENDING"
+        assert db.get(ASRFragment, "FRAGMENT-LOOSE").state == "DISCARDED"
+    engine.dispose()
+
+
+def test_finalize_never_excludes_round_question_or_applied_qa_fragments(tmp_path: Path):
+    """作为某轮提问的片段、已应用问答组里的片段都已入笔录，冻结时不得标成未入。"""
+    engine, factory, case_id, session_id = seed(tmp_path)
+    events: list[str] = []
+    with factory() as db:
+        db.add(ASRCaptureSession(
+            id="CAPTURE-QA", case_id=case_id, interrogation_session_id=session_id, status="COMPLETE",
+            sample_rate=16000, recording_status="COMPLETE", asr_status="COMPLETE", speaker_status="PENDING",
+        ))
+        for ordinal, fragment_id in enumerate(("FRAGMENT-ASKED", "FRAGMENT-APPLIED", "FRAGMENT-LEFTOVER")):
+            db.add(ASRFragment(
+                id=fragment_id, capture_session_id="CAPTURE-QA", case_id=case_id, ordinal=ordinal,
+                started_at_ms=ordinal * 1000, ended_at_ms=ordinal * 1000 + 800, raw_text=f"内容{ordinal}",
+                edited_text=f"内容{ordinal}", speaker="UNKNOWN", speaker_source="PENDING_ANALYSIS",
+                voiceprint_verified=False, low_confidence=False, state="PENDING", model_id="test-model",
+            ))
+        db.add(CaseQuestion(id="Q-ASKED", case_id=case_id, source="LIVE", text="你几点出门的？", sort_order=1))
+        db.flush()
+        db.add(QuestionRound(
+            id="ROUND-ASKED", case_id=case_id, session_id=session_id, case_question_id="Q-ASKED", round_no=1,
+            actual_question_text="你几点出门的？", officer_fragment_id="FRAGMENT-ASKED",
+            answer_text="", answer_fragment_ids_json="[]", status="CLOSED",
+        ))
+        db.add(QAUnit(id="QA-APPLIED", case_id=case_id, session_id=session_id, status="APPLIED",
+                      raw_question_text="内容1", raw_answer_text=""))
+        db.flush()
+        db.add(QAUnitFragment(qa_unit_id="QA-APPLIED", fragment_id="FRAGMENT-APPLIED", role="QUESTION", position=1))
+        db.commit()
+
+        result = DocumentFinalizationService(
+            db,
+            capture_service=FakeCaptureService(events),
+            routing_coordinator=FakeRoutingCoordinator(events),
+        ).finalize(case_id)
+
+        assert result["status"] == "FROZEN"
+        assert db.get(ASRFragment, "FRAGMENT-ASKED").state == "PENDING"
+        assert db.get(ASRFragment, "FRAGMENT-APPLIED").state == "PENDING"
+        assert db.get(ASRFragment, "FRAGMENT-LEFTOVER").state == "DISCARDED"
     engine.dispose()

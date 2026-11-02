@@ -8,11 +8,13 @@ from sqlalchemy.orm import Session
 
 import json
 
-from app.database.models import ASRCaptureSession, ASRFragment, QAUnit, QuestionRound, ProcessedSpeechFragment
+from app.database.models import ASRCaptureSession, ASRFragment, QAUnit, QAUnitFragment, QuestionRound, ProcessedSpeechFragment
 from app.database.session import begin_sqlite_immediate
 from app.domain.enums import WorkflowState
 from app.domain.errors import DomainError
+from app.repositories import audit as audit_repo
 from app.repositories import cases as case_repo
+from app.repositories import qa_units as qa_repo
 from app.repositories import sessions as session_repo
 from app.services.document_service import DocumentService
 from app.services.session_service import SessionService
@@ -129,21 +131,50 @@ class DocumentFinalizationService:
                     data={"capture_session_ids": [row.id for row in incomplete_captures]},
                 )
 
+            # 声纹 / 说话人判定已永久下线，③ 问答录入是唯一的入笔录路径：没进入任何一问回答的
+            # 残余（重录前的旧片段、路由没放进来的问答）不再要求民警逐条确认或丢弃，而是在冻结的
+            # 同一事务里如实标为「未入笔录」并逐条留痕。原始录音与原始转写照常保留，④ 页事先提示条数。
+            unresolved_units = list(self.db.scalars(
+                select(QAUnit).where(
+                    QAUnit.case_id == case_id,
+                    QAUnit.session_id == target_session.id,
+                    QAUnit.status.in_(_UNRESOLVED_QA_STATUSES),
+                )
+            ))
+            for unit in unresolved_units:
+                before = {"status": unit.status}
+                qa_repo.save_decision(
+                    self.db, unit, classification="IGNORE", target_question_id=None,
+                    formal_question_text=None, formal_answer_text=None, confidence=None,
+                    model_id=None, reason_code="NOT_IN_FORMAL_RECORD_AT_FREEZE", status="IGNORED",
+                )
+                audit_repo.add(
+                    self.db, case_id=case_id, actor_id=actor_id, action="QA_UNIT_EXCLUDED_AT_FREEZE",
+                    target_type="QA_UNIT", target_id=unit.id, before=before, after={"status": "IGNORED"},
+                    detail={"raw_question_text": unit.raw_question_text, "raw_answer_text": unit.raw_answer_text},
+                )
+
             capture_ids = [row.id for row in captures]
             if capture_ids:
-                # 逐题录音挂到某道题回答上的片段已经有了去处，视为已处理。
+                # 已进入笔录的片段：逐题录音挂到回答上的、作为某轮提问的、现场成题的、
+                # 已应用问答组里的。其余才是「未入笔录」，绝不能把已入笔录的证据标成未入。
                 attached_ids: set[str] = set()
                 attached_ids.update(self.db.scalars(select(ProcessedSpeechFragment.fragment_id).where(
                     ProcessedSpeechFragment.case_id == case_id,
                     ProcessedSpeechFragment.action == "LIVE_QUESTION",
                 )))
-                for raw in self.db.scalars(
-                    select(QuestionRound.answer_fragment_ids_json).where(
+                attached_ids.update(self.db.scalars(select(QAUnitFragment.fragment_id).join(
+                    QAUnit, QAUnit.id == QAUnitFragment.qa_unit_id,
+                ).where(QAUnit.case_id == case_id, QAUnit.status == "APPLIED")))
+                for raw, officer_fragment_id in self.db.execute(
+                    select(QuestionRound.answer_fragment_ids_json, QuestionRound.officer_fragment_id).where(
                         QuestionRound.case_id == case_id,
                         QuestionRound.status != "DETACHED",
                     )
                 ):
                     attached_ids.update(str(value) for value in json.loads(raw or "[]"))
+                    if officer_fragment_id:
+                        attached_ids.add(str(officer_fragment_id))
                 unresolved_fragments = [
                     row for row in self.db.scalars(
                         select(ASRFragment).where(
@@ -154,28 +185,16 @@ class DocumentFinalizationService:
                     )
                     if row.id not in attached_ids
                 ]
-                if unresolved_fragments:
-                    raise DomainError(
-                        "ASR_FRAGMENT_REVIEW_REQUIRED",
-                        "仍有未处理的转写片段，请确认并正式入库，或明确丢弃后再冻结笔录",
-                        409,
-                        data={"fragment_ids": [row.id for row in unresolved_fragments]},
+                for fragment in unresolved_fragments:
+                    before = {"state": fragment.state}
+                    fragment.state = "DISCARDED"
+                    audit_repo.add(
+                        self.db, case_id=case_id, actor_id=actor_id, action="ASR_FRAGMENT_EXCLUDED_AT_FREEZE",
+                        target_type="ASR_FRAGMENT", target_id=fragment.id, before=before,
+                        after={"state": "DISCARDED"},
+                        detail={"reason": "NOT_IN_FORMAL_RECORD", "raw_text": fragment.raw_text},
                     )
-
-            unresolved = list(self.db.scalars(
-                select(QAUnit).where(
-                    QAUnit.case_id == case_id,
-                    QAUnit.session_id == target_session.id,
-                    QAUnit.status.in_(_UNRESOLVED_QA_STATUSES),
-                )
-            ))
-            if unresolved:
-                raise DomainError(
-                    "FORMAL_RECORD_REVIEW_REQUIRED",
-                    "仍有待处理的问答，完成处置后才能冻结笔录",
-                    409,
-                    data={"qa_unit_ids": [row.id for row in unresolved]},
-                )
+                self.db.flush()
 
             if state in {WorkflowState.QUESTIONING, WorkflowState.PAUSED}:
                 SessionService(self.db).finish(case_id, actor_id, commit=False)

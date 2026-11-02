@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 
-import { backendErrorMessage, confirmAsrFragmentBatch, discardAsrFragment } from '../api/interrogation'
+import { backendErrorMessage } from '../api/interrogation'
 import { markReportGenerated } from '../api/archive'
 import { fetchDocumentSigningState, finalizeDocument, signDocument } from '../api/documentSigning'
 import type {
@@ -31,7 +31,6 @@ import KnowledgeAssistPanel from './KnowledgeAssistPanel.vue'
 import FactCoverageBar from './FactCoverageBar.vue'
 import FinalizeDrawer from './FinalizeDrawer.vue'
 import RecordArchivePage from './RecordArchivePage.vue'
-import RecordReviewPanel from './RecordReviewPanel.vue'
 import ReviewChecklistPanel from './ReviewChecklistPanel.vue'
 import ReviewRecordPreview from './ReviewRecordPreview.vue'
 import RecordSigningPage from './RecordSigningPage.vue'
@@ -157,26 +156,31 @@ const signingBusy = ref('')
 const signingError = ref('')
 const signingLoading = ref(true)
 const signingLoadError = ref('')
-const reviewBusy = ref(false)
-const resolveOpen = ref(false)
 const mode = computed<RecordMode>({
   get: () => props.completionMode,
   set: (value) => emit('update:completionMode', value),
 })
 let signingRequest = 0
-/** 逐题录音已挂到题目回答上的片段视为已处理（与后端冻结校验一致），不再列入待确认转写。 */
-const attachedFragmentIds = computed(() => new Set(props.workspace.rounds
-  .filter((round) => round.status !== 'DETACHED')
-  .flatMap((round) => round.answerFragmentIds)))
+/**
+ * 已进入笔录的片段（与后端冻结时的判定一致）：挂在回答上的、作为某轮提问的、已应用问答组里的。
+ * 其余是「未入笔录」的残余，定稿时由后端如实标注并留痕，这里只用来事先提示条数。
+ */
+const attachedFragmentIds = computed(() => new Set([
+  ...props.workspace.rounds
+    .filter((round) => round.status !== 'DETACHED')
+    .flatMap((round) => [...round.answerFragmentIds, ...(round.officerFragmentId ? [round.officerFragmentId] : [])]),
+  ...props.workspace.qaUnits
+    .filter((unit) => unit.status === 'APPLIED')
+    .flatMap((unit) => [...unit.questionFragmentIds, ...unit.answerFragmentIds, ...(unit.controlFragmentIds ?? [])]),
+]))
 const reviewFragments = computed(() => orderedReviewFragments(props.dialogueHistory, false)
   .filter((item) => !attachedFragmentIds.value.has(item.id)))
 const unresolvedFragments = computed(() => reviewFragments.value.filter(item => item.state !== 'CONFIRMED' || !item.confirmedMessageId).length)
 const unresolvedQa = computed(() => props.workspace.qaUnits.filter(item => ['OPEN', 'CLOSED', 'ROUTING', 'NEEDS_REVIEW'].includes(item.status)).length)
-const completionBusy = computed(() => props.templateBusy || props.captureBusy || reviewBusy.value || !!signingBusy.value)
+const completionBusy = computed(() => props.templateBusy || props.captureBusy || !!signingBusy.value)
 const freezeReason = computed(() => freezeBlockReason({
   sessionStatus: props.session.status, captureRunning: props.capture.running, busy: completionBusy.value,
   loading: signingLoading.value, loadError: signingLoadError.value, frozen: documentFrozen.value,
-  unresolvedFragments: unresolvedFragments.value, unresolvedQa: unresolvedQa.value,
   recordError: props.templateError || (props.workspace.caseId !== props.caseId ? '笔录尚未读取' : ''), hasQuestions: props.workspace.questions.length > 0,
   asrStatus: props.capture.asrStatus, speakerStatus: props.capture.speakerStatus, recordingStatus: props.capture.recordingStatus,
 }))
@@ -194,7 +198,6 @@ watch(
   () => {
     signingState.value = null
     signingBusy.value = ''
-    reviewBusy.value = false
     signatureRole.value = null
     signatureStrokes.value = []
     mode.value = props.session.status === 'COMPLETED' ? 'review' : 'interrogation'
@@ -228,23 +231,6 @@ async function loadSigningState() {
     signingLoadError.value = backendErrorMessage(err)
   } finally {
     if (request === signingRequest && props.caseId === caseId) signingLoading.value = false
-  }
-}
-
-async function reviewAction(ids: string[], discard = false) {
-  if (completionBusy.value || documentFrozen.value || signingLoading.value || signingLoadError.value || !ids.length) return
-  const caseId = props.caseId
-  const request = signingRequest
-  reviewBusy.value = true
-  signingError.value = ''
-  try {
-    if (discard) await discardAsrFragment(caseId, ids[0]!)
-    else await confirmAsrFragmentBatch(caseId, ids)
-    if (caseId === props.caseId && request === signingRequest) emit('saved')
-  } catch (err) {
-    if (caseId === props.caseId && request === signingRequest) signingError.value = backendErrorMessage(err)
-  } finally {
-    if (caseId === props.caseId && request === signingRequest) reviewBusy.value = false
   }
 }
 
@@ -427,7 +413,7 @@ async function confirmSignature() {
 <template>
   <section class="template-driven-interrogation-page" :class="{ 'record-completion-mode': mode !== 'interrogation' }">
     <p v-if="templateError || signingError || signingLoadError" class="template-page-error" role="alert">{{ templateError || signingError || signingLoadError }}<button v-if="signingLoadError" :disabled="signingLoading" @click="loadSigningState">重新读取签署状态</button></p>
-    <header v-if="mode === 'sign' || mode === 'archive'" class="record-completion-heading record-no-print"><h1>签署归档 · {{ documentFrozen ? documentLocked ? '签署完成' : '已冻结' : session.status === 'COMPLETED' ? '审讯已结束' : '待冻结' }}</h1><p>{{ summary.id }} · {{ summary.suspectName || '姓名未填写' }} · 待确认转写 {{ unresolvedFragments }} 条 · 待处理问答 {{ unresolvedQa }} 组</p></header>
+    <header v-if="mode === 'sign' || mode === 'archive'" class="record-completion-heading record-no-print"><h1>签署归档 · {{ documentFrozen ? documentLocked ? '签署完成' : '已冻结' : session.status === 'COMPLETED' ? '审讯已结束' : '待冻结' }}</h1><p>{{ summary.id }} · {{ summary.suspectName || '姓名未填写' }}</p></header>
 
     <RecordSigningPage
       v-if="mode === 'sign'"
@@ -522,6 +508,8 @@ async function confirmSignature() {
           @update-draft="(roundId, text) => emit('updateAnswer', roundId, text)"
           @update-answer="(questionId, text) => emit('updateAnswer', questionId, text)"
           @add-question="(text, afterQuestionId) => emit('createQuestion', { text, source: 'LIVE', afterQuestionId })"
+          @edit-question="(questionId, text) => emit('updateQuestion', questionId, { text })"
+          @remove-question="emit('removeQuestion', $event)"
           @question-hold-start="emit('questionHoldStart', $event)"
           @question-hold-end="emit('questionHoldEnd')"
           @toggle-pause="emit('togglePause')"
@@ -555,7 +543,6 @@ async function confirmSignature() {
             :unresolved-fragments="unresolvedFragments"
             :unresolved-qa="unresolvedQa"
             :auto-checks="autoChecks"
-            @resolve="resolveOpen = true"
           />
         </div>
         <ReviewRecordPreview :questions="workspace.questions" />
@@ -565,16 +552,6 @@ async function confirmSignature() {
         <span>定稿后笔录即冻结，不可再编辑；签名与指纹在 ⑤ 签署归档完成<template v-if="!documentFrozen"> · 长按「确认定稿」0.8 秒即定稿</template></span>
         <span v-if="savedAtText">已自动保存 · {{ savedAtText }}</span>
       </footer>
-
-      <div v-if="resolveOpen && (unresolvedFragments || unresolvedQa)" class="review-resolve-modal record-no-print" role="dialog" aria-modal="true" aria-label="处理未完成的转写与问答">
-        <section class="review-resolve-dialog">
-          <header>
-            <h2>处理未完成的转写 {{ unresolvedFragments }} 条 · 问答 {{ unresolvedQa }} 组</h2>
-            <button type="button" @click="resolveOpen = false">关闭</button>
-          </header>
-          <RecordReviewPanel :fragments="reviewFragments" :qa-units="workspace.qaUnits" :busy="completionBusy || signingLoading || !!signingLoadError" :frozen="documentFrozen" @confirm="reviewAction($event)" @discard="reviewAction([$event], true)" @resolve-qa-unit="(id, resolution) => emit('resolveQaUnit', id, resolution)" @correct="(id, speaker, reason, text) => emit('correctFragment', id, speaker, reason, text)" />
-        </section>
-      </div>
     </template>
 
     <div v-if="signatureRole" class="signature-modal" role="dialog" aria-modal="true" aria-label="电子签名">

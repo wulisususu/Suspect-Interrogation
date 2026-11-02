@@ -74,8 +74,12 @@ export function finalizeChecks(input: FinalizeCheckInput): FinalizeCheck[] {
     if (item) list.push({ key, state: item.state === 'pass' ? 'pass' : 'pending', title: item.title, detail: item.detail })
   }
   if (input.draftAnswers) list.push({ key: 'drafts', state: 'pending', title: '录音回答未摘入正本', detail: `${input.draftAnswers} 条，未摘入的不会进入笔录` })
-  if (input.unresolvedFragments) list.push({ key: 'fragments', state: 'block', title: '转写片段未处理', detail: `${input.unresolvedFragments} 条，需确认或丢弃后才能定稿` })
-  if (input.unresolvedQa) list.push({ key: 'qa', state: 'block', title: '问答待处置', detail: `${input.unresolvedQa} 组，需处置后才能定稿` })
+  // 没进入任何一问的转写 / 问答只提示、不阻断（样板 P13）：定稿时后端如实标为未入笔录并留痕，
+  // 原始录音与原始转写保留；需要写入的，民警「返回修改」在 ③ 重录或改答即可。
+  if (input.unresolvedFragments || input.unresolvedQa) {
+    const parts = [input.unresolvedFragments ? `${input.unresolvedFragments} 段转写` : '', input.unresolvedQa ? `${input.unresolvedQa} 组问答` : ''].filter(Boolean)
+    list.push({ key: 'leftovers', state: 'pending', title: '未进入笔录的录音转写', detail: `${parts.join('、')}，定稿时如实标为未入笔录，原始录音保留` })
+  }
   return list
 }
 

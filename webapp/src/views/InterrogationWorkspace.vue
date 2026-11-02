@@ -351,7 +351,7 @@ async function stopQuestionDictation() {
 }
 
 async function refreshCaseWorkspace() {
-  await store.initialize()
+  await store.initialize({ background: true })
   if (!store.caseId) return
   try {
     await templateStore.initialize(store.caseId)
@@ -369,6 +369,7 @@ async function runTemplateAction(action: () => Promise<unknown>) {
 function loadQuestionLibrary(category?: string) { return runTemplateAction(() => templateStore.loadQuestionLibrary(category)) }
 function createFormalQuestion(input: CaseQuestionCreateInput) { return runTemplateAction(() => templateStore.createCaseQuestion(input)) }
 function updateFormalQuestion(questionId: string, input: CaseQuestionUpdateInput) { return runTemplateAction(() => templateStore.updateCaseQuestion(questionId, input)) }
+function removeFormalQuestion(questionId: string) { return runTemplateAction(() => templateStore.deactivateCaseQuestion(questionId)) }
 function reorderFormalQuestions(questionIds: string[]) { return runTemplateAction(() => templateStore.reorderCaseQuestions(questionIds)) }
 function resolvePendingQuestion(pendingId: string, resolution: PendingResolution) { return runTemplateAction(() => templateStore.resolvePendingQuestion(pendingId, resolution)) }
 function resolveQaUnit(qaUnitId: string, resolution: QAUnitResolution) { return runTemplateAction(() => templateStore.resolveQaUnit(qaUnitId, resolution)) }
@@ -539,6 +540,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             @load-library="loadQuestionLibrary"
             @create-question="createFormalQuestion"
             @update-question="updateFormalQuestion"
+            @remove-question="removeFormalQuestion"
             @reorder-questions="reorderFormalQuestions"
             @resolve-pending="resolvePendingQuestion"
             @resolve-qa-unit="resolveQaUnit"
