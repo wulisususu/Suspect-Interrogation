@@ -15,6 +15,7 @@ from app.domain.errors import DomainError
 from app.repositories import audit as audit_repo
 from app.repositories import cases as case_repo
 from app.repositories import template_questions as question_repo
+from app.services import session_recording_service as session_recording
 from app.services.formal_record_policy import assert_formal_record_mutable
 from app.services.serializers import audit_dict, case_dict, iso_utc
 
@@ -136,6 +137,7 @@ class CaseManagementService:
                 InterrogationSession.case_id == case_id, InterrogationSession.status != "COMPLETED")):
             session.status = "COMPLETED"
             session.ended_at = utc_now()
+        session_recording.close_segment(self.db, case_id, "VOIDED", actor_id)
         self.db.flush()
         result = {**case_dict(case), **self.case_fields(case_id)}
         audit_repo.add(self.db, case_id=case_id, action="CASE_VOID", actor_id=actor_id,

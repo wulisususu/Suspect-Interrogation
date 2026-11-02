@@ -20,6 +20,8 @@ export default defineConfig(({ mode }) => {
         '/work': backendProxy,
         // 后端自身在根路径暴露 /health/live|ready，直接转发即可。
         '/health': backendProxy,
+        // 浏览器录音（正式采集、通道②全程录音）走 WebSocket，需要单独开启 ws 转发。
+        '/ws': { ...backendProxy, ws: true },
       },
     },
     build: { target: 'es2022', sourcemap: true },

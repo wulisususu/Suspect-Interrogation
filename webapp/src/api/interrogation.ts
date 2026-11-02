@@ -106,6 +106,7 @@ function normalizeSessionState(value: unknown, caseId: string): SessionState {
     pausedAt: toTimestamp(raw.pausedAt ?? raw.paused_at) ?? null,
     endedAt: toTimestamp(raw.endedAt ?? raw.ended_at) ?? null,
     updatedAt: toTimestamp(raw.updatedAt ?? raw.updated_at) ?? Date.now(),
+    recordingSegmentId: String(asRecord(raw.recordingSegment).id ?? '') || null,
   }
 }
 

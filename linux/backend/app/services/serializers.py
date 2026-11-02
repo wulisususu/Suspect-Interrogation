@@ -73,11 +73,19 @@ def session_dict(row: InterrogationSession | None, case: Case) -> dict:
             "status": "READY", "state": case.workflow_state, "stage": case.stage,
             "startedAt": None, "pausedAt": None, "endedAt": None, "updatedAt": _iso(case.updated_at),
         }
+    from sqlalchemy.orm import object_session
+
+    from app.services.session_recording_service import active_segment, segment_dict
+
+    db = object_session(row)
+    segment = active_segment(db, row.case_id) if db is not None and row.status == "RUNNING" else None
     return {
         "id": row.id, "session_id": row.id, "caseId": row.case_id, "case_id": row.case_id,
         "status": row.status, "state": case.workflow_state, "stage": row.stage,
         "startedAt": _iso(row.started_at), "pausedAt": _iso(row.paused_at), "endedAt": _iso(row.ended_at),
         "updatedAt": _iso(row.updated_at),
+        # 通道②：本次询问正在录的全程录音段；浏览器据此保持麦克风常开并推流。
+        "recordingSegment": segment_dict(segment),
     }
 
 

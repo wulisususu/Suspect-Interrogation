@@ -1,5 +1,11 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
+import {
+  finishSegmentRecorder,
+  onSegmentRecorderStatus,
+  syncSegmentRecorder,
+  type SegmentRecorderStatus,
+} from '../audio/browserSegmentRecorder'
 import {
   backendErrorMessage,
   changeSessionStage,
@@ -193,6 +199,14 @@ export const useInterrogationStore = defineStore('interrogation', () => {
   const formalRecordRevision = ref(0)
   const caseSummary = ref<CaseSummary>(emptyCaseSummary(caseId.value))
   const session = ref<SessionState>(emptySession(caseId.value))
+  /** 通道②全程录音：询问进行中麦克风常开，暂停/结束时整段落成一个文件。 */
+  const segmentRecorder = ref<SegmentRecorderStatus>({ state: 'idle', segmentId: null, error: '' })
+  onSegmentRecorderStatus((next) => { segmentRecorder.value = next })
+  watch(
+    () => [session.value.caseId, session.value.status, session.value.recordingSegmentId ?? null] as const,
+    ([sessionCaseId, status, segmentId]) => syncSegmentRecorder(sessionCaseId, status === 'RUNNING' ? segmentId : null),
+    { immediate: true },
+  )
   const transcript = ref<TranscriptMessage[]>([])
   const facts = ref<FactItem[]>([])
   const voiceprintReadiness = ref<VoiceprintReadiness>(emptyVoiceprintReadiness())
@@ -1256,15 +1270,28 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     return false
   }
 
+  /** 暂停/结束后等这一段全程录音送完尾音并落盘；失败只提示，服务端会收尾保存。 */
+  async function settleSegmentRecording(scope: CaseScope) {
+    try {
+      await finishSegmentRecorder()
+      return true
+    } catch (err) {
+      feedbackIfCurrent(scope, backendErrorMessage(err), true)
+      return false
+    }
+  }
+
   async function togglePause() {
     const scope = currentScope()
     try {
       if (session.value.status === 'RUNNING') {
         if (!(await ensureCaptureStopped(scope, '暂停'))) return
+        const hadSegment = Boolean(session.value.recordingSegmentId)
         const nextSession = await pauseSessionApi(scope.caseId)
         if (!isCurrentScope(scope) || nextSession.caseId !== scope.caseId) return
         session.value = nextSession
-        feedbackIfCurrent(scope, '审讯已暂停，新的正式问答将被后端拒绝')
+        if (!(await settleSegmentRecording(scope))) return
+        feedbackIfCurrent(scope, hadSegment ? '审讯已暂停，本段全程录音已保存' : '审讯已暂停，新的正式问答将被后端拒绝')
       } else if (session.value.status === 'PAUSED') {
         const nextSession = await resumeSessionApi(scope.caseId)
         if (!isCurrentScope(scope) || nextSession.caseId !== scope.caseId) return
@@ -1283,6 +1310,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
       const nextSession = await finishSessionApi(scope.caseId)
       if (!isCurrentScope(scope) || nextSession.caseId !== scope.caseId) return
       session.value = nextSession
+      await settleSegmentRecording(scope)
       await refreshCase(scope)
       feedbackIfCurrent(scope, '本次审讯已结束并进入复核状态')
     } catch (err) {
@@ -1316,6 +1344,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     loading,
     caseSummary,
     session,
+    segmentRecorder,
     transcript,
     facts,
     completion,

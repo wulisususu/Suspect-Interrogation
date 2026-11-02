@@ -20,7 +20,7 @@ def service(request: Request, db: Session = Depends(get_db)):
     coordinator = getattr(request.app.state, 'live_speech_coordinator', None)
     if archive is None and coordinator is not None:
         archive = coordinator.archive
-    return RecordingService(db, archive)
+    return RecordingService(db, archive, getattr(request.app.state, 'session_recording_store', None))
 
 
 @router.get('/cases/{case_id}/recording-options')
@@ -61,3 +61,10 @@ def original_audio(case_id: str, capture_id: str, reason: str = Query(min_length
     path = recordings.original_audio(case_id, capture_id, reason=reason)
     recordings.db.commit()
     return FileResponse(path, media_type='audio/wav', filename=f'{capture_id}-original.wav', headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
+
+
+@router.get('/cases/{case_id}/recordings/segments/{segment_id}/audio')
+def segment_audio(case_id: str, segment_id: str, reason: str = Query(min_length=1, max_length=1000), recordings: RecordingService = Depends(service)):
+    path, filename = recordings.segment_audio(case_id, segment_id, reason=reason)
+    recordings.db.commit()
+    return FileResponse(path, media_type='audio/wav', filename=filename, headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})

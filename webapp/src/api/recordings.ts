@@ -27,6 +27,34 @@ export interface RecordingOriginal {
   accessRequiresAdmin: boolean
 }
 
+export interface RecordingSegmentGap {
+  /** 缺口出现在文件里的第几毫秒 */
+  atMs: number
+  /** 估计缺了多久；null 表示无法估计 */
+  missingMs: number | null
+  reason: 'BROWSER_BUFFER_DROPPED' | 'BROWSER_RESTARTED' | string
+  at: string | null
+}
+
+/** 通道②：一次「开始/继续询问 → 暂停/结束询问」的连续全程录音。 */
+export interface RecordingSegment {
+  segmentId: string
+  ordinal: number
+  sessionId: string
+  status: 'RECORDING' | 'CLOSING' | 'COMPLETE' | 'EMPTY' | string
+  startedAt: string | null
+  endedAt: string | null
+  endReason: string | null
+  durationMs: number
+  sizeBytes: number | null
+  sha256: string | null
+  filename: string
+  gaps: RecordingSegmentGap[]
+  tailConfirmed: boolean
+  available: boolean
+  accessRequiresAdmin: boolean
+}
+
 export interface RecordingOptions {
   caseId: string
   fullRecordingEnabled: boolean
@@ -34,6 +62,8 @@ export interface RecordingOptions {
 
 export interface CaseRecordings extends RecordingOptions {
   questions: RecordingQuestion[]
+  segments?: RecordingSegment[]
+  /** 按次采集的原始文件；全程录音上线前的案件只有这一种。 */
   originals: RecordingOriginal[]
   originalAccessRequiresAdmin: boolean
 }
@@ -71,4 +101,10 @@ export function questionAudioUrl(recordings: CaseRecordings, row: RecordingQuest
 export function originalAudioUrl(caseId: string, captureId: string, reason: string): string {
   return `/api/v1/cases/${encodeURIComponent(caseId)}/recordings/originals/`
     + `${encodeURIComponent(captureId)}/audio?reason=${encodeURIComponent(reason)}`
+}
+
+/** 通道②：一段全程录音，同样必须带调阅原因并由管理员调阅。 */
+export function segmentAudioUrl(caseId: string, segmentId: string, reason: string): string {
+  return `/api/v1/cases/${encodeURIComponent(caseId)}/recordings/segments/`
+    + `${encodeURIComponent(segmentId)}/audio?reason=${encodeURIComponent(reason)}`
 }

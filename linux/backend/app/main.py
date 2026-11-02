@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -46,6 +47,7 @@ from app.runtime_settings import RuntimeSettings
 from app.services.audio_capture_service import AudioCaptureService
 from app.services.browser_audio_input import BrowserAudioInput
 from app.services.live_speech_coordinator import LiveSpeechCoordinator
+from app.services.session_recording_service import SessionRecordingStore
 from app.services.source_aware_asr_capture_service import SourceAwareAsrCaptureService
 from app.services.qa_routing_coordinator import QARoutingCoordinator
 from app.services.speaker_calibration_runtime import resolve_speaker_calibration
@@ -55,6 +57,7 @@ from app.services.speaker_calibration_service import (
     SpeakerCalibrationService,
 )
 from app.websocket.browser_asr import router as browser_asr_websocket_router
+from app.websocket.session_recording import router as session_recording_websocket_router
 from app.websocket.manager import ConnectionManager, router as websocket_router
 from app.websocket.voiceprint_enrollment import router as voiceprint_enrollment_websocket_router
 from hardware.base import DeviceInfo
@@ -256,6 +259,10 @@ def create_app(
         app.state.live_speech_coordinator = live_speech_coordinator
         try:
             live_speech_coordinator.start()
+            try:
+                app.state.session_recording_store.sweep()
+            except Exception:  # noqa: BLE001 - a bad segment must not keep the service down
+                logging.getLogger("suspect.session_recording").exception("startup sweep of session recordings failed")
             if manager is not None:
                 manager.open_all(strict=False)
                 manager.start_monitor()
@@ -288,6 +295,7 @@ def create_app(
     app.state.live_speech_coordinator = None
     app.state.qa_routing_coordinator = None
     app.state.browser_audio_input = browser_audio_input
+    app.state.session_recording_store = SessionRecordingStore(settings.data_dir, app.state.session_factory)
     app.state.speech_client = speech_client
     app.state.speaker_calibration_model_provider = current_model_identity
     # The readiness / health / asr-status surfaces must resolve the speaker operating
@@ -345,6 +353,7 @@ def create_app(
     app.include_router(compat_router)
     app.include_router(websocket_router)
     app.include_router(browser_asr_websocket_router)
+    app.include_router(session_recording_websocket_router)
     app.include_router(voiceprint_enrollment_websocket_router)
 
     @app.get("/health")
