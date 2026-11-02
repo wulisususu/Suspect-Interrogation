@@ -54,14 +54,8 @@ const speakerLabel = computed(() => {
   if (status === 'QUEUED') return `声纹分析已排队 · ${unresolvedSpeakerCount.value} 段待分析`
   if (status === 'RUNNING') return `声纹分析进行中 · ${unresolvedSpeakerCount.value} 段待确认`
   if (status === 'PENDING') {
-    const seconds = Math.floor((props.capture.voicedMs ?? 0) / 1000)
-    const fragments = activeFragments.value.length
-    if (props.capture.running && (seconds < 10 || fragments < 3)) {
-      return `等待素材 · 有效语音 ${seconds}/10 秒、文字片段 ${fragments}/3 段`
-    }
-    if (props.capture.asrStatus !== 'COMPLETE') return `等待第 1 步转写完成 · ${unresolvedSpeakerCount.value} 段待分析`
-    if (!unresolvedSpeakerCount.value) return '没有待分析的文字片段'
-    return `等待第 2 步开始 · ${unresolvedSpeakerCount.value} 段待分析`
+    // 声纹已永久下线，第 2 步不会启动。原先这里会显示"等待第 2 步开始"，让人一直干等。
+    return '说话人归属已停用 · 文字片段可直接确认'
   }
   return `声纹分析：${status}`
 })

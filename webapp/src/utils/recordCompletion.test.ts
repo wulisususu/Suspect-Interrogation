@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { confirmationCandidates, freezeBlockReason, orderedReviewFragments } from './recordCompletion'
+import { canConfirmFragment, confirmationCandidates, fragmentNeedsReview, freezeBlockReason, orderedReviewFragments } from './recordCompletion'
 import type { TemporaryAsrFragment } from '../types/interrogation'
 
 const fragment = (id: string, values: Partial<TemporaryAsrFragment> = {}) => ({
@@ -18,7 +18,18 @@ describe('record completion safety and review ordering', () => {
 
   it('only offers high-confidence batch selection for eligible, unconfirmed fragments', () => {
     const items = [fragment('good'), fragment('unknown', { speaker: 'UNKNOWN' }), fragment('unavailable', { confidenceSource: 'UNAVAILABLE' }), fragment('low', { lowConfidence: true }), fragment('confirmed', { state: 'CONFIRMED' }), fragment('empty', { rawText: '', editedText: '' })]
-    expect(confirmationCandidates(items).map(item => item.id)).toEqual(['good'])
+    // 说话人判定永久下线后 UNKNOWN 不再是排除理由，只剩置信度与状态筛选。
+    expect(confirmationCandidates(items).map(item => item.id)).toEqual(['good', 'unknown'])
+  })
+
+  it('lets a fragment with no speaker decision be confirmed instead of only discarded', () => {
+    const retired = fragment('retired', { speaker: 'UNKNOWN', speakerSource: 'PENDING_ANALYSIS' })
+    expect(fragmentNeedsReview(retired)).toBe(false)
+    expect(canConfirmFragment(retired)).toBe(true)
+    expect(canConfirmFragment({ ...retired, state: 'CONFIRMED' })).toBe(false)
+    expect(canConfirmFragment({ ...retired, rawText: '', editedText: '' })).toBe(false)
+    // 置信度低仍然要人工核对
+    expect(fragmentNeedsReview({ ...retired, lowConfidence: true })).toBe(true)
   })
 
   const ready = { sessionStatus: 'COMPLETED', captureRunning: false, busy: false, loading: false, loadError: '', recordError: '', hasQuestions: true, frozen: false, unresolvedFragments: 0, unresolvedQa: 0, asrStatus: 'COMPLETE', speakerStatus: 'COMPLETE', recordingStatus: 'COMPLETE' }

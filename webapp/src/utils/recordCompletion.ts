@@ -1,7 +1,9 @@
 import type { TemporaryAsrFragment } from '../types/interrogation'
 
 export function fragmentNeedsReview(item: TemporaryAsrFragment) {
-  return item.lowConfidence || item.speaker === 'UNKNOWN' || item.speaker === 'OFFICER_FALLBACK' || item.speakerSource === 'PENDING_ANALYSIS'
+  // 说话人判定已永久下线：speaker 恒为 UNKNOWN、speakerSource 恒为 PENDING_ANALYSIS。
+  // 若仍拿它们算"待核对"，每一段都会被标黄，且批量选择永远为空。只按置信度判断。
+  return item.lowConfidence
 }
 
 export function orderedReviewFragments(items: TemporaryAsrFragment[], uncertainFirst: boolean) {
@@ -11,8 +13,9 @@ export function orderedReviewFragments(items: TemporaryAsrFragment[], uncertainF
 }
 
 export function canConfirmFragment(item: TemporaryAsrFragment) {
-  return ['PENDING', 'EDITED'].includes(item.state) && item.speaker !== 'UNKNOWN'
-    && item.speakerSource !== 'PENDING_ANALYSIS' && Boolean((item.editedText || item.rawText).trim())
+  // 审核对象是文字本身。声纹永久下线后 speaker 永远是 UNKNOWN，再要求"说话人已知"
+  // 等于任何片段都无法确认，只能丢弃。
+  return ['PENDING', 'EDITED'].includes(item.state) && Boolean((item.editedText || item.rawText).trim())
 }
 
 export function confirmationCandidates(items: TemporaryAsrFragment[]) {
