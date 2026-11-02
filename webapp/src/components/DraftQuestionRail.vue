@@ -278,7 +278,11 @@ function submitQuestion() {
       ><Plus :size="15" aria-hidden="true" />{{ questionRecording ? `正在听问题 ${elapsedText} · 松开即成卡` : '追加一问 · 按住说话，说完自动成卡' }}</button>
       <button type="button" class="draft-add-type" :disabled="locked" @click="typing = true">手动输入</button>
     </div>
-    <p v-if="answerBlockedReason" class="draft-add-blocked">{{ answerBlockedReason }}</p>
+    <div v-if="questionRecording" class="draft-add-live" :class="{ 'is-empty': !liveText }">
+      <RecorderWaveformCanvas v-if="audioLevels?.length" class="draft-add-wave" :samples="audioLevels" :max-height="22" :bar-width="3" :bar-gap="3" :sample-limit="24" />
+      <span class="draft-add-live-text">{{ liveText || '正在听，请说出要追加的问题，说完松开…' }}</span>
+    </div>
+    <p v-else-if="answerBlockedReason" class="draft-add-blocked">{{ answerBlockedReason }}</p>
   </section>
 </template>
 
@@ -344,4 +348,8 @@ function submitQuestion() {
 .draft-add-form { display: flex; gap: var(--space-2); }
 .draft-add-form input { flex: 1; min-height: 44px; padding: 0 var(--space-3); border: 1px solid var(--primary-500); border-radius: var(--radius-sm); font: inherit; font-size: var(--text-md); }
 .draft-add-blocked { margin: 0; color: var(--danger-600); font-size: var(--text-xs); }
+.draft-add-live { display: flex; align-items: center; gap: var(--space-3); margin: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--danger-600); border-radius: var(--radius-sm); background: var(--danger-100); }
+.draft-add-wave { flex: none; width: 72px; height: 24px; color: var(--danger-600); }
+.draft-add-live-text { color: var(--ink-900); font-size: var(--text-md); line-height: 1.6; }
+.draft-add-live.is-empty .draft-add-live-text { color: var(--ink-400); }
 </style>

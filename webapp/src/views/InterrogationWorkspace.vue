@@ -184,15 +184,30 @@ async function beginCapture(): Promise<string | null> {
   return store.capture.running ? store.capture.captureSessionId || null : null
 }
 
-/** 停止录音并取回这一次录音的全部最终片段（停止后重新读取，避免漏掉收尾片段）。 */
+/** 停止录音并取回这一次录音的全部最终片段。
+ * 收尾片段在采集线程退出时才提交，实测比停止响应晚约一秒；立即读取会扑空，
+ * 把已识别成功的答案误报成"没有听清"。片段缺席时轮询补读。 */
 async function finishCapture(captureId: string) {
   if (!(await store.stopCapture(undefined, false))) return null
   const caseId = store.caseId
   if (!caseId) return null
   await templateStore.initialize(caseId)
-  return templateStore.dialogueHistory
+  const collect = () => templateStore.dialogueHistory
     .filter((item) => item.captureSessionId === captureId && !['DISCARDED', 'SUPERSEDED'].includes(item.state) && (item.editedText || item.rawText).trim())
     .sort((a, b) => a.startedAtMs - b.startedAtMs || a.ordinal - b.ordinal)
+  let fragments = collect()
+  const deadline = Date.now() + 8000
+  let emptyReads = 0
+  while (!fragments.length && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    await templateStore.loadDialogueHistory()
+    fragments = collect()
+    if (fragments.length) break
+    // 停止响应已确认 ASR 完成、连续两轮仍无片段：这次确实没说出内容，提前收场。
+    emptyReads = store.capture.asrStatus === 'COMPLETE' ? emptyReads + 1 : 0
+    if (emptyReads >= 2) break
+  }
+  return fragments
 }
 
 async function startCardAnswer(questionId: string, replace: boolean) {

@@ -56,8 +56,7 @@ describe('new case entry (audit D02)', () => {
 })
 
 describe('record header editing', () => {
-  it('patches the header in place instead of reloading the whole workspace', () => {
-    const start = source.indexOf('async function saveRecordHeader')
+  it('patches the header in place instead of reloading the whole workspace', () => {    const start = source.indexOf('async function saveRecordHeader')
     const end = source.indexOf('async function correctRecognitionFragment')
     const body = source.slice(start, end)
 
@@ -67,5 +66,20 @@ describe('record header editing', () => {
     expect(body).not.toContain('await refreshCaseWorkspace()')
     expect(body).toContain('store.caseSummary =')
     expect(body).toContain('store.facts')
+  })
+})
+
+describe('hold-to-append capture retrieval', () => {
+  it('polls for late-finalized fragments instead of failing with 没有听清 (AAC708 regression)', () => {
+    // 收尾片段在采集线程退出时才提交，实测比停止响应晚约 1 秒；停止后立即读取
+    // 会每次扑空。片段缺席时必须轮询补读，只有在停止响应确认 ASR 完成且连续
+    // 两轮仍无片段时才允许提前判定"没有听清"。
+    const start = source.indexOf('async function finishCapture')
+    const end = source.indexOf('async function startCardAnswer')
+    const body = source.slice(start, end)
+    expect(start).toBeGreaterThan(-1)
+    expect(body).toContain('while (!fragments.length && Date.now() < deadline)')
+    expect(body).toContain("store.capture.asrStatus === 'COMPLETE'")
+    expect(body).toContain('emptyReads >= 2')
   })
 })

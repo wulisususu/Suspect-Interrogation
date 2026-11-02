@@ -69,6 +69,15 @@ describe('DraftQuestionRail cards (design P07, states A/B)', () => {
     expect(html).toContain('手动输入')
   })
 
+  it('streams the live transcript while holding to append a question (parity with card recording)', async () => {
+    const html = await render({ questionRecording: true, liveText: '你当时第一次实施盗窃是什么时候', captureElapsedMs: 3000 })
+    expect(html).toContain('正在听问题 00:03 · 松开即成卡')
+    expect(html).toContain('你当时第一次实施盗窃是什么时候')
+    const source = (await import('./DraftQuestionRail.vue?raw')).default
+    expect(source).toContain('class="draft-add-live"')
+    expect(source).toContain('<RecorderWaveformCanvas v-if="audioLevels?.length" class="draft-add-wave"')
+  })
+
   it('never anchors the appended question on a fixed closing card (AAC708 regression)', async () => {
     // 嫌疑人询问模板的最后一张卡是固定结尾（签字捺印），旧逻辑拿它当插入点，
     // 后端必然拒绝：动态问题不能插入固定结尾之后。现在插入点由
