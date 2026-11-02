@@ -69,6 +69,17 @@ describe('DraftQuestionRail cards (design P07, states A/B)', () => {
     expect(html).toContain('手动输入')
   })
 
+  it('explains why the hold-to-talk entry is unavailable instead of failing silently', async () => {
+    // 冻结 / 会话结束 / 暂停时按钮置灰或降级输入框，原因必须在页面上可见。
+    expect(await render({ locked: true })).toContain('笔录已冻结')
+    expect(await render({ sessionStatus: 'COMPLETED' })).toContain('本次询问已结束')
+    expect(await render({ sessionStatus: 'PAUSED' })).toContain('询问已暂停，继续询问后可录音')
+    expect(await render({ captureAvailable: false })).toContain('录音设备未就绪')
+    const source = (await import('./DraftQuestionRail.vue?raw')).default
+    expect(source).toContain('class="draft-add-blocked"')
+    expect(source).toContain(':title="answerBlockedReason || undefined"')
+  })
+
   it('offers undo / clear-and-rerecord / done while an answer is being edited (design P06)', async () => {
     const source = (await import('./DraftQuestionRail.vue?raw')).default
     expect(source).toContain('编辑中 · 光标在句末')

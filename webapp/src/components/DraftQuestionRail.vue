@@ -268,12 +268,14 @@ function submitQuestion() {
         class="draft-add-hold"
         :class="{ 'is-holding': questionRecording }"
         :disabled="locked"
+        :title="answerBlockedReason || undefined"
         @pointerdown="holdStart"
         @pointerup="holdEnd"
         @pointercancel="holdEnd"
       ><Plus :size="15" aria-hidden="true" />{{ questionRecording ? `正在听问题 ${elapsedText} · 松开即成卡` : '追加一问 · 按住说话，说完自动成卡' }}</button>
       <button type="button" class="draft-add-type" :disabled="locked" @click="typing = true">手动输入</button>
     </div>
+    <p v-if="answerBlockedReason" class="draft-add-blocked">{{ answerBlockedReason }}</p>
   </section>
 </template>
 
@@ -338,4 +340,5 @@ function submitQuestion() {
 .draft-add-type { min-height: 44px; padding: 0 var(--space-3); border: 0; background: transparent; color: var(--ink-500); font-size: var(--text-xs); }
 .draft-add-form { display: flex; gap: var(--space-2); }
 .draft-add-form input { flex: 1; min-height: 44px; padding: 0 var(--space-3); border: 1px solid var(--primary-500); border-radius: var(--radius-sm); font: inherit; font-size: var(--text-md); }
+.draft-add-blocked { margin: 0; color: var(--danger-600); font-size: var(--text-xs); }
 </style>
