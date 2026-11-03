@@ -37,6 +37,28 @@ describe('FinalizeDrawer (design P08 · state C)', () => {
     expect(blocked).toMatch(/<button[^>]*class="long-press[^"]*finalize-confirm[^"]*"[^>]*disabled/)
   })
 
+  it('shows knowledge-base rule checks with their source entry and counts them', async () => {
+    const withRules = finalizeChecks({
+      summary: { suspectName: '王某某', idNumber: '330501199205142319' }, templateTitle: '诈骗（电信网络）', autoChecks: [],
+      draftAnswers: 0, unresolvedFragments: 0, unresolvedQa: 0,
+      knowledgeChecks: [
+        { key: 'f#0', state: 'pass', title: '转账时间', detail: '正本已记录「转账」', source: '知识库《电信网络诈骗笔录定稿校验》v1 · rules/rule-fraud-telecom.md' },
+        { key: 'f#1', state: 'pending', title: '收款账户', detail: '正本中未见「收款账户、账号、卡号」等表述，可补问或如实记为未获取', source: '知识库《电信网络诈骗笔录定稿校验》v1 · rules/rule-fraud-telecom.md' },
+      ],
+    })
+    const html = await render({ checks: withRules })
+    expect(html).toContain('4 项检查 · 3 项通过 · 1 项待确认')
+    expect(html).toContain('待确认 · 收款账户')
+    expect(html).toContain('来源 · 知识库《电信网络诈骗笔录定稿校验》v1 · rules/rule-fraud-telecom.md')
+    expect(html).not.toMatch(/<button[^>]*class="long-press[^"]*finalize-confirm[^"]*"[^>]*disabled/)
+  })
+
+  it('feeds the same knowledge rule checks to the drawer and the ④ checklist', () => {
+    expect(pageSource).toContain('fetchCaseCheckRules(caseId)')
+    expect(pageSource).toContain('knowledgeChecks: ruleChecks.value')
+    expect(pageSource).toContain(':knowledge-checks="ruleChecks"')
+  })
+
   it('opens from the ③ header and 补齐缺项 jumps back to the cards instead of leaving the page', () => {
     expect(pageSource).toContain('@click="drawerOpen = true"')
     expect(pageSource).toContain('@fill="focusMissingCard"')

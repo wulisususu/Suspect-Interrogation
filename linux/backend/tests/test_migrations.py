@@ -37,15 +37,16 @@ RETIRED_MOSS_TABLES = {
     "moss_transcriptions", "moss_transcription_revisions", "moss_speaker_mappings",
 }
 CASE_DRAFT_TABLES = {"case_voice_role_drafts"}
+KNOWLEDGE_CHECK_TABLES = {"knowledge_check_bindings"}
 DURABLE_LIVE_SPEECH_TABLES = {
     "asr_audio_segments", "asr_audio_frames", "live_speech_jobs", "asr_fragment_lineage",
 }
 REQUIRED_TABLES = (
     CORE_TABLES | VOICEPRINT_TABLES | TEMPLATE_TABLES | OFFICER_LIBRARY_TABLES |
     CALIBRATION_TABLES | RECOGNITION_EVIDENCE_TABLES | QWEN_ROUTING_TABLES |
-    CASE_DRAFT_TABLES | DURABLE_LIVE_SPEECH_TABLES
+    CASE_DRAFT_TABLES | DURABLE_LIVE_SPEECH_TABLES | KNOWLEDGE_CHECK_TABLES
 )
-ALEMBIC_HEAD = "0029_session_recording_segments"
+ALEMBIC_HEAD = "0031_knowledge_check_rules"
 
 
 def _run_alembic(tmp_path, target: str):

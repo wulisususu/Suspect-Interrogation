@@ -16,6 +16,7 @@ RK3588  SQLite：knowledge_entries / _versions / _links / asr_term_corrections
           │
           ├── 题后知识提示（③ 题卡内自动出现；按题目/要素/刚才的回答匹配，带来源与版本）
           ├── 建议追问（只给候选，民警点选才在本题后建草稿题）
+          ├── 定稿校验规则（按本案模板 / 案由加载到 ④ 定稿校验与定稿抽屉，逐项标明来源条目）
           └── 热词导出（corrections.json → asr-stack）
 ```
 
@@ -54,6 +55,7 @@ obsidian-vault/
 ├── src.md            # 入口索引（不导入）
 ├── raw/              # 原始资料（不导入，只做溯源）
 ├── dict/faq/         # 问答知识 → kind=faq
+├── rules/            # 定稿校验规则（frontmatter templates 绑定模板 / 案由）
 └── wiki/             # 概念与双链 → kind=wiki
 ```
 
@@ -126,6 +128,20 @@ curl -s -X POST https://127.0.0.1:18080/api/v1/knowledge/import \
 | 同一 `wrong` 两种 `right` | 保留先导入者，报告 `CORRECTION_CONFLICT` |
 
 每次导入（含 dry-run 之外的正式导入）写一条 `knowledge_sync_runs`，含各计数与完整报告 JSON。
+
+### 4.4 定稿校验规则（按模板 / 案由）
+
+规则就是知识条目：`templates` 列出适用的模板 backendKey（如 `THEFT_EBIKE_V1`）或模板分类（`theft` / `injury` / `traffic` / `other`），
+正文「校验项」小节每行一项（写法见 `obsidian-vault/README.md` 第五节）。绑定关系存在 `knowledge_check_bindings`（迁移 `0031`）。
+
+- 加载：`GET /api/v1/knowledge/check-rules?caseId=…`（或 `?templateKey=…&caseType=…` 预览），只取已验证且启用的条目；
+  模板专属规则排在案由通用规则前。
+- 展示：④ 定稿校验「定稿前检查」与③定稿抽屉，排在固定检查之后，每项带「来源 · 知识库《条目》v版本 · 路径」；
+  正本回答出现任一说法或关联要素已确认即通过，否则「待确认」。**只提示，不阻断定稿。**
+- 仓库内置规则（`obsidian-vault/rules/`）：盗窃电动车、盗窃类通用、故意伤害、电信网络诈骗（`FRAUD_TELECOM_V1`，在模板管理中创建该模板后生效）。
+  从未入库的 uid 在第一次打开校验时自动入库（origin=vault），之后的修改与停用走正常 Vault 导入；系统里删除过的规则不会被重新加入。
+  板端 Vault 目录若是旧拷贝、缺少 `rules/`，正式导入会把这些规则软停用——同步 Vault 时带上 `rules/`。
+- 手工条目可在 `PATCH /api/v1/knowledge/entries/{id}` 里用 `checkTemplates` 绑定；手工条目默认 `pending`，核实为 `verified` 后才进入校验。
 
 ## 5. RK3588 部署顺序
 

@@ -124,3 +124,21 @@ class AsrTermCorrection(TimestampMixin, Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     entry_id: Mapped[str | None] = mapped_column(ForeignKey('knowledge_entries.id'), nullable=True, index=True)
 
+
+
+class KnowledgeCheckBinding(Base):
+    """知识条目 ↔ 模板 / 案由的定稿校验规则绑定。
+
+    scope=TEMPLATE 时 value 是模板 backendKey（如 THEFT_EBIKE_V1）；scope=CASE_TYPE 时
+    value 是模板目录的 category（如 theft）。校验项本身写在条目正文的「校验项」小节里，
+    随条目一起版本化，这张表只回答「哪些条目适用于哪个模板」。
+    """
+
+    __tablename__ = 'knowledge_check_bindings'
+    __table_args__ = (UniqueConstraint('entry_id', 'scope', 'value', name='uq_knowledge_check_binding'),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    entry_id: Mapped[str] = mapped_column(ForeignKey('knowledge_entries.id'), nullable=False, index=True)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    value: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

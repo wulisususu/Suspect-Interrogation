@@ -18,6 +18,7 @@ from app.database.models import CaseQuestion
 from app.database.session import begin_sqlite_immediate
 from app.domain.errors import DomainError
 from app.repositories import audit as audit_repo
+from app.services.knowledge_checks import KnowledgeCheckService
 from app.services.knowledge_matching import match_entry, normalize, similar_question
 from app.services.serializers import iso_utc
 
@@ -100,6 +101,7 @@ class KnowledgeService:
             version=row.current_version, kind=row.kind, status=row.status, origin=row.origin,
             vaultUid=row.vault_uid, sourcePath=row.source_path, sourceRef=row.source_ref,
             sourceSha256=row.source_sha256,
+            checkTemplates=KnowledgeCheckService(self.db).bindings(row.id),
             createdAt=iso_utc(row.created_at), updatedAt=iso_utc(row.updated_at),
         )
 
@@ -177,7 +179,7 @@ class KnowledgeService:
 
     def create_entry(self, *, title, category_id, content, keywords=None, active=True,
                      kind='faq', status='pending', origin='manual', source_ref=None,
-                     vault_uid=None, source_path=None, source_sha256=None):
+                     vault_uid=None, source_path=None, source_sha256=None, check_templates=None):
         self._seed()
         self._category(category_id)
         row = KnowledgeEntry(
@@ -192,6 +194,8 @@ class KnowledgeService:
         )
         self.db.add(row)
         self.db.flush()
+        if check_templates:
+            KnowledgeCheckService(self.db).set_bindings(row.id, check_templates)
         return self._version(row, 'CREATE')
 
     def update_entry(self, entry_id, patch):
@@ -216,6 +220,8 @@ class KnowledgeService:
         if 'sourceRef' in patch:
             value = patch['sourceRef']
             row.source_ref = None if value in (None, '') else str(value)[:512]
+        if 'checkTemplates' in patch:
+            KnowledgeCheckService(self.db).set_bindings(row.id, patch['checkTemplates'] or [])
         row.current_version += 1
         self.db.flush()
         return self._version(row, 'UPDATE')

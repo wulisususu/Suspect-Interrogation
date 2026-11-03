@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.api.responses import envelope
 from app.auth.context import current_actor_id
+from app.services.knowledge_checks import KnowledgeCheckService
 from app.services.knowledge_service import KnowledgeService
 
 router = APIRouter(tags=['knowledge'])
@@ -27,6 +28,7 @@ class EntryCreateRequest(KnowledgeRequest):
     kind: str = 'faq'
     status: str = 'pending'
     source_ref: str | None = Field(default=None, alias='sourceRef', max_length=512)
+    check_templates: list[str] = Field(default_factory=list, alias='checkTemplates', max_length=50)
 
 
 class EntryUpdateRequest(KnowledgeRequest):
@@ -38,6 +40,7 @@ class EntryUpdateRequest(KnowledgeRequest):
     kind: str | None = None
     status: str | None = None
     source_ref: str | None = Field(default=None, alias='sourceRef', max_length=512)
+    check_templates: list[str] | None = Field(default=None, alias='checkTemplates', max_length=50)
 
 
 class ImportRequest(KnowledgeRequest):
@@ -112,7 +115,7 @@ def entries(category_id: str | None = Query(None, alias='categoryId'), active: b
 def create_entry(body: EntryCreateRequest, db: Session = Depends(get_db)):
     result = KnowledgeService(db).create_entry(
         title=body.title, category_id=body.category_id, content=body.content, keywords=body.keywords, active=body.active,
-        kind=body.kind, status=body.status, source_ref=body.source_ref,
+        kind=body.kind, status=body.status, source_ref=body.source_ref, check_templates=body.check_templates,
     )
     db.commit()
     return envelope(result, '条目已创建')
@@ -164,6 +167,23 @@ def draft_questions(body: DraftQuestionsRequest, db: Session = Depends(get_db)):
         case_id=body.case_id, question_id=body.question_id, element_key=body.element_key, text=body.q,
         limit=body.limit,
     )
+    db.commit()
+    return envelope(result)
+
+
+@router.get('/knowledge/check-rules')
+def check_rules(case_id: str | None = Query(None, alias='caseId'),
+                template_key: str | None = Query(None, alias='templateKey', max_length=64),
+                case_type: str | None = Query(None, alias='caseType', max_length=64),
+                db: Session = Depends(get_db)):
+    """本案模板 / 案由适用的定稿校验规则（知识条目「校验项」小节），供 ④ 定稿校验提示。"""
+    service = KnowledgeCheckService(db)
+    if case_id:
+        result = service.rules_for_case(case_id)
+    else:
+        service.ensure_bundled_rules()
+        result = {'caseId': None, 'templateKey': template_key, 'caseType': case_type,
+                  'rules': service.rules_for_template(template_key, case_type)}
     db.commit()
     return envelope(result)
 

@@ -38,6 +38,7 @@ const pending = computed(() => props.checks.length - passed.value)
       <li v-for="item in checks" :key="item.key" :class="`is-${item.state}`">
         <strong>{{ item.state === 'pass' ? '通过' : item.state === 'block' ? '需处理' : '待确认' }} · {{ item.title }}</strong>
         <small v-if="item.detail">{{ item.detail }}</small>
+        <small v-if="item.source" class="finalize-source">来源 · {{ item.source }}</small>
       </li>
     </ul>
     <p v-if="blockReason" class="finalize-block" role="status">{{ blockReason }}</p>
@@ -65,6 +66,7 @@ const pending = computed(() => props.checks.length - passed.value)
 .finalize-checks li { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); }
 .finalize-checks strong { font-size: var(--text-md); font-weight: 600; }
 .finalize-checks small { color: var(--ink-500); font-size: var(--text-sm); }
+.finalize-checks .finalize-source { color: var(--ink-400); font-size: var(--text-xs); }
 .finalize-checks .is-pass { background: var(--success-100); color: var(--success-700); }
 .finalize-checks .is-pending { background: var(--warning-100); color: var(--warning-700); }
 .finalize-checks .is-block { background: var(--danger-100); color: var(--danger-700); }
