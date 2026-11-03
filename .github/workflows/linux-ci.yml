@@ -266,7 +266,7 @@ jobs:
       GIT_TERMINAL_PROMPT: '0'
       FETCH_ATTEMPTS: '5'
       FETCH_TIMEOUT_SECONDS: '120'
-      SPARSE_PATHS: '.github linux webapp deploy scripts systemd tests docs'
+      SPARSE_PATHS: '.github linux webapp deploy scripts systemd tests docs obsidian-vault'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
       HARDWARE_MODE: mock
       DEVICE_SIMULATOR: '1'

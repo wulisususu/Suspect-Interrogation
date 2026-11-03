@@ -220,6 +220,8 @@ export async function fetchDraftQuestions(payload: {
   caseId?: string
   questionId?: string
   elementKey?: string
+  /** 刚才的回答，让追问跟着回答内容走 */
+  q?: string
   limit?: number
 }): Promise<DraftQuestion[]> {
   const response = await http.post('/api/v1/knowledge/draft-questions', payload)

@@ -106,9 +106,13 @@ def test_entry_crud_requires_known_fields_and_keeps_versions(tmp_path):
         category = payload(http.get('/api/v1/knowledge/categories'))[0]
         created = payload(http.post('/api/v1/knowledge/entries', json={
             'title': '手工条目', 'categoryId': category['id'], 'content': '正文', 'keywords': ['核对'],
-            'status': 'verified',
+            'status': 'verified', 'kind': 'wiki', 'sourceRef': 'raw/规范.md#第3条',
         }))
         assert created['origin'] == 'manual' and created['version'] == 1
+        # 后台新建时选的状态 / 类型 / 来源要原样保存，已验证条目立即进入办案提示
+        assert (created['status'], created['kind'], created['sourceRef']) == ('verified', 'wiki', 'raw/规范.md#第3条')
+        matches = payload(http.get('/api/v1/knowledge/guidance/match', params={'q': '需要核对一下'}))
+        assert [item['id'] for item in matches] == [created['id']]
 
         rejected = http.post('/api/v1/knowledge/entries', json={
             'title': '多余字段', 'categoryId': category['id'], 'content': '正文', 'unexpected': 1,

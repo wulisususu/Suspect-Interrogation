@@ -52,6 +52,7 @@ class DraftQuestionsRequest(KnowledgeRequest):
     case_id: str | None = Field(default=None, alias='caseId')
     question_id: str | None = Field(default=None, alias='questionId')
     element_key: str | None = Field(default=None, alias='elementKey')
+    q: str | None = Field(default=None, max_length=2000)
     limit: int = Field(default=3, ge=1, le=10)
 
 
@@ -112,7 +113,10 @@ def entries(category_id: str | None = Query(None, alias='categoryId'), active: b
 
 @router.post('/knowledge/entries')
 def create_entry(body: EntryCreateRequest, db: Session = Depends(get_db)):
-    result = KnowledgeService(db).create_entry(title=body.title, category_id=body.category_id, content=body.content, keywords=body.keywords, active=body.active, check_templates=body.check_templates)
+    result = KnowledgeService(db).create_entry(
+        title=body.title, category_id=body.category_id, content=body.content, keywords=body.keywords, active=body.active,
+        kind=body.kind, status=body.status, source_ref=body.source_ref, check_templates=body.check_templates,
+    )
     db.commit()
     return envelope(result, '条目已创建')
 
@@ -145,10 +149,10 @@ def entry_versions(entry_id: str, db: Session = Depends(get_db)):
 def guidance_match(case_id: str | None = Query(None, alias='caseId'),
                    question_id: str | None = Query(None, alias='questionId'),
                    element_key: str | None = Query(None, alias='elementKey'),
-                   q: str | None = None,
+                   q: str | None = Query(None, max_length=2000),
                    limit: int = Query(5, ge=1, le=20),
                    db: Session = Depends(get_db)):
-    """按案件要素与当前题目匹配知识，供办案页实时提示。"""
+    """按案件要素、当前题目与刚才的回答（q）匹配知识，供办案页题后提示。"""
     result = KnowledgeService(db).guidance_for(
         case_id=case_id, question_id=question_id, element_key=element_key, text=q, limit=limit,
     )
@@ -160,7 +164,8 @@ def guidance_match(case_id: str | None = Query(None, alias='caseId'),
 def draft_questions(body: DraftQuestionsRequest, db: Session = Depends(get_db)):
     """给出建议问法。只返回候选，不建题、不写笔录。"""
     result = KnowledgeService(db).draft_questions(
-        case_id=body.case_id, question_id=body.question_id, element_key=body.element_key, limit=body.limit,
+        case_id=body.case_id, question_id=body.question_id, element_key=body.element_key, text=body.q,
+        limit=body.limit,
     )
     db.commit()
     return envelope(result)
