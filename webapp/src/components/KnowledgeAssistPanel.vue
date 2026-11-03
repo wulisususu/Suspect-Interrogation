@@ -4,12 +4,14 @@
  *
  * 挂在当前题卡里，不单独占一栏、不用点按钮：按这道题、它的要素和刚才的回答自动匹配已验证知识，
  * 给出依据与建议追问。只提示，不写笔录；点追问才通过现有建题接口在本题之后加一张草稿题卡。
+ * 依据显示为可核对的出处（《文件》条款（版本））；过期或被取代的条目后端已不返回。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { BookOpen, Plus } from '@lucide/vue'
 import {
   fetchDraftQuestions,
   fetchGuidance,
+  formatCitation,
   lookupTermCorrections,
   type DraftQuestion,
   type GuidanceItem,
@@ -68,6 +70,12 @@ async function refresh() {
   }
 }
 
+function draftTitle(item: DraftQuestion) {
+  if (!item.entryTitle) return '点击在本题后追加一问'
+  const citation = formatCitation(item)
+  return `依据：${item.entryTitle}${item.entryVersion ? ` v${item.entryVersion}` : ''}${citation ? ` · ${citation}` : ''} · 点击在本题后追加一问`
+}
+
 function toggle(entryId: string) {
   openId.value = openId.value === entryId ? null : entryId
 }
@@ -111,7 +119,7 @@ onBeforeUnmount(() => clearTimeout(timer))
         </button>
         <div v-if="openId === item.id" class="ck-detail">
           <p>{{ item.snippet }}</p>
-          <small>v{{ item.version }}<template v-if="item.sourceRef"> · 依据 {{ item.sourceRef }}</template><template v-if="item.matchReasons?.length"> · {{ item.matchReasons[0] }}</template></small>
+          <small>v{{ item.version }}<template v-if="formatCitation(item)"> · 依据 {{ formatCitation(item) }}</template><template v-if="item.matchReasons?.length"> · {{ item.matchReasons[0] }}</template></small>
         </div>
       </li>
     </ul>
@@ -124,7 +132,7 @@ onBeforeUnmount(() => clearTimeout(timer))
         type="button"
         class="ck-draft"
         :disabled="locked"
-        :title="item.entryTitle ? `依据：${item.entryTitle}${item.entryVersion ? ` v${item.entryVersion}` : ''} · 点击在本题后追加一问` : '点击在本题后追加一问'"
+        :title="draftTitle(item)"
         @click="adopt(item)"
       ><Plus :size="14" aria-hidden="true" />{{ item.text }}</button>
     </div>

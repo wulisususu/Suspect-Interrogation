@@ -70,6 +70,13 @@ source: raw/接警记录规范.md
 corrections:              # 仅 faq，导入为热词
   - wrong: 死老虎派出所
     right: 紫琅湖派出所
+# 引用链（法规 / 规范条目建议填全）
+source_document: 中华人民共和国治安管理处罚法
+source_locator: 第四十九条第一款
+source_version: 2012 修正
+effective_from: 2013-01-01
+effective_until: 2026-01-01   # 当日起失效
+superseded_by: law-public-order-2025   # 新版条目的 uid；也可只写 superseded: true
 ```
 
 ## 4. 导入
@@ -132,7 +139,7 @@ curl -s -X POST https://127.0.0.1:18080/api/v1/knowledge/import \
 > 未部署前不要执行。以下为上线步骤。
 
 1. **发布代码**：走现有生产重部署流水线（`rk3588-production-redeploy.yml`），它会构建前后端并原子切换。
-2. **数据库迁移**（部署脚本已包含 `alembic upgrade head`，确认落在 `0028`）：
+2. **数据库迁移**（部署脚本已包含 `alembic upgrade head`，确认落在当前 head，见 `.github/workflows/rk3588-production-redeploy.yml`）：
 
    ```bash
    cd /opt/suspect-interrogation/current/linux/backend
@@ -162,6 +169,9 @@ curl -s -X POST https://127.0.0.1:18080/api/v1/knowledge/import \
    ```
 
    页面验收点：分类栏有四个内置分类；条目显示「Vault/手工」「已验证/待确认」「v版本」「溯源」；「从 Vault 导入」先出预演报告，确认后才写入。
+
+   `0030_knowledge_citations` 再加 7 列引用链（依据文件、条款/页码、文件版本、生效/失效日期、是否被取代、取代它的条目）。
+   用普通 `ADD COLUMN`，不重建表，FTS 触发器不受影响；既有条目全部为空，效力按「现行」处理。
 
 ## 6. 热词上线
 
@@ -195,7 +205,7 @@ curl -s -X POST https://127.0.0.1:18080/api/v1/knowledge/import \
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 导入报 `KNOWLEDGE_VAULT_NOT_FOUND` | 目录不存在或 `SUSPECT_KNOWLEDGE_VAULT` 未配 | 按第 3 节建目录；核对 env |
-| 条目在后台可见但办案页无提示 | 条目 `status=pending` 或已停用 | 核实后改 `verified` 并重新导入 |
+| 条目在后台可见但办案页无提示 | 条目 `status=pending`、已停用，或已失效 / 尚未生效 / 已被取代（后台列表有标记） | 核实后改 `verified` 并重新导入 |
 | 问法和条目说法不同，提示没出来 | 匹配是词面归一，不是语义向量；该说法不在概念词表里 | 在条目关键词里补上常见说法，或在 `app/services/knowledge_matching.py` 的 `CONCEPTS` 增加同义说法 |
 | 搜索 2 字词命中少 | FTS5 trigram 只支持 ≥3 字，短词走 LIKE | 属预期；用更长关键词 |
 | 导入后内容没变 | 文件 sha256 未变（可能没保存） | 确认 Obsidian 已落盘 |
@@ -210,13 +220,15 @@ curl -s -X POST https://127.0.0.1:18080/api/v1/knowledge/import \
 - **用什么匹配**：这道题的文字、题目别名、所属要素，加上这道题刚才的回答（录音中取实时转写，录完取草稿 / 正本，只取最后 300 字）。回答在变时停顿约 1.2 秒再查。
 - **怎么匹配**：先把口语说法归到概念词（「什么时候 / 几点 / 哪天」→ 时间，「转出去 / 汇款 / 打钱」→ 转账，「锁了 / 车锁」→ 上锁 …），再按关键词、标题、正文概念重合打分。只返回 `verified` 条目。
 - **建议追问**：取匹配条目「建议问法」小节，本案已有的同义问题不再推荐；点一下在**本题之后**插一张草稿题卡（固定结尾题则落到正文末尾），不写笔录。
-- 条目可展开看首句正文、版本、`sourceRef` 与命中原因。
+- 条目可展开看首句正文、版本、出处（《依据文件》条款（版本），没填时退回原件路径 `sourceRef`）与命中原因。
+- **效力**：失效日期当日起、生效日期之前、或标记为「已被取代」的条目不进提示和建议追问；后台列表照常显示，并标「已失效 / 尚未生效 / 已被取代」。
 
 ## 9. 已知边界（本阶段）
 
 - 不做双向同步，不做 Obsidian 插件/MCP。
 - 不做向量检索与 Embedding：办案提示是关键词 + 概念词表归一，词表外的说法要靠条目关键词补齐。
 - 匹配上下文只含当前题及其回答，尚未纳入已确认事实、未解决冲突与前几轮问答。
-- `sourceRef` 仍是文本路径，尚无原始文件 + 页码 / 条款 + 有效日期的完整引用链。
+- 引用链由人工填写；导入只核对 `source` 指向的原件在 Vault 里存在，不校验条款文字是否与原件一致。
+- 效力判断按板端本地日期；`superseded_by` 关系每次导入重算，不单独产生版本。
 - 建议问法是**规则抽取**（条目里的「建议问法」小节），不调用 LLM。
 - 知识不参与正式笔录生成，所有引用都带 `entryId + version + sourceRef`，仅供民警判断。

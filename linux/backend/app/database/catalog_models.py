@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base, TimestampMixin
@@ -65,6 +65,15 @@ class KnowledgeEntry(TimestampMixin, Base):
     source_path: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
     source_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_ref: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # 引用链：原件路径（source_ref）+ 文件名称 + 条款/页码 + 文件版本 + 效力区间。
+    # 过期、未生效或被取代的条目不进办案提示。
+    source_document: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    source_locator: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    superseded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default='0')
+    superseded_by_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 

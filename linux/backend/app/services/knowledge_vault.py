@@ -12,7 +12,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -34,7 +34,11 @@ LINK_PATTERN = re.compile(r'\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]')
 FRONTMATTER_KEYS = {
     'uid', 'title', 'category', 'kind', 'status', 'version',
     'keywords', 'source', 'corrections',
+    # 引用链（法规/规范条目用）
+    'source_document', 'source_locator', 'source_version',
+    'effective_from', 'effective_until', 'superseded', 'superseded_by',
 }
+CITATION_TEXT_KEYS = (('source_document', 256), ('source_locator', 128), ('source_version', 64))
 DEFAULT_CATEGORY = '问话要点'
 VALID_STATUS = {'verified', 'pending'}
 VALID_KINDS = {'faq', 'wiki'}
@@ -146,6 +150,55 @@ class VaultNote:
     corrections: list[dict]
     body: str
     warnings: list[str] = field(default_factory=list)
+    source_document: str | None = None
+    source_locator: str | None = None
+    source_version: str | None = None
+    effective_from: date | None = None
+    effective_until: date | None = None
+    superseded: bool = False
+    superseded_by: str | None = None
+
+
+def _frontmatter_date(data: dict, key: str, warnings: list[str]) -> date | None:
+    value = data.get(key)
+    if value in (None, ''):
+        return None
+    try:
+        return date.fromisoformat(str(value).strip())
+    except ValueError:
+        warnings.append(f'{key}={value} 不是 YYYY-MM-DD 日期，已忽略')
+        return None
+
+
+def _citation(data: dict, root: Path, source_ref: str | None, warnings: list[str]) -> dict:
+    """解析引用链字段，并核对 source 指向的原件确实在 Vault 里。"""
+    citation: dict = {}
+    for key, limit in CITATION_TEXT_KEYS:
+        value = data.get(key)
+        if isinstance(value, list):
+            warnings.append(f'{key} 不是单个值，已忽略')
+            value = None
+        citation[key] = (str(value).strip()[:limit] if value is not None else '') or None
+    citation['effective_from'] = _frontmatter_date(data, 'effective_from', warnings)
+    citation['effective_until'] = _frontmatter_date(data, 'effective_until', warnings)
+    if (citation['effective_from'] and citation['effective_until']
+            and citation['effective_until'] <= citation['effective_from']):
+        warnings.append('effective_until 不晚于 effective_from，失效日期已忽略')
+        citation['effective_until'] = None
+    superseded = str(data.get('superseded') or '').strip().lower()
+    if superseded and superseded not in {'true', 'false', 'yes', 'no'}:
+        warnings.append(f'superseded={superseded} 不是 true/false，按 false 处理')
+    successor = str(data.get('superseded_by') or '').strip()
+    if successor and not UID_PATTERN.match(successor):
+        warnings.append(f'superseded_by={successor} 不是合法 uid，已忽略')
+        successor = ''
+    citation['superseded_by'] = successor or None
+    citation['superseded'] = superseded in {'true', 'yes'} or bool(successor)
+    if source_ref and not re.match(r'^(?:[a-z]+:|/)', source_ref):
+        original = root / source_ref.split('#', 1)[0]
+        if not original.is_file():
+            warnings.append(f'source 指向的原件不存在：{source_ref}')
+    return citation
 
 
 def load_note(path: Path, root: Path) -> tuple[VaultNote | None, str | None]:
@@ -190,6 +243,8 @@ def load_note(path: Path, root: Path) -> tuple[VaultNote | None, str | None]:
                     warnings.append(f'无效纠错项 {item}')
                     continue
                 corrections.append({'wrong': wrong[:128], 'right': right[:128]})
+    source_ref = str(data.get('source')).strip()[:512] if data.get('source') else None
+    citation = _citation(data, root, source_ref, warnings)
     return VaultNote(
         relative_path=relative,
         sha256=_sha256(raw),
@@ -199,10 +254,11 @@ def load_note(path: Path, root: Path) -> tuple[VaultNote | None, str | None]:
         kind=kind,
         status=status,
         keywords=keywords[:100],
-        source_ref=(str(data.get('source')).strip()[:512] if data.get('source') else None),
+        source_ref=source_ref,
         corrections=corrections,
         body=body,
         warnings=warnings,
+        **citation,
     ), None
 
 
@@ -232,6 +288,18 @@ def scan_vault(root: Path) -> tuple[list[VaultNote], list[dict]]:
         seen[note.uid] = note.relative_path
         notes.append(note)
     return notes, rejected
+
+
+def apply_note_citation(row: KnowledgeEntry, note: VaultNote) -> None:
+    row.source_ref = note.source_ref
+    row.source_document = note.source_document
+    row.source_locator = note.source_locator
+    row.source_version = note.source_version
+    row.effective_from = note.effective_from
+    row.effective_until = note.effective_until
+    row.superseded = note.superseded
+    if not note.superseded:
+        row.superseded_by_id = None
 
 
 class KnowledgeVaultImporter:
@@ -296,8 +364,9 @@ class KnowledgeVaultImporter:
                     id=str(uuid4()), category_id=category_id, title=note.title, content=note.body,
                     keywords_json=json.dumps(note.keywords, ensure_ascii=False), active=True, deleted=False,
                     current_version=1, vault_uid=note.uid, kind=note.kind, status=note.status, origin='vault',
-                    source_path=note.relative_path, source_sha256=note.sha256, source_ref=note.source_ref,
+                    source_path=note.relative_path, source_sha256=note.sha256,
                 )
+                apply_note_citation(row, note)
                 self.db.add(row)
                 self.db.flush()
                 report['added'].append({'path': note.relative_path, 'uid': note.uid, 'title': note.title})
@@ -326,7 +395,7 @@ class KnowledgeVaultImporter:
             row.status = note.status
             row.source_path = note.relative_path
             row.source_sha256 = note.sha256
-            row.source_ref = note.source_ref
+            apply_note_citation(row, note)
             if row.vault_uid != note.uid:
                 report['warnings'].append(f'{note.relative_path}: uid 由 {row.vault_uid} 变为 {note.uid}，已跟随')
                 row.vault_uid = note.uid
@@ -354,6 +423,7 @@ class KnowledgeVaultImporter:
         if not dry_run:
             self._sync_corrections(notes, report)
             self._sync_links(notes, touched, report)
+            self._sync_supersession(notes, report)
             self.db.flush()
             run.finished_at = utc_now()
             run.added = len(report['added'])
@@ -404,6 +474,23 @@ class KnowledgeVaultImporter:
             if row.wrong_text not in active_wrong:
                 row.active = False
                 report['correctionsUpdated'].append({'wrong': row.wrong_text, 'active': False})
+
+    def _sync_supersession(self, notes: list[VaultNote], report: dict) -> None:
+        """superseded_by 按 uid 解析成条目 id。新版可能在同一次导入里才建出来，所以放在最后，
+        且每次都对全部笔记重算（与双链一致，不单独产生版本）。"""
+        for note in notes:
+            if not note.superseded_by:
+                continue
+            row = self.db.scalar(select(KnowledgeEntry).where(KnowledgeEntry.vault_uid == note.uid))
+            if row is None or row.origin != 'vault':
+                continue
+            successor = self.db.scalar(select(KnowledgeEntry).where(
+                KnowledgeEntry.vault_uid == note.superseded_by, KnowledgeEntry.deleted.is_(False)))
+            if successor is None or successor.id == row.id:
+                report['warnings'].append(f'{note.relative_path}: superseded_by={note.superseded_by} 找不到对应条目')
+                row.superseded_by_id = None
+                continue
+            row.superseded_by_id = successor.id
 
     def _sync_links(self, notes: list[VaultNote], touched: set[str], report: dict) -> None:
         title_to_entry = {
