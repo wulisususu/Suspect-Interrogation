@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { CaseSummary, FactItem } from '../types/interrogation'
 import type { FormalQuestion } from '../types/templateInterrogation'
 import { coreFacts } from '../utils/factCoverage'
+import type { KnowledgeCheck } from '../utils/knowledgeChecks'
 import { draftAnswerCount, finalizeChecks, type ReviewAutoCheck } from '../utils/reviewChecks'
 
 /**
@@ -10,6 +11,7 @@ import { draftAnswerCount, finalizeChecks, type ReviewAutoCheck } from '../utils
  *
  * 核心要素核对（已确认 / 待补 / 未获取）+ 定稿前检查。检查项只提示、不代改，
  * 判断权在民警；只有后端必然拒绝的情况（blockReason）才阻止确认定稿。
+ * 按本案模板 / 案由从知识库加载的专项检查排在固定检查之后，逐项标明来源条目。
  */
 const props = defineProps<{
   summary: CaseSummary
@@ -21,6 +23,7 @@ const props = defineProps<{
   unresolvedFragments: number
   unresolvedQa: number
   autoChecks?: ReviewAutoCheck[]
+  knowledgeChecks?: KnowledgeCheck[]
 }>()
 
 type ElementState = 'confirmed' | 'pending' | 'missing'
@@ -50,6 +53,7 @@ const checks = computed(() => finalizeChecks({
   draftAnswers: draftAnswerCount(props.questions),
   unresolvedFragments: props.unresolvedFragments,
   unresolvedQa: props.unresolvedQa,
+  knowledgeChecks: props.knowledgeChecks ?? [],
 }))
 const CHECK_MARK = { pass: '✓', pending: '!', block: '!' } as const
 </script>
@@ -69,7 +73,10 @@ const CHECK_MARK = { pass: '✓', pending: '!', block: '!' } as const
 
     <h3>定稿前检查</h3>
     <ul class="review-checks">
-      <li v-for="item in checks" :key="item.key" :class="`is-${item.state}`"><b aria-hidden="true">{{ CHECK_MARK[item.state] }}</b><span>{{ item.detail ? `${item.title} · ${item.detail}` : item.title }}</span></li>
+      <li v-for="item in checks" :key="item.key" :class="`is-${item.state}`">
+        <b aria-hidden="true">{{ CHECK_MARK[item.state] }}</b>
+        <span>{{ item.detail ? `${item.title} · ${item.detail}` : item.title }}<small v-if="item.source" class="review-check-source">来源 · {{ item.source }}</small></span>
+      </li>
     </ul>
 
     <p v-if="frozen" class="review-block is-done">笔录已冻结，可进入 ⑤ 签署归档</p>
@@ -92,6 +99,7 @@ const CHECK_MARK = { pass: '✓', pending: '!', block: '!' } as const
 .review-checklist h3 { margin: var(--space-2) 0 0; color: var(--ink-900); font-size: var(--text-md); font-weight: 650; }
 .review-checks li { display: flex; gap: var(--space-3); font-size: var(--text-md); }
 .review-checks b { flex: 0 0 16px; font-weight: 600; }
+.review-check-source { display: block; margin-top: 2px; color: var(--ink-400); font-size: var(--text-xs); }
 .review-checks .is-pass { color: var(--success-700); }
 .review-checks .is-pending { color: var(--warning-700); }
 .review-checks .is-block { color: var(--danger-600); }

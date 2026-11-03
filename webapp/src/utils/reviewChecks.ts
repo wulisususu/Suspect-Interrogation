@@ -1,5 +1,6 @@
 import type { CaseSummary, FactItem } from '../types/interrogation'
 import { factCoverage } from './factCoverage'
+import type { KnowledgeCheck } from './knowledgeChecks'
 import { officerDisplayName } from './officer'
 
 export type AutoCheckState = 'pass' | 'pending' | 'unavailable'
@@ -43,6 +44,8 @@ export interface FinalizeCheck {
   state: 'pass' | 'pending' | 'block'
   title: string
   detail: string
+  /** 知识库规则的来源条目；固定检查项没有 */
+  source?: string
 }
 
 export interface FinalizeCheckInput {
@@ -52,6 +55,8 @@ export interface FinalizeCheckInput {
   draftAnswers: number
   unresolvedFragments: number
   unresolvedQa: number
+  /** 按本案模板 / 案由从知识库加载的专项检查 */
+  knowledgeChecks?: KnowledgeCheck[]
 }
 
 /**
@@ -72,6 +77,9 @@ export function finalizeChecks(input: FinalizeCheckInput): FinalizeCheck[] {
   for (const key of ['elements', 'timeline', 'homophone', 'signers']) {
     const item = find(key)
     if (item) list.push({ key, state: item.state === 'pass' ? 'pass' : 'pending', title: item.title, detail: item.detail })
+  }
+  for (const item of input.knowledgeChecks ?? []) {
+    list.push({ key: `kb:${item.key}`, state: item.state, title: item.title, detail: item.detail, source: item.source })
   }
   if (input.draftAnswers) list.push({ key: 'drafts', state: 'pending', title: '录音回答未摘入正本', detail: `${input.draftAnswers} 条，未摘入的不会进入笔录` })
   // 没进入任何一问的转写 / 问答只提示、不阻断（样板 P13）：定稿时后端如实标为未入笔录并留痕，

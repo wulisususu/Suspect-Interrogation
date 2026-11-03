@@ -278,7 +278,49 @@ jobs:
           grep -q "url.protocol === 'https:' ? 'wss:' : 'ws:'" /opt/suspect-interrogation/current/webapp/src/audio/browserAsrCapture.ts
 
           sudo -n bash -c 'set -a; source /etc/suspect-interrogation/runtime.env; set +a; cd /opt/suspect-interrogation/current/linux/backend; PYTHONPATH=/opt/suspect-interrogation/current/linux/backend /opt/suspect-interrogation/current/.venv/bin/python -m alembic -c alembic.ini current' | tee /tmp/suspect-alembic-current.txt
-          grep -q '0030_knowledge_citations (head)' /tmp/suspect-alembic-current.txt
+          grep -q '0032_knowledge_citations (head)' /tmp/suspect-alembic-current.txt
+
+          # 知识库定稿校验规则：HTTPS 后端已挂出接口、前端已调用、规则按模板 / 案由从生产库加载。
+          https_curl "https://127.0.0.1:${SUSPECT_DEPLOY_PORT}/openapi.json" >/tmp/suspect-openapi.json
+          python3 -c "import json; assert '/api/v1/knowledge/check-rules' in json.load(open('/tmp/suspect-openapi.json'))['paths']"
+          grep -rqF 'knowledge/check-rules' /opt/suspect-interrogation/current/webapp/dist/assets
+          suspect_db_path="$(sudo -n bash -c 'set -a; source /etc/suspect-interrogation/runtime.env; printf %s "${SUSPECT_DB_PATH:-/var/lib/suspect-interrogation/interrogation.db}"')"
+          sudo -n -u suspect-interrogation env \
+            PYTHONPATH=/opt/suspect-interrogation/current/linux/backend \
+            SUSPECT_DB_PATH="$suspect_db_path" \
+            /opt/suspect-interrogation/current/.venv/bin/python - <<'PY'
+          import os
+          from collections import Counter
+
+          from sqlalchemy import select
+
+          from app.database.catalog_models import CaseTemplateSnapshot, KnowledgeEntry
+          from app.database.session import make_engine, make_session_factory
+          from app.services.knowledge_checks import KnowledgeCheckService
+
+          engine = make_engine(f"sqlite:///{os.environ['SUSPECT_DB_PATH']}")
+          with make_session_factory(engine)() as db:
+              service = KnowledgeCheckService(db)
+              seeded = service.ensure_bundled_rules()
+              db.commit()
+              print('knowledge_check_rules_seeded=', seeded)
+              for uid, template_key, case_type in (
+                  ('rule-theft-ebike', 'THEFT_EBIKE_V1', 'theft'),
+                  ('rule-theft-common', 'THEFT_VEHICLE_GOODS_V1', 'theft'),
+                  ('rule-injury-assault', 'INJURY_ASSAULT_V1', 'injury'),
+                  ('rule-fraud-telecom', 'FRAUD_TELECOM_V1', None),
+              ):
+                  row = db.scalar(select(KnowledgeEntry).where(KnowledgeEntry.vault_uid == uid))
+                  assert row is not None, uid
+                  rules = service.rules_for_template(template_key, case_type)
+                  loaded = [rule for rule in rules if rule['vaultUid'] == uid]
+                  # 民警在知识库里停用 / 删除 / 退回待核实的规则不加载，这是预期，不算部署失败。
+                  assert loaded or row.deleted or not row.active or row.status != 'verified', (uid, rules)
+                  print(f'knowledge_check_rule {uid} template={template_key} case_type={case_type} '
+                        f'loaded={bool(loaded)} items={[item["label"] for rule in loaded for item in rule["items"]]} '
+                        f'source={[(rule["title"], rule["version"], rule["sourcePath"]) for rule in loaded]}')
+              print('case_templates=', dict(Counter(db.scalars(select(CaseTemplateSnapshot.template_key)))))
+          PY
 
           sudo -n -u suspect-interrogation env \
             PYTHONPATH=/opt/suspect-interrogation/current/linux/backend \

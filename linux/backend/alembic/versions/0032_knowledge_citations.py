@@ -3,8 +3,8 @@
 from alembic import op
 import sqlalchemy as sa
 
-revision = '0030_knowledge_citations'
-down_revision = '0029_session_recording_segments'
+revision = '0032_knowledge_citations'
+down_revision = '0031_knowledge_check_rules'
 branch_labels = None
 depends_on = None
 

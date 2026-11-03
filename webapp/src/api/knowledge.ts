@@ -41,6 +41,8 @@ export interface KnowledgeEntry extends KnowledgeCitation {
   sourceSha256?: string | null
   supersededByTitle?: string | null
   validity?: KnowledgeValidity
+  /** 作为定稿校验规则适用的模板 backendKey（大写）或案由分类（小写） */
+  checkTemplates?: string[]
   createdAt?: string | null
   updatedAt?: string | null
 }
@@ -101,6 +103,36 @@ export interface ImportReport {
   categoriesCreated: string[]
   warnings: string[]
   runId: string | null
+}
+
+export interface CheckRuleItem {
+  key: string
+  label: string
+  /** 正本里应能找到的说法，任一出现即视为已记录 */
+  terms: string[]
+  /** 关联的模板要素；该要素已确认也视为通过 */
+  elementKey: string | null
+}
+
+export interface CheckRule {
+  entryId: string
+  title: string
+  version: number
+  status: KnowledgeStatus
+  origin: 'manual' | 'vault'
+  categoryName: string
+  sourceRef: string | null
+  sourcePath: string | null
+  vaultUid: string | null
+  matchedBy: { scope: 'TEMPLATE' | 'CASE_TYPE'; value: string }
+  items: CheckRuleItem[]
+}
+
+export interface CaseCheckRules {
+  caseId: string | null
+  templateKey: string | null
+  caseType: string | null
+  rules: CheckRule[]
 }
 
 export interface TermCorrection {
@@ -239,6 +271,12 @@ export async function fetchDraftQuestions(payload: {
 }): Promise<DraftQuestion[]> {
   const response = await http.post('/api/v1/knowledge/draft-questions', payload)
   return unwrap<DraftQuestion[]>(response.data)
+}
+
+/** 本案模板 / 案由适用的定稿校验规则（知识库条目的「校验项」）。 */
+export async function fetchCaseCheckRules(caseId: string): Promise<CaseCheckRules> {
+  const response = await http.get('/api/v1/knowledge/check-rules', { params: { caseId } })
+  return unwrap<CaseCheckRules>(response.data)
 }
 
 export async function runKnowledgeImport(options: { dryRun?: boolean; root?: string } = {}): Promise<ImportReport> {

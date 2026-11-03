@@ -37,15 +37,16 @@ RETIRED_MOSS_TABLES = {
     "moss_transcriptions", "moss_transcription_revisions", "moss_speaker_mappings",
 }
 CASE_DRAFT_TABLES = {"case_voice_role_drafts"}
+KNOWLEDGE_CHECK_TABLES = {"knowledge_check_bindings"}
 DURABLE_LIVE_SPEECH_TABLES = {
     "asr_audio_segments", "asr_audio_frames", "live_speech_jobs", "asr_fragment_lineage",
 }
 REQUIRED_TABLES = (
     CORE_TABLES | VOICEPRINT_TABLES | TEMPLATE_TABLES | OFFICER_LIBRARY_TABLES |
     CALIBRATION_TABLES | RECOGNITION_EVIDENCE_TABLES | QWEN_ROUTING_TABLES |
-    CASE_DRAFT_TABLES | DURABLE_LIVE_SPEECH_TABLES
+    CASE_DRAFT_TABLES | DURABLE_LIVE_SPEECH_TABLES | KNOWLEDGE_CHECK_TABLES
 )
-ALEMBIC_HEAD = "0030_knowledge_citations"
+ALEMBIC_HEAD = "0032_knowledge_citations"
 
 
 def _run_alembic(tmp_path, target: str):
@@ -458,8 +459,8 @@ CITATION_COLUMNS = {
 }
 
 
-def test_0030_adds_knowledge_citations_without_dropping_fts_triggers(tmp_path):
-    db_file, env, result = _run_alembic(tmp_path, "0029_session_recording_segments")
+def test_0032_adds_knowledge_citations_without_dropping_fts_triggers(tmp_path):
+    db_file, env, result = _run_alembic(tmp_path, "0031_knowledge_check_rules")
     assert result.returncode == 0, result.stdout + result.stderr
     engine = create_engine(f"sqlite:///{db_file}")
     try:
@@ -483,7 +484,7 @@ def test_0030_adds_knowledge_citations_without_dropping_fts_triggers(tmp_path):
         ))}
 
     cwd = os.path.dirname(os.path.dirname(__file__))
-    for command, target in (("upgrade", "head"), ("downgrade", "0029_session_recording_segments")):
+    for command, target in (("upgrade", "head"), ("downgrade", "0031_knowledge_check_rules")):
         step = subprocess.run(
             [sys.executable, "-m", "alembic", "-c", "alembic.ini", command, target],
             cwd=cwd, env=env, text=True, capture_output=True, check=False,

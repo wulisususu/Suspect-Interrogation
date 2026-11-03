@@ -33,7 +33,7 @@ UID_PATTERN = re.compile(r'^[a-z0-9][a-z0-9-]{2,63}$')
 LINK_PATTERN = re.compile(r'\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]')
 FRONTMATTER_KEYS = {
     'uid', 'title', 'category', 'kind', 'status', 'version',
-    'keywords', 'source', 'corrections',
+    'keywords', 'source', 'corrections', 'templates',
     # 引用链（法规/规范条目用）
     'source_document', 'source_locator', 'source_version',
     'effective_from', 'effective_until', 'superseded', 'superseded_by',
@@ -149,6 +149,7 @@ class VaultNote:
     source_ref: str | None
     corrections: list[dict]
     body: str
+    templates: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     source_document: str | None = None
     source_locator: str | None = None
@@ -243,6 +244,22 @@ def load_note(path: Path, root: Path) -> tuple[VaultNote | None, str | None]:
                     warnings.append(f'无效纠错项 {item}')
                     continue
                 corrections.append({'wrong': wrong[:128], 'right': right[:128]})
+    from app.services.knowledge_checks import binding_scope
+
+    templates: list[str] = []
+    raw_templates = data.get('templates') or []
+    if isinstance(raw_templates, str):
+        raw_templates = [raw_templates]
+    if not isinstance(raw_templates, list):
+        warnings.append('templates 不是列表，已忽略')
+        raw_templates = []
+    for item in raw_templates:
+        value = str(item).strip() if isinstance(item, (str, int)) else ''
+        if not value or binding_scope(value) is None:
+            warnings.append(f'templates 项 {item} 不是模板 backendKey 或案由分类，已忽略')
+            continue
+        if value not in templates:
+            templates.append(value)
     source_ref = str(data.get('source')).strip()[:512] if data.get('source') else None
     citation = _citation(data, root, source_ref, warnings)
     return VaultNote(
@@ -258,6 +275,7 @@ def load_note(path: Path, root: Path) -> tuple[VaultNote | None, str | None]:
         corrections=corrections,
         body=body,
         warnings=warnings,
+        templates=templates[:50],
         **citation,
     ), None
 
@@ -371,6 +389,7 @@ class KnowledgeVaultImporter:
                 self.db.flush()
                 report['added'].append({'path': note.relative_path, 'uid': note.uid, 'title': note.title})
                 touched.add(row.id)
+                self._sync_check_bindings(row, note)
                 self.service._version(row, 'IMPORT_CREATE')
                 continue
 
@@ -403,6 +422,7 @@ class KnowledgeVaultImporter:
             row.current_version += 1
             self.db.flush()
             report['updated'].append({'path': note.relative_path, 'uid': note.uid, 'title': note.title})
+            self._sync_check_bindings(row, note)
             self.service._version(row, 'IMPORT_UPDATE')
 
         seen_paths = {note.relative_path for note in notes}
@@ -441,6 +461,11 @@ class KnowledgeVaultImporter:
             )
         report['runId'] = run.id if not dry_run else None
         return report
+
+    def _sync_check_bindings(self, row: KnowledgeEntry, note: VaultNote) -> None:
+        from app.services.knowledge_checks import KnowledgeCheckService
+
+        KnowledgeCheckService(self.db).set_bindings(row.id, note.templates, audit=False)
 
     def _sync_corrections(self, notes: list[VaultNote], report: dict) -> None:
         active_wrong: set[str] = set()

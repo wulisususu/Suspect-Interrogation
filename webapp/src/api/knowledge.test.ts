@@ -27,6 +27,14 @@ describe('knowledge api client', () => {
     expect(result).toEqual([{ id: 'k1', title: '案发时间核对要点' }])
   })
 
+  it('loads the finalize check rules for a case', async () => {
+    get.mockResolvedValue(envelope({ caseId: 'case-1', templateKey: 'THEFT_EBIKE_V1', caseType: 'theft', rules: [] }))
+    const { fetchCaseCheckRules } = await import('./knowledge')
+    const result = await fetchCaseCheckRules('case-1')
+    expect(get).toHaveBeenCalledWith('/api/v1/knowledge/check-rules', { params: { caseId: 'case-1' } })
+    expect(result.templateKey).toBe('THEFT_EBIKE_V1')
+  })
+
   it('surfaces backend error messages instead of returning empty data', async () => {
     get.mockResolvedValue({ data: { ok: false, code: 'KNOWLEDGE_ENTRY_NOT_FOUND', message: '知识条目不存在' } })
     const { fetchKnowledgeEntry } = await import('./knowledge')
