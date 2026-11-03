@@ -35,6 +35,26 @@ describe('knowledge api client', () => {
     expect(result.templateKey).toBe('THEFT_EBIKE_V1')
   })
 
+  it('asks for element-driven suggestions and reports adopt / not-applicable feedback', async () => {
+    post.mockResolvedValueOnce(envelope({ caseId: 'case-1', templateTitle: '盗窃（电动车）', focus: null, pendingElements: [], suggestions: [] }))
+    post.mockResolvedValueOnce(envelope({ key: 'k', decision: 'ADOPTED', createdQuestionId: 'q9' }))
+    const { fetchSuggestions, sendSuggestionFeedback } = await import('./knowledge')
+    expect((await fetchSuggestions({ caseId: 'case-1', questionId: 'q1', q: '锁了', limit: 3 })).templateTitle).toBe('盗窃（电动车）')
+    expect(post).toHaveBeenNthCalledWith(1, '/api/v1/knowledge/suggestions', { caseId: 'case-1', questionId: 'q1', q: '锁了', limit: 3 })
+    expect((await sendSuggestionFeedback({ caseId: 'case-1', key: 'k', action: 'ADOPTED' })).createdQuestionId).toBe('q9')
+    expect(post).toHaveBeenNthCalledWith(2, '/api/v1/knowledge/suggestions/feedback', { caseId: 'case-1', key: 'k', action: 'ADOPTED' })
+  })
+
+  it('loads usage statistics for the admin list and one entry', async () => {
+    get.mockResolvedValueOnce(envelope({ e1: { shown: 3, adopted: 1, notApplicable: 1 } }))
+    get.mockResolvedValueOnce(envelope([{ text: '停车时车上用了什么锁？', elementKey: 'lock', shown: 3, adopted: 1, notApplicable: 1 }]))
+    const { fetchEntryUsage, fetchKnowledgeUsage } = await import('./knowledge')
+    expect((await fetchKnowledgeUsage()).e1?.adopted).toBe(1)
+    expect(get).toHaveBeenNthCalledWith(1, '/api/v1/knowledge/usage')
+    expect((await fetchEntryUsage('e 1'))[0]?.elementKey).toBe('lock')
+    expect(get).toHaveBeenNthCalledWith(2, '/api/v1/knowledge/entries/e%201/usage')
+  })
+
   it('surfaces backend error messages instead of returning empty data', async () => {
     get.mockResolvedValue({ data: { ok: false, code: 'KNOWLEDGE_ENTRY_NOT_FOUND', message: '知识条目不存在' } })
     const { fetchKnowledgeEntry } = await import('./knowledge')

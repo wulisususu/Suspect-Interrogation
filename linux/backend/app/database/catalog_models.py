@@ -151,3 +151,29 @@ class KnowledgeCheckBinding(Base):
     scope: Mapped[str] = mapped_column(String(16), nullable=False)
     value: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class KnowledgeSuggestionFeedback(Base):
+    """一条推荐追问在一个案件里的展示与民警处置（采纳 / 不适用）。
+
+    每个案件每条问法只有一行：重复展示、重复点击都不重复计数。只存知识库里的问法文字和引用 ID，
+    不存当事人的回答，也不跨案件读取任何内容。
+    """
+
+    __tablename__ = 'knowledge_suggestion_feedback'
+    __table_args__ = (UniqueConstraint('case_id', 'suggestion_key', name='uq_knowledge_suggestion_case_key'),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey('cases.id', ondelete='CASCADE'), nullable=False, index=True)
+    suggestion_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    entry_id: Mapped[str | None] = mapped_column(ForeignKey('knowledge_entries.id'), nullable=True, index=True)
+    entry_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    element_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    suggestion_text: Mapped[str] = mapped_column(String(300), nullable=False)
+    anchor_question_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    shown_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    shown_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    decision: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_question_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

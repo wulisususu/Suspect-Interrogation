@@ -383,7 +383,9 @@ class KnowledgeService:
                 except Exception:  # noqa: BLE001
                     aliases = []
                 terms.extend(str(item) for item in aliases if str(item).strip())
-        for value in (label, question_text, extra_text):
+        # 有题目文字时不再用要素名称匹配：要素名常是几项拼起来的（「车辆品牌 / 颜色 / 购买时间」），
+        # 会把不相干的条目带进来；题目本身更能说明这一问在问什么。
+        for value in ((None if question_text else label), question_text, extra_text):
             if value and str(value).strip():
                 terms.append(str(value).strip())
         deduped: list[str] = []
@@ -442,23 +444,10 @@ class KnowledgeService:
 
     @staticmethod
     def _suggestion_lines(content):
-        lines = content.splitlines()
-        collected: list[str] = []
-        in_section = False
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith('#'):
-                if '建议问法' in stripped:
-                    in_section = True
-                    continue
-                if in_section:
-                    break
-                continue
-            if in_section and stripped.startswith(('-', '*', '·')):
-                value = stripped.lstrip('-*· ').strip()
-                if value:
-                    collected.append(value)
-        return collected
+        """「建议问法」小节里的问法文字（去掉 ``[要素]`` 标记）。"""
+        from app.services.knowledge_suggestions import parse_suggestions
+
+        return [text for _element, text in parse_suggestions(content)]
 
     def _asked_questions(self, case_id):
         if not case_id:
