@@ -4,6 +4,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { backendErrorMessage } from '../api/interrogation'
 import { markReportGenerated } from '../api/archive'
 import { fetchDocumentSigningState, finalizeDocument, signDocument } from '../api/documentSigning'
+import { fetchCaseCheckRules, type CheckRule } from '../api/knowledge'
 import type {
   AsrCaptureStatus,
   AsrInsertionTarget,
@@ -38,6 +39,7 @@ import type { RecordMode } from '../flow/steps'
 import { cssToken } from '../utils/cssToken'
 import { draftAnswerCount, finalizeChecks, reviewAutoChecks } from '../utils/reviewChecks'
 import { factCoverage } from '../utils/factCoverage'
+import { knowledgeChecks } from '../utils/knowledgeChecks'
 import { TEMPLATE_CATALOG } from '../config/templateCatalog'
 import { freezeBlockReason, orderedReviewFragments } from '../utils/recordCompletion'
 import './templateInterrogation.css'
@@ -114,6 +116,7 @@ const drawerChecks = computed(() => finalizeChecks({
   draftAnswers: draftAnswerCount(props.workspace.questions),
   unresolvedFragments: unresolvedFragments.value,
   unresolvedQa: unresolvedQa.value,
+  knowledgeChecks: ruleChecks.value,
 }))
 const drawerCoverage = computed(() => {
   const coverage = factCoverage(props.facts)
@@ -190,6 +193,26 @@ const signatureStrokes = ref<SignaturePoint[][]>([])
 let activeStroke: SignaturePoint[] | null = null
 
 const autoChecks = computed(() => reviewAutoChecks(props.facts, props.summary, props.recorderName ?? ''))
+
+/** 本案模板 / 案由的知识库定稿校验规则；读不到时不列出，避免民警误以为已经检查过。 */
+const checkRules = ref<CheckRule[]>([])
+let checkRuleRequest = 0
+watch(
+  () => [props.caseId, props.workspace.templateKey] as const,
+  async ([caseId]) => {
+    const request = ++checkRuleRequest
+    checkRules.value = []
+    if (!caseId) return
+    try {
+      const result = await fetchCaseCheckRules(caseId)
+      if (request === checkRuleRequest) checkRules.value = result.rules
+    } catch {
+      // 规则只做提示：接口不可用时退回固定检查项
+    }
+  },
+  { immediate: true },
+)
+const ruleChecks = computed(() => knowledgeChecks(checkRules.value, props.workspace.questions, props.facts))
 const documentFrozen = computed(() => !!signingState.value || ['FROZEN', 'SIGNED', 'REPORT_GENERATED'].includes(props.summary.workflowState || ''))
 const documentLocked = computed(() => signingState.value?.status === 'LOCKED')
 
@@ -543,6 +566,7 @@ async function confirmSignature() {
             :unresolved-fragments="unresolvedFragments"
             :unresolved-qa="unresolvedQa"
             :auto-checks="autoChecks"
+            :knowledge-checks="ruleChecks"
           />
         </div>
         <ReviewRecordPreview :questions="workspace.questions" />

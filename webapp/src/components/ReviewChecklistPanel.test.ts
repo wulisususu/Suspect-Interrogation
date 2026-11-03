@@ -61,6 +61,26 @@ describe('ReviewChecklistPanel (design P13 / state C)', () => {
   })
 })
 
+describe('ReviewChecklistPanel knowledge-base rules', () => {
+  it('lists case-type rule checks after the fixed checks, each with its source entry', async () => {
+    const html = await render({
+      knowledgeChecks: [
+        { key: 'e1#0', state: 'pass', title: '锁具情况', detail: '正本已记录「锁」', source: '知识库《盗窃电动车笔录定稿校验》v1 · rules/rule-theft-ebike.md' },
+        { key: 'e1#1', state: 'pending', title: '购买凭证', detail: '正本中未见「发票、收据、购买凭证」等表述，可补问或如实记为未获取', source: '知识库《盗窃电动车笔录定稿校验》v1 · rules/rule-theft-ebike.md' },
+      ],
+    })
+    expect(html).toContain('锁具情况 · 正本已记录「锁」')
+    expect(html).toContain('购买凭证 · 正本中未见「发票、收据、购买凭证」等表述')
+    expect(html).toContain('来源 · 知识库《盗窃电动车笔录定稿校验》v1 · rules/rule-theft-ebike.md')
+    expect(html.indexOf('签署人数与身份')).toBeLessThan(html.indexOf('锁具情况'))
+    expect(html).not.toContain('is-block')
+  })
+
+  it('shows no source line for the fixed checks', async () => {
+    expect(await render()).not.toContain('来源 · ')
+  })
+})
+
 describe('ReviewRecordPreview (design P13 right column)', () => {
   it('previews every question and marks unanswered ones 未获取', async () => {
     const html = await renderToString(createSSRApp(ReviewRecordPreview, { questions }))
