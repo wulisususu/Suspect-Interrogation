@@ -337,9 +337,11 @@ export class LinuxHttpWsAdapter implements RuntimeAdapter {
       return result
     } catch (error) {
       const normalized = normalizeRuntimeError(error, 'capabilities.get')
-      if (normalized.state === 'NOT_CONNECTED') this.capabilitiesCache = capabilitySet('NOT_CONNECTED', normalized.message)
-      else this.capabilitiesCache = capabilityFallback('Linux 后端尚未实现 capability endpoint')
-      return this.capabilitiesCache
+      // 失败结果不缓存：一次瞬态失败（后端重启、网络抖动、鉴权竞态）不应该把
+      // 录音按钮灰到民警手动刷新为止。下次 getCapabilities 会重新查询。
+      return normalized.state === 'NOT_CONNECTED'
+        ? capabilitySet('NOT_CONNECTED', normalized.message)
+        : capabilityFallback('Linux 后端尚未实现 capability endpoint')
     }
   }
 

@@ -316,10 +316,27 @@ watch(
 
 onUnmounted(() => {
   window.clearInterval(clockTimer)
+  window.clearInterval(capabilityRetryTimer)
   if (questionDictationActive.value && store.caseId) void stopQuestionPreparationDictation(store.caseId).catch(() => undefined)
   if (store.caseId === props.caseId) store.resetCaseContext()
   if (templateStore.caseId === props.caseId) templateStore.reset()
 })
+
+/** 录音能力不可用时每 5 秒强制重查：一次瞬态失败（后端重启/网络抖动）不该把
+ * 录音按钮灰到民警手动刷新页面为止。恢复可用即停。 */
+let capabilityRetryTimer: ReturnType<typeof setInterval> | undefined
+watch(() => store.captureAvailable, (available) => {
+  if (available && capabilityRetryTimer) {
+    window.clearInterval(capabilityRetryTimer)
+    capabilityRetryTimer = undefined
+    return
+  }
+  if (!available && !capabilityRetryTimer) {
+    capabilityRetryTimer = window.setInterval(() => {
+      store.refreshCapabilities().catch(() => undefined)
+    }, 5000)
+  }
+}, { immediate: true })
 
 async function startQuestionDictation() {
   if (!store.caseId || questionDictationBusy.value || questionDictationActive.value) return

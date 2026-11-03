@@ -745,6 +745,14 @@ export const useInterrogationStore = defineStore('interrogation', () => {
 
       const runtimeCapabilities = await fetchRuntimeCapabilities()
       captureAvailable.value = runtimeCapabilities.recording.state === 'AVAILABLE' || runtimeCapabilities.asr.state === 'AVAILABLE'
+      if (!captureAvailable.value) {
+        // 首查不可用多半是后端重启/网络抖动造成的一次性失败：延迟强制重查一次再定论，
+        // 否则录音按钮会一直灰着，直到民警手动刷新页面。
+        void (async () => {
+          await new Promise((resolve) => setTimeout(resolve, 1500))
+          if (isCurrentScope(scope)) await refreshCapabilities()
+        })()
+      }
       const [messages, factItems, sessionState, captureStatus, officerBinding] = await Promise.all([
         fetchMessages(requestedCaseId),
         fetchFacts(requestedCaseId),
@@ -785,6 +793,15 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     const messages = await fetchMessages(scope.caseId)
     if (!isCurrentScope(scope)) return
     transcript.value = messages
+  }
+
+  /** 强制重查运行时能力：录音按钮灰着时的自愈入口（后端重启/瞬态失败后恢复）。 */
+  async function refreshCapabilities() {
+    const scope = currentScope()
+    const caps = await fetchRuntimeCapabilities(true)
+    if (!isCurrentScope(scope)) return captureAvailable.value
+    captureAvailable.value = caps.recording.state === 'AVAILABLE' || caps.asr.state === 'AVAILABLE'
+    return captureAvailable.value
   }
 
   async function startCapture() {
@@ -1358,6 +1375,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     revisions,
     revisionsOpen,
     nativeCaptureAvailable: captureAvailable,
+    captureAvailable,
     capture,
     activeFragments,
     fragmentHistory,
@@ -1390,6 +1408,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     useSuggestion,
     startCapture,
     stopCapture,
+    refreshCapabilities,
     applySessionState,
     applyStateSync,
     updatePendingFragment,

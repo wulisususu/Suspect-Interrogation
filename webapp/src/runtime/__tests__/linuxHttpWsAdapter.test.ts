@@ -3,6 +3,26 @@ import { LinuxHttpWsAdapter, buildRuntimeWebSocketUrl } from '../linuxHttpWsAdap
 import { RuntimeAdapterError } from '../errors'
 
 describe('LinuxHttpWsAdapter', () => {
+  it('retries capabilities after a transient failure instead of caching the fallback', async () => {
+    // 后端重启/网络抖动造成的一次性失败不能被缓存成永久灰按钮（AAC708/D earlier 现场反馈）：
+    // 第一次查询失败后，第二次调用必须重新发请求并拿到最新能力。
+    let calls = 0
+    const adapter = new LinuxHttpWsAdapter({
+      request: async () => {
+        calls += 1
+        if (calls === 1) throw new Error('backend restarting')
+        return { data: { ok: true, data: { recording: { state: 'AVAILABLE' } } } }
+      },
+    })
+
+    const first = await adapter.getCapabilities()
+    expect(first.recording.state).not.toBe('AVAILABLE')
+
+    const second = await adapter.getCapabilities()
+    expect(second.recording.state).toBe('AVAILABLE')
+    expect(calls).toBe(2)
+  })
+
   it('passes a case-list query to FastAPI', async () => {
     const calls: Array<{ params?: Record<string, unknown> }> = []
     const adapter = new LinuxHttpWsAdapter({
