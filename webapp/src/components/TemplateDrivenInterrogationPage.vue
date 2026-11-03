@@ -482,14 +482,6 @@ async function confirmSignature() {
       </div>
 
       <div class="dialogue-column draft-column">
-        <KnowledgeAssistPanel
-          :case-id="summary.id"
-          :questions="workspace.questions"
-          :recording-question-id="recordingQuestionId ?? null"
-          :live-text="liveText ?? ''"
-          :locked="documentFrozen || templateBusy"
-          @use-suggestion="(text) => emit('createQuestion', { text, source: 'LIVE', afterQuestionId: null })"
-        />
         <DraftQuestionRail
           :questions="workspace.questions"
           :session-status="session.status"
@@ -513,7 +505,18 @@ async function confirmSignature() {
           @question-hold-start="emit('questionHoldStart', $event)"
           @question-hold-end="emit('questionHoldEnd')"
           @toggle-pause="emit('togglePause')"
-        />
+        >
+          <template #assist="{ questionId, sectionType, contextText }">
+            <KnowledgeAssistPanel
+              :case-id="summary.id"
+              :question-id="questionId"
+              :element-key="workspace.questions.find((item) => item.id === questionId)?.elementKey ?? null"
+              :context-text="contextText"
+              :locked="documentFrozen || templateBusy"
+              @adopt="(text) => emit('createQuestion', { text, source: 'LIVE', afterQuestionId: sectionType === 'CLOSING' ? null : questionId })"
+            />
+          </template>
+        </DraftQuestionRail>
       </div>
     </div>
 

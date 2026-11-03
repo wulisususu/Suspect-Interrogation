@@ -18,6 +18,7 @@ from app.database.models import CaseQuestion
 from app.database.session import begin_sqlite_immediate
 from app.domain.errors import DomainError
 from app.repositories import audit as audit_repo
+from app.services.knowledge_matching import match_entry, normalize, similar_question
 from app.services.serializers import iso_utc
 
 
@@ -293,9 +294,14 @@ class KnowledgeService:
 
     def guidance_for(self, *, case_id=None, question_id=None, element_key=None, text=None,
                      limit=5, verified_only=True):
-        """按要素标签/题目文本匹配知识，返回带来源与版本的可展示条目。"""
+        """按要素标签、题目、题目别名和刚才的回答匹配知识，返回带来源与版本的可展示条目。
+
+        问法先经 ``knowledge_matching.normalize`` 归一（「什么时候」「几点」都算时间），
+        再按关键词、标题、正文概念重合打分；没有任何上下文时按条目质量返回前几条。
+        """
         self._seed()
         terms = self._guidance_terms(case_id, question_id, element_key, text)
+        context = normalize(' '.join(terms))
         statement = (
             select(KnowledgeEntry)
             .join(KnowledgeCategory)
@@ -304,32 +310,14 @@ class KnowledgeService:
         )
         if verified_only:
             statement = statement.where(KnowledgeEntry.status == 'verified')
-        candidates = list(self.db.scalars(statement))
-        if terms:
-            ids: set[str] = set()
-            for term in terms:
-                ids |= self._search_ids(term) or set()
-            if ids:
-                candidates = [row for row in candidates if row.id in ids] or candidates
         scored = []
-        for row in candidates:
-            keywords = json.loads(row.keywords_json or '[]')
-            score = 2 if row.status == 'verified' else 0
-            score += 1 if row.kind == 'faq' else 0
-            reasons: list[str] = []
-            for keyword in keywords:
-                if any(keyword in term for term in terms):
-                    score += 4
-                    reasons.append(f'关键词命中：{keyword}')
-            for term in terms:
-                if len(term) >= 2 and term in row.title:
-                    score += 3
-                    reasons.append(f'标题命中：{term}')
-                elif len(term) >= 3 and term in row.content:
-                    score += 1
-                    reasons.append(f'正文命中：{term}')
-            if not reasons and terms:
+        for row in self.db.scalars(statement):
+            score, reasons = match_entry(context, title=row.title, keywords=json.loads(row.keywords_json or '[]'),
+                                         content=row.content)
+            if terms and not reasons:
                 continue
+            score += 2 if row.status == 'verified' else 0
+            score += 1 if row.kind == 'faq' else 0
             scored.append((score, row, reasons))
         scored.sort(key=lambda item: (-item[0], item[1].created_at, item[1].id))
         results = []
@@ -337,9 +325,18 @@ class KnowledgeService:
             payload = self._payload(row)
             payload['score'] = score
             payload['matchReasons'] = list(dict.fromkeys(reasons))[:5]
-            payload['snippet'] = row.content.strip().splitlines()[0][:120] if row.content.strip() else ''
+            payload['snippet'] = self._snippet(row.content)
             results.append(payload)
         return results
+
+    @staticmethod
+    def _snippet(content):
+        """正文第一句有内容的话（跳过 Markdown 标题），供题后提示展示。"""
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith(('#', '---', '|')):
+                return stripped[:120]
+        return ''
 
     @staticmethod
     def _suggestion_lines(content):
@@ -361,13 +358,28 @@ class KnowledgeService:
                     collected.append(value)
         return collected
 
+    def _asked_questions(self, case_id):
+        if not case_id:
+            return []
+        return list(self.db.scalars(select(CaseQuestion.text).where(
+            CaseQuestion.case_id == case_id, CaseQuestion.active.is_(True))))
+
     def draft_questions(self, *, case_id=None, question_id=None, element_key=None, text=None, limit=3):
-        """给出可采纳的建议问法。只返回候选，不写笔录、不建题。"""
+        """给出可采纳的建议追问。只返回候选，不写笔录、不建题。
+
+        候选来自匹配到的已验证条目的「建议问法」段，按匹配顺序排列；本案已经有的题（问法基本相同）
+        不再推荐。``text`` 传刚才的回答，让追问跟着回答内容走。
+        """
         entries = self.guidance_for(case_id=case_id, question_id=question_id, element_key=element_key,
-                                    text=text, limit=max(limit, 3), verified_only=True)
+                                    text=text, limit=max(limit, 5), verified_only=True)
+        asked = self._asked_questions(case_id)
         suggestions = []
+
+        def fresh(phrase):
+            return not any(similar_question(phrase, item) for item in asked + [s['text'] for s in suggestions])
+
         for entry in entries:
-            for phrase in self._suggestion_lines(entry['content'])[:2]:
+            for phrase in [line for line in self._suggestion_lines(entry['content']) if fresh(line)][:2]:
                 suggestions.append({
                     'text': phrase[:300],
                     'entryId': entry['id'],
@@ -382,9 +394,10 @@ class KnowledgeService:
         if suggestions:
             return suggestions
         label = self._element_label(case_id, element_key)
-        if label:
+        generic = f'关于{label}，请你具体说明当时的情况。' if label else ''
+        if generic and fresh(generic):
             return [{
-                'text': f'关于{label}，请你具体说明当时的情况。',
+                'text': generic,
                 'entryId': None, 'entryTitle': '通用问法', 'entryVersion': None,
                 'sourceRef': None, 'status': 'pending', 'categoryName': '',
             }]

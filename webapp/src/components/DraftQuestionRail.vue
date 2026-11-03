@@ -82,6 +82,21 @@ watch(
   { immediate: true },
 )
 
+/**
+ * 题后知识提示挂在哪张卡上：正在录的题，否则民警点选的题，否则第一道还没答的题。
+ * 提示内容由父组件经 #assist 插槽提供（需要案件与要素信息），这里只决定位置和上下文文字。
+ */
+const assistCardId = computed(() => {
+  if (props.locked) return null
+  if (props.recordingQuestionId) return props.recordingQuestionId
+  if (selectedId.value && cards.value.some((card) => card.id === selectedId.value)) return selectedId.value
+  return cards.value.find((card) => card.state === 'empty')?.id ?? null
+})
+
+function assistContext(card: { id: string; state: CardState }) {
+  return card.state === 'recording' ? props.liveText ?? '' : edits[card.id] ?? ''
+}
+
 const recording = computed(() => Boolean(props.recordingQuestionId) || Boolean(props.questionRecording))
 const sessionClosed = computed(() => ['COMPLETED', 'CANCELLED'].includes(props.sessionStatus))
 const answerBlockedReason = computed(() => {
@@ -305,6 +320,8 @@ function submitQuestion() {
             <button type="button" class="draft-action is-answer" :disabled="!canStartAnswer" @click.stop="record(card.id)"><Mic :size="16" aria-hidden="true" />点击此处回答</button>
             <small>{{ answerBlockedReason || '对着话筒说话 · 说完再点一下结束 · 自动转成文字，可再修改' }}</small>
           </div>
+
+          <slot v-if="assistCardId === card.id" name="assist" :question-id="card.id" :section-type="card.sectionType" :context-text="assistContext(card)" />
         </article>
       </li>
     </ol>

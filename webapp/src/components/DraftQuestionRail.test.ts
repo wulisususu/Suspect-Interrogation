@@ -1,4 +1,4 @@
-import { createSSRApp } from 'vue'
+import { createSSRApp, h } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { describe, expect, it } from 'vitest'
 import DraftQuestionRail from './DraftQuestionRail.vue'
@@ -146,5 +146,28 @@ describe('DraftQuestionRail question edit / remove', () => {
     const source = (await import('./DraftQuestionRail.vue?raw')).default
     expect(source).toContain("if (removeConfirmId.value !== cardId) { removeConfirmId.value = cardId; return }")
     expect(source).toContain('确认删除')
+  })
+  describe('题后知识提示插槽（设计稿：问话时自动调用并附在题后）', () => {
+    const withAssist = (props: Record<string, unknown> = {}) => renderToString(createSSRApp({
+      render: () => h(DraftQuestionRail, { questions, sessionStatus: 'RUNNING', recordingQuestionId: null, captureAvailable: true, ...props }, {
+        assist: ({ questionId, contextText }: { questionId: string; contextText: string }) => h('aside', { class: 'assist-probe' }, `${questionId}|${contextText}`),
+      }),
+    }))
+    const probes = (html: string) => html.match(/<aside class="assist-probe">[^<]*<\/aside>/g) ?? []
+
+    it('attaches to the first unanswered card by default, inside that card', async () => {
+      const html = await withAssist()
+      expect(probes(html)).toEqual(['<aside class="assist-probe">q3|</aside>'])
+      expect(card(html, '你最后一次见到他是什么时候？')).toContain('assist-probe')
+    })
+
+    it('follows the card being recorded and passes the live answer as context', async () => {
+      const html = await withAssist({ recordingQuestionId: 'q2', liveText: '只有我一个人' })
+      expect(probes(html)).toEqual(['<aside class="assist-probe">q2|只有我一个人</aside>'])
+    })
+
+    it('is hidden once the record is frozen', async () => {
+      expect(probes(await withAssist({ locked: true }))).toEqual([])
+    })
   })
 })
