@@ -9,7 +9,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, inspect, text
 
 
-EXPECTED_HEAD = "0033_knowledge_suggestion_feedback"
+EXPECTED_HEAD = "0034_knowledge_experience"
 XVECTOR = "xvector"
 
 

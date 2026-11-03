@@ -2,13 +2,14 @@
 /**
  * 知识库管理 · 真实功能页（替代 P24 占位）
  *
- * 三个页签：条目（可编辑、带溯源与状态）、热词（同音纠正）、导入记录。
+ * 四个页签：条目（可编辑、带溯源与状态）、热词（同音纠正）、经验审核（已结案案件提炼的问法）、导入记录。
  * 条目来源分 manual / vault；vault 来源的条目说明「改动请回 Obsidian」。
  * 溯源是一条可核对的引用链：原件路径、依据文件、条款/页码、文件版本、效力区间与取代关系；
  * 已失效 / 未生效 / 被取代的条目在列表里标出，且不进办案提示。
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import EmptyState from '../components/EmptyState.vue'
+import ExperienceReviewPanel from '../components/ExperienceReviewPanel.vue'
 import {
   createKnowledgeEntry,
   deleteKnowledgeEntry,
@@ -38,7 +39,7 @@ import {
   type TermCorrection,
 } from '../api/knowledge'
 
-type Tab = 'entries' | 'terms' | 'imports'
+type Tab = 'entries' | 'terms' | 'experience' | 'imports'
 
 const tab = ref<Tab>('entries')
 const categories = ref<KnowledgeCategory[]>([])
@@ -348,6 +349,7 @@ onMounted(async () => {
     <nav class="knowledge-tabs" aria-label="知识库分区">
       <button type="button" :class="{ active: tab === 'entries' }" @click="tab = 'entries'">知识条目</button>
       <button type="button" :class="{ active: tab === 'terms' }" @click="tab = 'terms'">热词与纠错</button>
+      <button type="button" :class="{ active: tab === 'experience' }" @click="tab = 'experience'">经验审核</button>
       <button type="button" :class="{ active: tab === 'imports' }" @click="tab = 'imports'">导入记录</button>
     </nav>
 
@@ -567,6 +569,8 @@ onMounted(async () => {
         </tbody>
       </table>
     </template>
+
+    <ExperienceReviewPanel v-else-if="tab === 'experience'" @published="loadEntries" />
 
     <template v-else>
       <EmptyState v-if="!reports.length" kind="empty" title="还没有导入记录" description="每次导入（含预演）都会留下记录，含新增/更新/停用/冲突数量。" />

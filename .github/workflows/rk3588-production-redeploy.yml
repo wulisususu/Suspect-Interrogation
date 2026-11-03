@@ -278,15 +278,16 @@ jobs:
           grep -q "url.protocol === 'https:' ? 'wss:' : 'ws:'" /opt/suspect-interrogation/current/webapp/src/audio/browserAsrCapture.ts
 
           sudo -n bash -c 'set -a; source /etc/suspect-interrogation/runtime.env; set +a; cd /opt/suspect-interrogation/current/linux/backend; PYTHONPATH=/opt/suspect-interrogation/current/linux/backend /opt/suspect-interrogation/current/.venv/bin/python -m alembic -c alembic.ini current' | tee /tmp/suspect-alembic-current.txt
-          grep -q '0033_knowledge_suggestion_feedback (head)' /tmp/suspect-alembic-current.txt
+          grep -q '0034_knowledge_experience (head)' /tmp/suspect-alembic-current.txt
 
           # 知识库定稿校验规则：HTTPS 后端已挂出接口、前端已调用、规则按模板 / 案由从生产库加载。
           https_curl "https://127.0.0.1:${SUSPECT_DEPLOY_PORT}/openapi.json" >/tmp/suspect-openapi.json
           python3 -c "import json; assert '/api/v1/knowledge/check-rules' in json.load(open('/tmp/suspect-openapi.json'))['paths']"
           grep -rqF 'knowledge/check-rules' /opt/suspect-interrogation/current/webapp/dist/assets
           # 智能追问与采纳反馈：接口已挂出、前端已调用（下方脚本核对内置问法已入库、反馈表可读）。
-          python3 -c "import json; paths = json.load(open('/tmp/suspect-openapi.json'))['paths']; assert {'/api/v1/knowledge/suggestions', '/api/v1/knowledge/suggestions/feedback', '/api/v1/knowledge/usage'} <= set(paths)"
+          python3 -c "import json; paths = json.load(open('/tmp/suspect-openapi.json'))['paths']; assert {'/api/v1/knowledge/suggestions', '/api/v1/knowledge/suggestions/feedback', '/api/v1/knowledge/usage', '/api/v1/knowledge/experience', '/api/v1/knowledge/experience/harvest', '/api/v1/knowledge/experience/{candidate_id}/approve', '/api/v1/knowledge/experience/{candidate_id}/reject'} <= set(paths)"
           grep -rqF 'knowledge/suggestions' /opt/suspect-interrogation/current/webapp/dist/assets
+          grep -rqF 'knowledge/experience' /opt/suspect-interrogation/current/webapp/dist/assets
           suspect_db_path="$(sudo -n bash -c 'set -a; source /etc/suspect-interrogation/runtime.env; printf %s "${SUSPECT_DB_PATH:-/var/lib/suspect-interrogation/interrogation.db}"')"
           sudo -n -u suspect-interrogation env \
             PYTHONPATH=/opt/suspect-interrogation/current/linux/backend \
@@ -336,6 +337,12 @@ jobs:
                         f'v{row.current_version} elements={dict(tagged)}')
               print('knowledge_suggestion_feedback_rows=',
                     db.scalar(select(func.count()).select_from(KnowledgeSuggestionFeedback)))
+              from app.database.catalog_models import KnowledgeExperienceCandidate
+
+              # 只读统计：部署不触发提炼，提炼由管理员打开「经验审核」时执行。
+              print('knowledge_experience_candidates=', dict(db.execute(
+                  select(KnowledgeExperienceCandidate.status, func.count())
+                  .group_by(KnowledgeExperienceCandidate.status)).all()))
           PY
 
           sudo -n -u suspect-interrogation env \

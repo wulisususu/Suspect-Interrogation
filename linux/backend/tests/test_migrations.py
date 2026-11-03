@@ -46,7 +46,7 @@ REQUIRED_TABLES = (
     CALIBRATION_TABLES | RECOGNITION_EVIDENCE_TABLES | QWEN_ROUTING_TABLES |
     CASE_DRAFT_TABLES | DURABLE_LIVE_SPEECH_TABLES | KNOWLEDGE_CHECK_TABLES
 )
-ALEMBIC_HEAD = "0033_knowledge_suggestion_feedback"
+ALEMBIC_HEAD = "0034_knowledge_experience"
 
 
 def _run_alembic(tmp_path, target: str):
