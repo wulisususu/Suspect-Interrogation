@@ -9,8 +9,6 @@ keywords:
   - 故意伤害
   - 殴打
   - 定稿校验
-templates:
-  - INJURY_ASSAULT_V1
 ---
 # 故意伤害笔录定稿校验
 

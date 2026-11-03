@@ -10,8 +10,6 @@ keywords:
   - 电信网络诈骗
   - 转账
   - 定稿校验
-templates:
-  - FRAUD_TELECOM_V1
 ---
 # 电信网络诈骗笔录定稿校验
 
