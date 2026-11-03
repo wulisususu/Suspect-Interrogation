@@ -278,7 +278,7 @@ jobs:
           grep -q "url.protocol === 'https:' ? 'wss:' : 'ws:'" /opt/suspect-interrogation/current/webapp/src/audio/browserAsrCapture.ts
 
           sudo -n bash -c 'set -a; source /etc/suspect-interrogation/runtime.env; set +a; cd /opt/suspect-interrogation/current/linux/backend; PYTHONPATH=/opt/suspect-interrogation/current/linux/backend /opt/suspect-interrogation/current/.venv/bin/python -m alembic -c alembic.ini current' | tee /tmp/suspect-alembic-current.txt
-          grep -q '0031_knowledge_check_rules (head)' /tmp/suspect-alembic-current.txt
+          grep -q '0032_knowledge_citations (head)' /tmp/suspect-alembic-current.txt
 
           # 知识库定稿校验规则：HTTPS 后端已挂出接口、前端已调用、规则按模板 / 案由从生产库加载。
           https_curl "https://127.0.0.1:${SUSPECT_DEPLOY_PORT}/openapi.json" >/tmp/suspect-openapi.json

@@ -27,12 +27,20 @@ version: 1                      # 可选，仅作提示；系统以数据库版�
 keywords:                       # 可选，≤100 个，≤128 字/个
   - 案发时间
   - 时间
-source: raw/接警记录规范.md      # 可选，溯源路径，可带 #小节 锚点
+source: raw/接警记录规范.md      # 可选，原件路径，可带 #小节 锚点；导入时核对文件存在
 corrections:                    # 可选，仅 faq；导入为同音纠错/热词
   - wrong: 死老虎派出所
     right: 紫琅湖派出所
 templates:                      # 可选，定稿校验规则适用的模板 backendKey（大写）或案由分类（小写 theft/injury/traffic/other）
   - THEFT_EBIKE_V1
+# 以下为引用链，法规 / 规范条目建议填全，均可选
+source_document: 中华人民共和国治安管理处罚法   # 依据文件名称，≤256 字
+source_locator: 第四十九条第一款                 # 条款或页码，≤128 字
+source_version: 2012 修正                        # 文件版本 / 文号，≤64 字
+effective_from: 2013-01-01                       # 生效日期，YYYY-MM-DD
+effective_until: 2026-01-01                      # 失效日期，当日起失效
+superseded: true                                 # 已被新版取代
+superseded_by: law-public-order-2025             # 新版条目的 uid（写了即视为 superseded）
 ---
 ```
 
@@ -43,6 +51,8 @@ templates:                      # 可选，定稿校验规则适用的模板 bac
 - `category` 缺失 → 落到「问话要点」，并在报告中提示。
 - `status` 只接受 `verified` / `pending`；其它值按 `pending` 处理并提示。
 - 正文（frontmatter 之后的部分）整段作为 `content`；`wiki` 的正文**同样入库可检索**。
+- 日期写错（非 `YYYY-MM-DD`）、失效日期不晚于生效日期、`source` 指向的原件不存在、`superseded_by` 找不到条目 → 只告警，不猜。
+- 失效日期已到、尚未生效或已被取代的条目照常导入，但**不进办案提示**。
 
 ## 二、导入行为
 

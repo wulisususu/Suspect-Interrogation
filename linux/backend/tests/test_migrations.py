@@ -46,7 +46,7 @@ REQUIRED_TABLES = (
     CALIBRATION_TABLES | RECOGNITION_EVIDENCE_TABLES | QWEN_ROUTING_TABLES |
     CASE_DRAFT_TABLES | DURABLE_LIVE_SPEECH_TABLES | KNOWLEDGE_CHECK_TABLES
 )
-ALEMBIC_HEAD = "0031_knowledge_check_rules"
+ALEMBIC_HEAD = "0032_knowledge_citations"
 
 
 def _run_alembic(tmp_path, target: str):
@@ -451,3 +451,65 @@ def test_moss_tables_are_dropped_at_head_and_restored_on_downgrade(tmp_path):
             engine.dispose()
         assert (RETIRED_MOSS_TABLES <= tables) is present
         assert RETIRED_MOSS_TABLES.isdisjoint(tables) is (not present)
+
+
+CITATION_COLUMNS = {
+    "source_document", "source_locator", "source_version",
+    "effective_from", "effective_until", "superseded", "superseded_by_id",
+}
+
+
+def test_0032_adds_knowledge_citations_without_dropping_fts_triggers(tmp_path):
+    db_file, env, result = _run_alembic(tmp_path, "0031_knowledge_check_rules")
+    assert result.returncode == 0, result.stdout + result.stderr
+    engine = create_engine(f"sqlite:///{db_file}")
+    try:
+        with engine.begin() as connection:
+            connection.execute(text(
+                "INSERT INTO knowledge_categories (id, name, active, created_at, updated_at) "
+                "VALUES ('law', '法规条文', 1, '2026-01-01', '2026-01-01')"
+            ))
+            connection.execute(text(
+                "INSERT INTO knowledge_entries (id, category_id, title, content, keywords_json, active, deleted, "
+                "current_version, kind, status, origin, source_ref, created_at, updated_at) VALUES "
+                "('entry-1', 'law', '盗窃数额认定', '正文', '[]', 1, 0, 1, 'faq', 'verified', 'manual', "
+                "'raw/规范.md', '2026-01-01', '2026-01-01')"
+            ))
+    finally:
+        engine.dispose()
+
+    def triggers(connection):
+        return {row[0] for row in connection.execute(text(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'knowledge_entries'"
+        ))}
+
+    cwd = os.path.dirname(os.path.dirname(__file__))
+    for command, target in (("upgrade", "head"), ("downgrade", "0031_knowledge_check_rules")):
+        step = subprocess.run(
+            [sys.executable, "-m", "alembic", "-c", "alembic.ini", command, target],
+            cwd=cwd, env=env, text=True, capture_output=True, check=False,
+        )
+        assert step.returncode == 0, step.stdout + step.stderr
+        engine = create_engine(f"sqlite:///{db_file}")
+        try:
+            columns = {column["name"] for column in inspect(engine).get_columns("knowledge_entries")}
+            with engine.begin() as connection:
+                assert len(triggers(connection)) == 3
+                row = connection.execute(text("SELECT id, source_ref FROM knowledge_entries")).one()
+                assert tuple(row) == ("entry-1", "raw/规范.md")
+                # 触发器仍同步全文索引
+                connection.execute(text(f"UPDATE knowledge_entries SET title = '盗窃数额认定标准{command}'"))
+                indexed = connection.execute(text(
+                    "SELECT title FROM knowledge_entries_fts WHERE entry_id = 'entry-1'"
+                )).scalar_one()
+                assert indexed == f"盗窃数额认定标准{command}"
+                if command == "upgrade":
+                    assert CITATION_COLUMNS <= columns
+                    citation = connection.execute(text(
+                        "SELECT superseded, superseded_by_id, effective_until FROM knowledge_entries"
+                    )).one()
+                    assert tuple(citation) == (0, None, None)
+                else:
+                    assert CITATION_COLUMNS.isdisjoint(columns)
+        finally:
+            engine.dispose()

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from uuid import uuid4
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.database.catalog_models import (
@@ -32,9 +33,54 @@ def _text(value, label, limit=None):
     return value
 
 
+# 引用链里的文字字段：API 键 → (列名, 长度上限, 显示名)
+CITATION_TEXT_FIELDS = {
+    'sourceDocument': ('source_document', 256, '依据文件'),
+    'sourceLocator': ('source_locator', 128, '条款/页码'),
+    'sourceVersion': ('source_version', 64, '文件版本'),
+}
+CITATION_KEYS = set(CITATION_TEXT_FIELDS) | {'effectiveFrom', 'effectiveUntil', 'superseded', 'supersededById'}
+
+
+def parse_citation_date(value, label):
+    """接受 date 或 YYYY-MM-DD 字符串；空值返回 None。"""
+    if value in (None, ''):
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value).strip())
+    except ValueError:
+        raise DomainError('INVALID_KNOWLEDGE_ENTRY', f'{label}须为 YYYY-MM-DD 日期', 400) from None
+
+
+def citation_validity(row, today):
+    """条目当前的效力：effective_until 当日起失效（与「自某日起废止」一致）。"""
+    if row.superseded:
+        return 'superseded'
+    if row.effective_until is not None and row.effective_until <= today:
+        return 'expired'
+    if row.effective_from is not None and row.effective_from > today:
+        return 'not_yet_effective'
+    return 'current'
+
+
+def in_force(today):
+    """SQL 条件：未被取代且 today 落在 [effective_from, effective_until) 内。"""
+    return and_(
+        KnowledgeEntry.superseded.is_(False),
+        or_(KnowledgeEntry.effective_from.is_(None), KnowledgeEntry.effective_from <= today),
+        or_(KnowledgeEntry.effective_until.is_(None), KnowledgeEntry.effective_until > today),
+    )
+
+
 class KnowledgeService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, *, today: date | None = None):
         self.db = db
+        self._fixed_today = today
+
+    def today(self):
+        return self._fixed_today or date.today()
 
     def _seed(self):
         begin_sqlite_immediate(self.db)
@@ -94,6 +140,7 @@ class KnowledgeService:
 
     def _payload(self, row):
         category = self.db.get(KnowledgeCategory, row.category_id)
+        successor = self.db.get(KnowledgeEntry, row.superseded_by_id) if row.superseded_by_id else None
         return dict(
             id=row.id, title=row.title, categoryId=row.category_id,
             categoryName=category.name if category else '', content=row.content,
@@ -101,6 +148,13 @@ class KnowledgeService:
             version=row.current_version, kind=row.kind, status=row.status, origin=row.origin,
             vaultUid=row.vault_uid, sourcePath=row.source_path, sourceRef=row.source_ref,
             sourceSha256=row.source_sha256,
+            sourceDocument=row.source_document, sourceLocator=row.source_locator,
+            sourceVersion=row.source_version,
+            effectiveFrom=row.effective_from.isoformat() if row.effective_from else None,
+            effectiveUntil=row.effective_until.isoformat() if row.effective_until else None,
+            superseded=bool(row.superseded), supersededById=row.superseded_by_id,
+            supersededByTitle=successor.title if successor else None,
+            validity=citation_validity(row, self.today()),
             checkTemplates=KnowledgeCheckService(self.db).bindings(row.id),
             createdAt=iso_utc(row.created_at), updatedAt=iso_utc(row.updated_at),
         )
@@ -134,7 +188,8 @@ class KnowledgeService:
         if category_id is not None:
             statement = statement.where(KnowledgeEntry.category_id == category_id)
         if guidance:
-            statement = statement.where(KnowledgeEntry.active.is_(True), KnowledgeCategory.active.is_(True))
+            statement = statement.where(KnowledgeEntry.active.is_(True), KnowledgeCategory.active.is_(True),
+                                        in_force(self.today()))
         elif active is not None:
             statement = statement.where(KnowledgeEntry.active.is_(active))
         if status:
@@ -179,7 +234,8 @@ class KnowledgeService:
 
     def create_entry(self, *, title, category_id, content, keywords=None, active=True,
                      kind='faq', status='pending', origin='manual', source_ref=None,
-                     vault_uid=None, source_path=None, source_sha256=None, check_templates=None):
+                     vault_uid=None, source_path=None, source_sha256=None, citation=None,
+                     check_templates=None):
         self._seed()
         self._category(category_id)
         row = KnowledgeEntry(
@@ -191,12 +247,49 @@ class KnowledgeService:
             vault_uid=(str(vault_uid)[:64] if vault_uid else None),
             source_path=(str(source_path)[:512] if source_path else None),
             source_sha256=(str(source_sha256)[:64] if source_sha256 else None),
+            superseded=False,
         )
+        self._apply_citation(row, citation or {})
         self.db.add(row)
         self.db.flush()
         if check_templates:
             KnowledgeCheckService(self.db).set_bindings(row.id, check_templates)
         return self._version(row, 'CREATE')
+
+    def _apply_citation(self, row, patch):
+        """按 API 键写入引用链字段；只处理 patch 里出现的键，最后校验效力区间与取代关系。"""
+        for key, (column, limit, label) in CITATION_TEXT_FIELDS.items():
+            if key not in patch:
+                continue
+            value = patch[key]
+            if value is not None and not isinstance(value, str):
+                raise DomainError('INVALID_KNOWLEDGE_ENTRY', f'{label}必须是文字', 400)
+            value = (value or '').strip()
+            if len(value) > limit:
+                raise DomainError('INVALID_KNOWLEDGE_ENTRY', f'{label}不能超过{limit}字', 400)
+            setattr(row, column, value or None)
+        if 'effectiveFrom' in patch:
+            row.effective_from = parse_citation_date(patch['effectiveFrom'], '生效日期')
+        if 'effectiveUntil' in patch:
+            row.effective_until = parse_citation_date(patch['effectiveUntil'], '失效日期')
+        if row.effective_from and row.effective_until and row.effective_until <= row.effective_from:
+            raise DomainError('INVALID_KNOWLEDGE_ENTRY', '失效日期必须晚于生效日期', 400)
+        if 'superseded' in patch:
+            if not isinstance(patch['superseded'], bool):
+                raise DomainError('INVALID_KNOWLEDGE_ENTRY', 'superseded 必须是布尔值', 400)
+            row.superseded = patch['superseded']
+            if not row.superseded:
+                row.superseded_by_id = None
+        if 'supersededById' in patch:
+            successor_id = patch['supersededById'] or None
+            if successor_id is not None:
+                successor = self.db.get(KnowledgeEntry, successor_id)
+                if successor is None or successor.deleted:
+                    raise DomainError('INVALID_KNOWLEDGE_ENTRY', '取代它的条目不存在', 400)
+                if successor.id == row.id:
+                    raise DomainError('INVALID_KNOWLEDGE_ENTRY', '条目不能被自己取代', 400)
+                row.superseded = True
+            row.superseded_by_id = successor_id
 
     def update_entry(self, entry_id, patch):
         begin_sqlite_immediate(self.db)
@@ -220,6 +313,7 @@ class KnowledgeService:
         if 'sourceRef' in patch:
             value = patch['sourceRef']
             row.source_ref = None if value in (None, '') else str(value)[:512]
+        self._apply_citation(row, {key: patch[key] for key in CITATION_KEYS if key in patch})
         if 'checkTemplates' in patch:
             KnowledgeCheckService(self.db).set_bindings(row.id, patch['checkTemplates'] or [])
         row.current_version += 1
@@ -302,6 +396,8 @@ class KnowledgeService:
                      limit=5, verified_only=True):
         """按要素标签、题目、题目别名和刚才的回答匹配知识，返回带来源与版本的可展示条目。
 
+        已过期、未生效或被取代的条目不参与匹配（见 ``in_force``）。
+
         问法先经 ``knowledge_matching.normalize`` 归一（「什么时候」「几点」都算时间），
         再按关键词、标题、正文概念重合打分；没有任何上下文时按条目质量返回前几条。
         """
@@ -312,7 +408,7 @@ class KnowledgeService:
             select(KnowledgeEntry)
             .join(KnowledgeCategory)
             .where(KnowledgeEntry.deleted.is_(False), KnowledgeEntry.active.is_(True),
-                   KnowledgeCategory.active.is_(True))
+                   KnowledgeCategory.active.is_(True), in_force(self.today()))
         )
         if verified_only:
             statement = statement.where(KnowledgeEntry.status == 'verified')
@@ -392,6 +488,9 @@ class KnowledgeService:
                     'entryTitle': entry['title'],
                     'entryVersion': entry['version'],
                     'sourceRef': entry['sourceRef'],
+                    'sourceDocument': entry['sourceDocument'],
+                    'sourceLocator': entry['sourceLocator'],
+                    'sourceVersion': entry['sourceVersion'],
                     'status': entry['status'],
                     'categoryName': entry['categoryName'],
                 })
@@ -405,7 +504,8 @@ class KnowledgeService:
             return [{
                 'text': generic,
                 'entryId': None, 'entryTitle': '通用问法', 'entryVersion': None,
-                'sourceRef': None, 'status': 'pending', 'categoryName': '',
+                'sourceRef': None, 'sourceDocument': None, 'sourceLocator': None, 'sourceVersion': None,
+                'status': 'pending', 'categoryName': '',
             }]
         return []
 

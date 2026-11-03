@@ -70,4 +70,31 @@ describe('knowledge api client', () => {
     await setTermCorrectionActive('c/d', false)
     expect(patch).toHaveBeenLastCalledWith('/api/v1/knowledge/term-corrections/c%2Fd', { active: false })
   })
+
+  it('formats a verifiable citation and falls back to the original file path', async () => {
+    const { formatCitation, formatEffectivePeriod } = await import('./knowledge')
+    expect(formatCitation({
+      sourceDocument: '治安管理处罚法', sourceLocator: '第四十九条', sourceVersion: '2012 修正', sourceRef: 'raw/a.pdf',
+    })).toBe('《治安管理处罚法》第四十九条（2012 修正）')
+    expect(formatCitation({ sourceDocument: '《接警记录规范》' })).toBe('《接警记录规范》')
+    expect(formatCitation({ sourceLocator: 'p.12' })).toBe('p.12')
+    expect(formatCitation({ sourceRef: 'raw/接警记录规范.md#时间' })).toBe('raw/接警记录规范.md#时间')
+    expect(formatCitation({})).toBe('')
+    expect(formatEffectivePeriod({ effectiveFrom: '2013-01-01', effectiveUntil: '2026-01-01' }))
+      .toBe('2013-01-01 起施行 · 2026-01-01 起失效')
+    expect(formatEffectivePeriod({})).toBe('')
+  })
+
+  it('sends citation fields when creating an entry', async () => {
+    post.mockResolvedValue(envelope({ id: 'k1' }))
+    const { createKnowledgeEntry } = await import('./knowledge')
+    await createKnowledgeEntry({
+      title: '盗窃处罚', categoryId: 'law', content: '正文',
+      sourceDocument: '治安管理处罚法', sourceLocator: '第四十九条', effectiveFrom: '2013-01-01', supersededById: null,
+    })
+    expect(post).toHaveBeenCalledWith('/api/v1/knowledge/entries', {
+      title: '盗窃处罚', categoryId: 'law', content: '正文',
+      sourceDocument: '治安管理处罚法', sourceLocator: '第四十九条', effectiveFrom: '2013-01-01', supersededById: null,
+    })
+  })
 })

@@ -8,8 +8,22 @@ export interface KnowledgeCategory {
 
 export type KnowledgeStatus = 'verified' | 'pending'
 export type KnowledgeKind = 'faq' | 'wiki'
+/** 条目效力：失效日期当日起失效；过期 / 未生效 / 被取代的条目不进办案提示。 */
+export type KnowledgeValidity = 'current' | 'expired' | 'not_yet_effective' | 'superseded'
 
-export interface KnowledgeEntry {
+/** 引用链：原件路径（sourceRef）+ 依据文件 + 条款/页码 + 文件版本 + 效力区间 + 取代关系。 */
+export interface KnowledgeCitation {
+  sourceRef?: string | null
+  sourceDocument?: string | null
+  sourceLocator?: string | null
+  sourceVersion?: string | null
+  effectiveFrom?: string | null
+  effectiveUntil?: string | null
+  superseded?: boolean
+  supersededById?: string | null
+}
+
+export interface KnowledgeEntry extends KnowledgeCitation {
   id: string
   title: string
   categoryId: string
@@ -24,8 +38,9 @@ export interface KnowledgeEntry {
   origin: 'manual' | 'vault'
   vaultUid?: string | null
   sourcePath?: string | null
-  sourceRef?: string | null
   sourceSha256?: string | null
+  supersededByTitle?: string | null
+  validity?: KnowledgeValidity
   /** 作为定稿校验规则适用的模板 backendKey（大写）或案由分类（小写） */
   checkTemplates?: string[]
   createdAt?: string | null
@@ -44,6 +59,9 @@ export interface DraftQuestion {
   entryTitle: string
   entryVersion: number | null
   sourceRef: string | null
+  sourceDocument?: string | null
+  sourceLocator?: string | null
+  sourceVersion?: string | null
   status: KnowledgeStatus
   categoryName: string
 }
@@ -126,6 +144,35 @@ export interface TermCorrection {
   entryId?: string | null
 }
 
+export const VALIDITY_LABELS: Record<KnowledgeValidity, string> = {
+  current: '现行有效',
+  expired: '已失效',
+  not_yet_effective: '尚未生效',
+  superseded: '已被取代',
+}
+
+/**
+ * 一行可核对的出处：《文件》条款（版本）；没有结构化出处时退回原件路径。
+ * 例：「《治安管理处罚法》第四十九条（2012 修正）」。
+ */
+export function formatCitation(citation: KnowledgeCitation): string {
+  const document = citation.sourceDocument?.trim()
+  const locator = citation.sourceLocator?.trim()
+  const version = citation.sourceVersion?.trim()
+  if (!document && !locator) return citation.sourceRef?.trim() || ''
+  const title = document ? (/^[《〈]/.test(document) ? document : `《${document}》`) : ''
+  return `${title}${locator ?? ''}${version ? `（${version}）` : ''}`
+}
+
+/** 效力区间文字，如「2013-01-01 起施行 · 2026-01-01 起失效」；都没填时为空。 */
+export function formatEffectivePeriod(citation: KnowledgeCitation): string {
+  const parts = [
+    citation.effectiveFrom ? `${citation.effectiveFrom} 起施行` : '',
+    citation.effectiveUntil ? `${citation.effectiveUntil} 起失效` : '',
+  ]
+  return parts.filter(Boolean).join(' · ')
+}
+
 function unwrap<T>(payload: unknown): T {
   if (payload && typeof payload === 'object' && 'ok' in payload) {
     const envelope = payload as { ok: boolean; data?: T; code?: string; message?: string }
@@ -167,8 +214,7 @@ export async function createKnowledgeEntry(input: {
   keywords?: string[]
   kind?: KnowledgeKind
   status?: KnowledgeStatus
-  sourceRef?: string | null
-}): Promise<KnowledgeEntry> {
+} & KnowledgeCitation): Promise<KnowledgeEntry> {
   const response = await http.post('/api/v1/knowledge/entries', input)
   return unwrap<KnowledgeEntry>(response.data)
 }
@@ -183,8 +229,7 @@ export async function updateKnowledgeEntry(
     active: boolean
     kind: KnowledgeKind
     status: KnowledgeStatus
-    sourceRef: string | null
-  }>,
+  } & KnowledgeCitation>,
 ): Promise<KnowledgeEntry> {
   const response = await http.patch(`/api/v1/knowledge/entries/${encodeURIComponent(entryId)}`, patch)
   return unwrap<KnowledgeEntry>(response.data)

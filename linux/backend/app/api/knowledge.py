@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
@@ -15,11 +17,27 @@ class KnowledgeRequest(BaseModel):
     model_config = ConfigDict(extra='forbid', populate_by_name=True)
 
 
+class CitationFields(KnowledgeRequest):
+    """引用链：依据文件、条款/页码、文件版本、效力区间与取代关系。"""
+
+    source_document: str | None = Field(default=None, alias='sourceDocument', max_length=256)
+    source_locator: str | None = Field(default=None, alias='sourceLocator', max_length=128)
+    source_version: str | None = Field(default=None, alias='sourceVersion', max_length=64)
+    effective_from: date | None = Field(default=None, alias='effectiveFrom')
+    effective_until: date | None = Field(default=None, alias='effectiveUntil')
+    superseded: bool | None = None
+    superseded_by_id: str | None = Field(default=None, alias='supersededById', max_length=64)
+
+
+CITATION_ALIASES = ('sourceDocument', 'sourceLocator', 'sourceVersion', 'effectiveFrom', 'effectiveUntil',
+                    'superseded', 'supersededById')
+
+
 class CategoryRequest(KnowledgeRequest):
     name: str = Field(min_length=1, max_length=128)
 
 
-class EntryCreateRequest(KnowledgeRequest):
+class EntryCreateRequest(CitationFields):
     title: str = Field(min_length=1, max_length=256)
     category_id: str = Field(alias='categoryId')
     content: str = Field(min_length=1, max_length=100000)
@@ -31,7 +49,7 @@ class EntryCreateRequest(KnowledgeRequest):
     check_templates: list[str] = Field(default_factory=list, alias='checkTemplates', max_length=50)
 
 
-class EntryUpdateRequest(KnowledgeRequest):
+class EntryUpdateRequest(CitationFields):
     title: str | None = Field(default=None, min_length=1, max_length=256)
     category_id: str | None = Field(default=None, alias='categoryId')
     content: str | None = Field(default=None, min_length=1, max_length=100000)
@@ -116,6 +134,8 @@ def create_entry(body: EntryCreateRequest, db: Session = Depends(get_db)):
     result = KnowledgeService(db).create_entry(
         title=body.title, category_id=body.category_id, content=body.content, keywords=body.keywords, active=body.active,
         kind=body.kind, status=body.status, source_ref=body.source_ref, check_templates=body.check_templates,
+        citation={key: value for key, value in body.model_dump(exclude_unset=True, by_alias=True).items()
+                  if key in CITATION_ALIASES},
     )
     db.commit()
     return envelope(result, '条目已创建')
