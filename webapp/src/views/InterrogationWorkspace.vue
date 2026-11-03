@@ -381,6 +381,7 @@ async function runTemplateAction(action: () => Promise<unknown>) {
 
 function loadQuestionLibrary(category?: string) { return runTemplateAction(() => templateStore.loadQuestionLibrary(category)) }
 function createFormalQuestion(input: CaseQuestionCreateInput) { return runTemplateAction(() => templateStore.createCaseQuestion(input)) }
+function adoptSuggestion(key: string) { return runTemplateAction(() => templateStore.adoptSuggestion(key)) }
 function updateFormalQuestion(questionId: string, input: CaseQuestionUpdateInput) { return runTemplateAction(() => templateStore.updateCaseQuestion(questionId, input)) }
 function removeFormalQuestion(questionId: string) { return runTemplateAction(() => templateStore.deactivateCaseQuestion(questionId)) }
 function reorderFormalQuestions(questionIds: string[]) { return runTemplateAction(() => templateStore.reorderCaseQuestions(questionIds)) }
@@ -552,6 +553,7 @@ async function correctRecognitionFragment(fragmentId: string, speaker: Temporary
             @question-dictation-stop="stopQuestionDictation"
             @load-library="loadQuestionLibrary"
             @create-question="createFormalQuestion"
+            @adopt-suggestion="adoptSuggestion"
             @update-question="updateFormalQuestion"
             @remove-question="removeFormalQuestion"
             @reorder-questions="reorderFormalQuestions"

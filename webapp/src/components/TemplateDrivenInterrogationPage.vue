@@ -82,6 +82,8 @@ const emit = defineEmits<{
   questionDictationStop: []
   loadLibrary: [category?: string]
   createQuestion: [input: CaseQuestionCreateInput]
+  /** 采纳智能追问：后端建一张 LIVE 草稿题并记录反馈 */
+  adoptSuggestion: [key: string]
   updateQuestion: [questionId: string, input: CaseQuestionUpdateInput]
   reorderQuestions: [questionIds: string[]]
   removeQuestion: [questionId: string]
@@ -141,6 +143,11 @@ function focusMissingCard() {
   card.classList.add('record-qa-located')
   window.setTimeout(() => card.classList.remove('record-qa-located'), 1600)
 }
+/** 题目增减或有题写进正本时变化：题后智能追问据此重新按要素状态推荐。 */
+const questionRevision = computed(() => {
+  const active = props.workspace.questions.filter((question) => question.active !== false)
+  return active.length * 1000 + active.filter((question) => question.formalAnswerText?.trim()).length
+})
 const templateTitle = computed(() => TEMPLATE_CATALOG.find((item) => item.backendKey === props.workspace.templateKey)?.title || '嫌疑人询问')
 /** 正本的最近保存时间：取问题与问答轮次的最新更新时间。 */
 const savedAtText = computed(() => {
@@ -529,14 +536,15 @@ async function confirmSignature() {
           @question-hold-end="emit('questionHoldEnd')"
           @toggle-pause="emit('togglePause')"
         >
-          <template #assist="{ questionId, sectionType, contextText }">
+          <template #assist="{ questionId, contextText }">
             <KnowledgeAssistPanel
               :case-id="summary.id"
               :question-id="questionId"
               :element-key="workspace.questions.find((item) => item.id === questionId)?.elementKey ?? null"
               :context-text="contextText"
               :locked="documentFrozen || templateBusy"
-              @adopt="(text) => emit('createQuestion', { text, source: 'LIVE', afterQuestionId: sectionType === 'CLOSING' ? null : questionId })"
+              :revision="questionRevision"
+              @adopt="(key) => emit('adoptSuggestion', key)"
             />
           </template>
         </DraftQuestionRail>

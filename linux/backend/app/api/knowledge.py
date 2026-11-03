@@ -9,6 +9,7 @@ from app.api.responses import envelope
 from app.auth.context import current_actor_id
 from app.services.knowledge_checks import KnowledgeCheckService
 from app.services.knowledge_service import KnowledgeService
+from app.services.knowledge_suggestions import KnowledgeSuggestionService
 
 router = APIRouter(tags=['knowledge'])
 
@@ -72,6 +73,19 @@ class DraftQuestionsRequest(KnowledgeRequest):
     element_key: str | None = Field(default=None, alias='elementKey')
     q: str | None = Field(default=None, max_length=2000)
     limit: int = Field(default=3, ge=1, le=10)
+
+
+class SuggestionRequest(KnowledgeRequest):
+    case_id: str = Field(alias='caseId', min_length=1, max_length=64)
+    question_id: str | None = Field(default=None, alias='questionId', max_length=64)
+    q: str | None = Field(default=None, max_length=2000)
+    limit: int = Field(default=3, ge=1, le=6)
+
+
+class SuggestionFeedbackRequest(KnowledgeRequest):
+    case_id: str = Field(alias='caseId', min_length=1, max_length=64)
+    key: str = Field(min_length=1, max_length=64)
+    action: str = Field(pattern='^(ADOPTED|NOT_APPLICABLE)$')
 
 
 class TermCorrectionRequest(KnowledgeRequest):
@@ -206,6 +220,34 @@ def check_rules(case_id: str | None = Query(None, alias='caseId'),
                   'rules': service.rules_for_template(template_key, case_type)}
     db.commit()
     return envelope(result)
+
+
+@router.post('/knowledge/suggestions')
+def suggestions(body: SuggestionRequest, db: Session = Depends(get_db)):
+    """智能追问：按本案未确认的要素推荐已审核问法，并记一次展示（每案每条只记一次）。"""
+    result = KnowledgeSuggestionService(db).recommend(
+        body.case_id, question_id=body.question_id, text=body.q, limit=body.limit, actor_id=current_actor_id(),
+    )
+    db.commit()
+    return envelope(result)
+
+
+@router.post('/knowledge/suggestions/feedback')
+def suggestion_feedback(body: SuggestionFeedbackRequest, db: Session = Depends(get_db)):
+    """采纳（建一张 LIVE 草稿题，不写正式答案）或标为不适用；重复提交不重复计数。"""
+    result = KnowledgeSuggestionService(db).feedback(body.case_id, body.key, body.action, actor_id=current_actor_id())
+    db.commit()
+    return envelope(result, '已采纳为草稿题' if body.action == 'ADOPTED' else '已标为不适用')
+
+
+@router.get('/knowledge/usage')
+def knowledge_usage(db: Session = Depends(get_db)):
+    return envelope(KnowledgeSuggestionService(db).usage_by_entry())
+
+
+@router.get('/knowledge/entries/{entry_id}/usage')
+def entry_usage(entry_id: str, db: Session = Depends(get_db)):
+    return envelope(KnowledgeSuggestionService(db).entry_usage(entry_id))
 
 
 @router.get('/knowledge/entries/{entry_id}/links')

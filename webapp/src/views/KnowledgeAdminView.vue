@@ -12,8 +12,10 @@ import EmptyState from '../components/EmptyState.vue'
 import {
   createKnowledgeEntry,
   deleteKnowledgeEntry,
+  fetchEntryUsage,
   fetchKnowledgeCategories,
   fetchKnowledgeEntries,
+  fetchKnowledgeUsage,
   fetchKnowledgeLinks,
   fetchKnowledgeVersions,
   fetchTermCorrections,
@@ -28,6 +30,7 @@ import {
   type KnowledgeCitation,
   type KnowledgeCategory,
   type KnowledgeEntry,
+  type SuggestionUsage,
   type KnowledgeKind,
   type KnowledgeLinks,
   type KnowledgeStatus,
@@ -50,6 +53,9 @@ const error = ref('')
 const feedback = ref('')
 
 const selected = ref<KnowledgeEntry | null>(null)
+/** 智能追问的使用效果：条目被推荐 / 采纳 / 标不适用的案件数 */
+const usage = ref<Record<string, SuggestionUsage>>({})
+const entryUsage = ref<Array<SuggestionUsage & { text: string }>>([])
 const versions = ref<KnowledgeVersion[]>([])
 const links = ref<KnowledgeLinks>({ outgoing: [], incoming: [] })
 const editing = ref(false)
@@ -110,11 +116,16 @@ async function loadEntries() {
   loading.value = true
   error.value = ''
   try {
-    entries.value = await fetchKnowledgeEntries({
-      ...(activeCategory.value ? { categoryId: activeCategory.value } : {}),
-      ...(keyword.value.trim() ? { q: keyword.value.trim() } : {}),
-      ...(statusFilter.value ? { status: statusFilter.value } : {}),
-    })
+    const [list, stats] = await Promise.all([
+      fetchKnowledgeEntries({
+        ...(activeCategory.value ? { categoryId: activeCategory.value } : {}),
+        ...(keyword.value.trim() ? { q: keyword.value.trim() } : {}),
+        ...(statusFilter.value ? { status: statusFilter.value } : {}),
+      }),
+      fetchKnowledgeUsage().catch(() => ({})),
+    ])
+    entries.value = list
+    usage.value = stats
   } catch (err) {
     error.value = err instanceof Error ? err.message : '知识条目读取失败'
   } finally {
@@ -162,13 +173,16 @@ async function openEntry(entry: KnowledgeEntry) {
   }
   versions.value = []
   links.value = { outgoing: [], incoming: [] }
+  entryUsage.value = []
   try {
-    const [history, related] = await Promise.all([
+    const [history, related, used] = await Promise.all([
       fetchKnowledgeVersions(entry.id),
       fetchKnowledgeLinks(entry.id),
+      fetchEntryUsage(entry.id),
     ])
     versions.value = history
     links.value = related
+    entryUsage.value = used
   } catch {
     /* 详情附属信息失败不阻断主流程 */
   }
@@ -375,6 +389,7 @@ onMounted(async () => {
                 <th>状态</th>
                 <th>来源</th>
                 <th>版本</th>
+                <th title="智能追问被推荐、采纳、标为不适用的案件数">使用效果</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -398,6 +413,10 @@ onMounted(async () => {
                   <span v-else class="badge">手工</span>
                 </td>
                 <td>v{{ entry.version }}</td>
+                <td class="usage-cell">
+                  <template v-if="usage[entry.id]">推荐 {{ usage[entry.id]!.shown }} · 采纳 {{ usage[entry.id]!.adopted }} · 不适用 {{ usage[entry.id]!.notApplicable }}</template>
+                  <span v-else class="usage-none">—</span>
+                </td>
                 <td class="row-actions">
                   <button type="button" @click.stop="toggleActive(entry)">{{ entry.active ? '停用' : '启用' }}</button>
                   <button type="button" class="danger" @click.stop="removeEntry(entry)">删除</button>
@@ -498,6 +517,16 @@ onMounted(async () => {
                   {{ link.targetTitle }}<em v-if="!link.resolved">（尚未导入）</em>
                 </li>
               </ul>
+            </div>
+            <div v-if="entryUsage.length" class="detail-block">
+              <h3>智能追问使用效果（按案件计）</h3>
+              <ul class="usage-list">
+                <li v-for="item in entryUsage" :key="item.text">
+                  <span>{{ item.text }}</span>
+                  <small>推荐 {{ item.shown }} · 采纳 {{ item.adopted }} · 不适用 {{ item.notApplicable }}</small>
+                </li>
+              </ul>
+              <p class="detail-hint">采纳率只作参考：问法是否保留，仍以合法、中立和实际适用为准，修改后发布新版本。</p>
             </div>
             <div v-if="versions.length" class="detail-block">
               <h3>版本</h3>
@@ -630,6 +659,10 @@ td .badge + .badge { margin-left: 4px; }
 .chips span { padding: 2px 8px; border-radius: 999px; background: var(--surface-sunken); color: var(--ink-600); font-size: var(--text-xs); }
 .detail-block ul { margin: 0; padding-left: var(--space-4); color: var(--ink-600); font-size: var(--text-xs); }
 .detail-block em { color: var(--ink-400); font-style: normal; }
+.usage-cell { color: var(--ink-600); font-size: var(--text-xs); white-space: nowrap; }
+.usage-none { color: var(--ink-400); }
+.usage-list li { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.usage-list small { color: var(--ink-400); }
 .detail-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 .primary, .ghost { min-height: 38px; padding: 0 var(--space-4); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; }
 .primary { border: 0; background: var(--primary-600); color: var(--surface); }

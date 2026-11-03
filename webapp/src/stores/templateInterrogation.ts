@@ -2,6 +2,7 @@ import { computed, ref, watch, type WatchStopHandle } from 'vue'
 import { defineStore } from 'pinia'
 
 import { backendErrorMessage, listAsrFragments } from '../api/interrogation'
+import { sendSuggestionFeedback } from '../api/knowledge'
 import {
   addPendingQuestion,
   attachQuestionAnswerFragments,
@@ -216,6 +217,11 @@ export const useTemplateInterrogationStore = defineStore('template-interrogation
     await runMutation((scope) => createCaseQuestionApi(scope.caseId, input))
   }
 
+  /** 采纳智能追问：后端在同一事务里建 LIVE 草稿题并记录反馈，随后刷新题目。 */
+  async function adoptSuggestion(key: string) {
+    await runMutation((scope) => sendSuggestionFeedback({ caseId: scope.caseId, key, action: 'ADOPTED' }))
+  }
+
   async function createLiveQuestionFromFragments(fragmentIds: string[], afterQuestionId: string | null) {
     const fragmentId = fragmentIds[0]
     if (!fragmentId) return
@@ -309,6 +315,7 @@ export const useTemplateInterrogationStore = defineStore('template-interrogation
     refreshWorkspace,
     handleAsrFragment,
     createCaseQuestion,
+    adoptSuggestion,
     createLiveQuestionFromFragments,
     updateCaseQuestion,
     reorderCaseQuestions,

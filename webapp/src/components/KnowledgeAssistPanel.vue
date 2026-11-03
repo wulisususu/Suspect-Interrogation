@@ -1,20 +1,23 @@
 <script setup lang="ts">
 /**
- * 题后知识提示（③ 问答录入；设计稿 P24「问话时由系统自动调用并附在题后」）
+ * 题后知识提示 + 智能追问助手（③ 问答录入；设计稿 P24「问话时由系统自动调用并附在题后」）
  *
- * 挂在当前题卡里，不单独占一栏、不用点按钮：按这道题、它的要素和刚才的回答自动匹配已验证知识，
- * 给出依据与建议追问。只提示，不写笔录；点追问才通过现有建题接口在本题之后加一张草稿题卡。
- * 依据显示为可核对的出处（《文件》条款（版本））；过期或被取代的条目后端已不返回。
+ * 挂在当前题卡里，不单独占一栏、不用点按钮：
+ *  - 智能追问助手：按本案模板要素里尚未确认的事实，推荐已审核知识里的问法。民警点「采纳」由后端
+ *    建一张 LIVE 草稿题（不写正式答案），点「不适用」只记反馈；两种操作都留痕，重复点击不重复计数。
+ *  - 依据：按这道题和刚才的回答匹配到的已验证知识，显示可核对的出处；过期或被取代的条目后端已不返回。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { BookOpen, Plus } from '@lucide/vue'
+import { BookOpen, Sparkles } from '@lucide/vue'
 import {
-  fetchDraftQuestions,
   fetchGuidance,
+  fetchSuggestions,
   formatCitation,
   lookupTermCorrections,
-  type DraftQuestion,
+  sendSuggestionFeedback,
   type GuidanceItem,
+  type Suggestion,
+  type SuggestionResult,
 } from '../api/knowledge'
 
 const props = withDefaults(defineProps<{
@@ -23,10 +26,13 @@ const props = withDefaults(defineProps<{
   elementKey?: string | null
   /** 这道题刚才的回答：录音中为实时转写，录完为草稿 / 正本文字 */
   contextText?: string
+  /** 题目或答案变了（采纳成题、摘入正本……）就加 1，让推荐重新按要素状态计算 */
+  revision?: number
   locked?: boolean
-}>(), { elementKey: null, contextText: '', locked: false })
+}>(), { elementKey: null, contextText: '', revision: 0, locked: false })
 
-const emit = defineEmits<{ adopt: [text: string] }>()
+/** 采纳交给父组件走题目 store（建题后刷新草稿栏）；不适用在这里直接上报。 */
+const emit = defineEmits<{ adopt: [key: string] }>()
 
 /** 回答还在变（边录边转）时等停顿再查，避免每个字都请求一次。 */
 const CONTEXT_DEBOUNCE_MS = 1200
@@ -34,34 +40,34 @@ const CONTEXT_DEBOUNCE_MS = 1200
 const CONTEXT_CHARS = 300
 
 const guidance = ref<GuidanceItem[]>([])
-const drafts = ref<DraftQuestion[]>([])
+const assistant = ref<SuggestionResult | null>(null)
+const handled = ref<Set<string>>(new Set())
 const corrections = ref<Array<{ wrong: string; right: string }>>([])
 const openId = ref<string | null>(null)
 const error = ref('')
 let ticket = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 
-const hasContent = computed(() => guidance.value.length > 0 || drafts.value.length > 0 || corrections.value.length > 0 || !!error.value)
+const suggestions = computed(() => (assistant.value?.suggestions ?? []).filter((item) => !handled.value.has(item.key)))
+// 没有可推荐的问法时不单独显示「X 尚未确认」：缺项已在要素覆盖条上，程式题卡上再提示只是噪音。
+const showAssistant = computed(() => suggestions.value.length > 0)
+const hasContent = computed(() => showAssistant.value || guidance.value.length > 0 || corrections.value.length > 0 || !!error.value)
 
 async function refresh() {
   if (!props.caseId || !props.questionId) return
   const current = ++ticket
   const q = props.contextText.trim().slice(-CONTEXT_CHARS)
-  const scope = {
-    caseId: props.caseId,
-    questionId: props.questionId,
-    ...(props.elementKey ? { elementKey: props.elementKey } : {}),
-    ...(q ? { q } : {}),
-  }
+  const scope = { caseId: props.caseId, questionId: props.questionId, ...(q ? { q } : {}) }
   try {
-    const [matched, suggested, fixes] = await Promise.all([
-      fetchGuidance({ ...scope, limit: 3 }),
-      fetchDraftQuestions({ ...scope, limit: 3 }),
+    const [matched, recommended, fixes] = await Promise.all([
+      fetchGuidance({ ...scope, ...(props.elementKey ? { elementKey: props.elementKey } : {}), limit: 3 }),
+      fetchSuggestions({ ...scope, limit: 3 }),
       q ? lookupTermCorrections(q).catch(() => []) : Promise.resolve([]),
     ])
     if (current !== ticket) return
     guidance.value = matched
-    drafts.value = suggested
+    assistant.value = recommended
+    handled.value = new Set()
     corrections.value = fixes
     error.value = ''
   } catch (err) {
@@ -70,32 +76,42 @@ async function refresh() {
   }
 }
 
-function draftTitle(item: DraftQuestion) {
-  if (!item.entryTitle) return '点击在本题后追加一问'
-  const citation = formatCitation(item)
-  return `依据：${item.entryTitle}${item.entryVersion ? ` v${item.entryVersion}` : ''}${citation ? ` · ${citation}` : ''} · 点击在本题后追加一问`
+function sourceText(item: Suggestion) {
+  return `${item.entryTitle} v${item.entryVersion}${item.sourceRef ? ` · ${item.sourceRef}` : ''}`
+}
+
+function adopt(item: Suggestion) {
+  if (props.locked) return
+  handled.value = new Set([...handled.value, item.key])
+  emit('adopt', item.key)
+}
+
+async function dismiss(item: Suggestion) {
+  if (props.locked) return
+  handled.value = new Set([...handled.value, item.key])
+  try {
+    await sendSuggestionFeedback({ caseId: props.caseId, key: item.key, action: 'NOT_APPLICABLE' })
+    void refresh()
+  } catch (err) {
+    handled.value = new Set([...handled.value].filter((key) => key !== item.key))
+    error.value = err instanceof Error ? err.message : '反馈提交失败'
+  }
 }
 
 function toggle(entryId: string) {
   openId.value = openId.value === entryId ? null : entryId
 }
 
-function adopt(item: DraftQuestion) {
-  if (props.locked) return
-  emit('adopt', item.text)
-  drafts.value = drafts.value.filter((draft) => draft !== item)
-}
-
 watch(() => props.questionId, () => {
   clearTimeout(timer)
   openId.value = null
   guidance.value = []
-  drafts.value = []
+  assistant.value = null
   corrections.value = []
   void refresh()
 }, { immediate: true })
 
-watch(() => props.contextText, () => {
+watch(() => [props.contextText, props.revision], () => {
   clearTimeout(timer)
   timer = setTimeout(() => { void refresh() }, CONTEXT_DEBOUNCE_MS)
 })
@@ -110,7 +126,31 @@ onBeforeUnmount(() => clearTimeout(timer))
       · 同音字待核对
     </p>
 
-    <ul v-if="guidance.length" class="ck-entries">
+    <div v-if="showAssistant && assistant" class="ck-assistant" aria-label="智能追问助手">
+      <header class="ck-assistant-head">
+        <Sparkles :size="14" aria-hidden="true" />
+        <strong>智能追问助手</strong>
+        <span v-if="assistant.templateTitle">{{ assistant.templateTitle }} · 当前案件</span>
+      </header>
+      <div v-if="assistant.focus" class="ck-focus">
+        <p class="ck-focus-title"><strong>{{ assistant.focus.label }} · {{ assistant.focus.statusText }}</strong><span class="ck-tag">需要核实</span></p>
+        <p class="ck-focus-hint">{{ assistant.focus.hint }}</p>
+      </div>
+      <ul v-if="suggestions.length" class="ck-suggestions">
+        <li v-for="item in suggestions" :key="item.key">
+          <span class="ck-label">推荐追问<template v-if="item.elementLabel && item.elementKey !== assistant.focus?.elementKey"> · {{ item.elementLabel }}</template></span>
+          <p class="ck-question">“{{ item.text }}”</p>
+          <small class="ck-source">来源：{{ sourceText(item) }}<template v-if="item.usage.adopted"> · 已在 {{ item.usage.adopted }} 个案件中被采纳</template></small>
+          <div class="ck-actions">
+            <button type="button" class="ck-adopt" :disabled="locked" @click="adopt(item)">采纳</button>
+            <button type="button" class="ck-dismiss" :disabled="locked" @click="dismiss(item)">不适用</button>
+          </div>
+        </li>
+      </ul>
+      <small class="ck-note">所有问题由民警选择，采纳只生成草稿题，不会自动写入正式笔录。</small>
+    </div>
+
+    <ul v-if="guidance.length" class="ck-entries" aria-label="依据">
       <li v-for="item in guidance" :key="item.id">
         <button type="button" class="ck-entry" :aria-expanded="openId === item.id" @click="toggle(item.id)">
           <BookOpen :size="14" aria-hidden="true" />
@@ -124,19 +164,6 @@ onBeforeUnmount(() => clearTimeout(timer))
       </li>
     </ul>
 
-    <div v-if="drafts.length" class="ck-drafts">
-      <span class="ck-label">建议追问</span>
-      <button
-        v-for="(item, index) in drafts"
-        :key="`${item.entryId}-${index}`"
-        type="button"
-        class="ck-draft"
-        :disabled="locked"
-        :title="draftTitle(item)"
-        @click="adopt(item)"
-      ><Plus :size="14" aria-hidden="true" />{{ item.text }}</button>
-    </div>
-
     <p v-if="error" class="ck-error" role="alert">{{ error }}</p>
   </section>
 </template>
@@ -145,6 +172,25 @@ onBeforeUnmount(() => clearTimeout(timer))
 .card-knowledge { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-top: 1px dashed var(--line-300); }
 .ck-correction { margin: 0; padding: 6px var(--space-2); border-radius: var(--radius-md); background: var(--warning-50); color: var(--warning-700); font-size: var(--text-xs); }
 .ck-correction em { font-style: normal; text-decoration: line-through; }
+.ck-assistant { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--primary-200); border-radius: var(--radius-md); background: var(--primary-50); }
+.ck-assistant-head { display: flex; align-items: center; gap: 6px; color: var(--primary-700); font-size: var(--text-xs); }
+.ck-assistant-head strong { font-size: var(--text-sm); }
+.ck-assistant-head span { color: var(--ink-500); }
+.ck-focus { padding: 6px var(--space-2); border-radius: var(--radius-md); background: var(--surface); }
+.ck-focus-title { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--ink-800); font-size: var(--text-sm); }
+.ck-tag { padding: 0 6px; border-radius: 999px; background: var(--warning-50); color: var(--warning-700); font-size: var(--text-xs); }
+.ck-focus-hint { margin: 4px 0 0; color: var(--ink-500); font-size: var(--text-xs); line-height: 1.6; }
+.ck-suggestions { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.ck-suggestions li { display: flex; flex-direction: column; gap: 4px; padding: 6px var(--space-2); border-radius: var(--radius-md); background: var(--surface); }
+.ck-label { color: var(--ink-500); font-size: var(--text-xs); }
+.ck-question { margin: 0; color: var(--ink-800); font-size: var(--text-sm); line-height: 1.6; }
+.ck-source { color: var(--ink-400); font-size: var(--text-xs); }
+.ck-actions { display: flex; gap: var(--space-2); }
+.ck-adopt, .ck-dismiss { min-height: 30px; padding: 0 var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); cursor: pointer; }
+.ck-adopt { border: 0; background: var(--primary-600); color: var(--surface); }
+.ck-dismiss { border: 1px solid var(--line-300); background: var(--surface); color: var(--ink-600); }
+.ck-adopt:disabled, .ck-dismiss:disabled { opacity: 0.6; cursor: default; }
+.ck-note { color: var(--ink-400); font-size: var(--text-xs); }
 .ck-entries { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .ck-entry { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 30px; padding: 0; border: 0; background: transparent; color: var(--ink-700); font-size: var(--text-xs); text-align: left; cursor: pointer; }
 .ck-entry strong { overflow: hidden; color: var(--ink-800); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -152,9 +198,5 @@ onBeforeUnmount(() => clearTimeout(timer))
 .ck-detail { padding: 6px var(--space-2); border-radius: var(--radius-md); background: var(--surface-sunken); }
 .ck-detail p { margin: 0 0 4px; color: var(--ink-600); font-size: var(--text-xs); line-height: 1.6; }
 .ck-detail small { color: var(--ink-400); font-size: var(--text-xs); }
-.ck-drafts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.ck-label { color: var(--ink-500); font-size: var(--text-xs); }
-.ck-draft { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; max-width: 100%; padding: 0 var(--space-3); border: 1px dashed var(--primary-200); border-radius: var(--radius-md); background: var(--primary-50); color: var(--primary-700); font-size: var(--text-xs); text-align: left; cursor: pointer; }
-.ck-draft:disabled { opacity: 0.6; cursor: default; }
 .ck-error { margin: 0; color: var(--danger-700); font-size: var(--text-xs); }
 </style>

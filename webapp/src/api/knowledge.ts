@@ -316,3 +316,53 @@ export async function lookupTermCorrections(text: string): Promise<Array<{ wrong
   const response = await http.get('/api/v1/knowledge/term-corrections/lookup', { params: { text: text.slice(0, 2000) } })
   return unwrap<Array<{ wrong: string; right: string; entryId?: string | null }>>(response.data)
 }
+
+/** 智能追问：本案某条推荐问法的使用次数（按案件计） */
+export interface SuggestionUsage {
+  shown: number
+  adopted: number
+  notApplicable: number
+}
+
+export interface Suggestion {
+  key: string
+  text: string
+  elementKey: string | null
+  elementLabel: string
+  reason: 'ELEMENT' | 'CONTEXT'
+  entryId: string
+  entryTitle: string
+  entryVersion: number
+  sourceRef: string | null
+  usage: SuggestionUsage
+}
+
+export interface SuggestionResult {
+  caseId: string
+  templateTitle: string
+  focus: { elementKey: string; label: string; status: string; statusText: string; hint: string } | null
+  pendingElements: Array<{ elementKey: string; label: string }>
+  suggestions: Suggestion[]
+}
+
+/** 按本案未确认的要素取推荐追问；后端每案每条只记一次展示。 */
+export async function fetchSuggestions(payload: { caseId: string; questionId?: string; q?: string; limit?: number }): Promise<SuggestionResult> {
+  const response = await http.post('/api/v1/knowledge/suggestions', payload)
+  return unwrap<SuggestionResult>(response.data)
+}
+
+/** 采纳（后端建一张 LIVE 草稿题）或标为不适用；重复提交不重复计数。 */
+export async function sendSuggestionFeedback(payload: { caseId: string; key: string; action: 'ADOPTED' | 'NOT_APPLICABLE' }) {
+  const response = await http.post('/api/v1/knowledge/suggestions/feedback', payload)
+  return unwrap<{ key: string; decision: string; createdQuestionId: string | null }>(response.data)
+}
+
+export async function fetchKnowledgeUsage(): Promise<Record<string, SuggestionUsage>> {
+  const response = await http.get('/api/v1/knowledge/usage')
+  return unwrap<Record<string, SuggestionUsage>>(response.data)
+}
+
+export async function fetchEntryUsage(entryId: string): Promise<Array<SuggestionUsage & { text: string; elementKey: string | null }>> {
+  const response = await http.get(`/api/v1/knowledge/entries/${encodeURIComponent(entryId)}/usage`)
+  return unwrap<Array<SuggestionUsage & { text: string; elementKey: string | null }>>(response.data)
+}
