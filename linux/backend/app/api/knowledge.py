@@ -8,6 +8,7 @@ from app.api.deps import get_db
 from app.api.responses import envelope
 from app.auth.context import current_actor_id
 from app.services.knowledge_checks import KnowledgeCheckService
+from app.services.knowledge_experience import KnowledgeExperienceService
 from app.services.knowledge_service import KnowledgeService
 from app.services.knowledge_suggestions import KnowledgeSuggestionService
 
@@ -86,6 +87,16 @@ class SuggestionFeedbackRequest(KnowledgeRequest):
     case_id: str = Field(alias='caseId', min_length=1, max_length=64)
     key: str = Field(min_length=1, max_length=64)
     action: str = Field(pattern='^(ADOPTED|NOT_APPLICABLE)$')
+
+
+class ExperienceApproveRequest(KnowledgeRequest):
+    text: str = Field(min_length=1, max_length=300)
+    element_key: str | None = Field(default=None, alias='elementKey', max_length=64)
+    note: str | None = Field(default=None, max_length=300)
+
+
+class ExperienceRejectRequest(KnowledgeRequest):
+    note: str | None = Field(default=None, max_length=300)
 
 
 class TermCorrectionRequest(KnowledgeRequest):
@@ -248,6 +259,35 @@ def knowledge_usage(db: Session = Depends(get_db)):
 @router.get('/knowledge/entries/{entry_id}/usage')
 def entry_usage(entry_id: str, db: Session = Depends(get_db)):
     return envelope(KnowledgeSuggestionService(db).entry_usage(entry_id))
+
+
+@router.post('/knowledge/experience/harvest')
+def experience_harvest(db: Session = Depends(get_db)):
+    """从已结案案件提炼民警补充的问法（规则脱敏，不用模型）；可重复执行，每道题只提炼一次。"""
+    result = KnowledgeExperienceService(db).harvest()
+    db.commit()
+    return envelope(result)
+
+
+@router.get('/knowledge/experience')
+def experience_overview(status: str | None = Query(None, max_length=16), db: Session = Depends(get_db)):
+    return envelope(KnowledgeExperienceService(db).overview(status=status))
+
+
+@router.post('/knowledge/experience/{candidate_id}/approve')
+def experience_approve(candidate_id: str, body: ExperienceApproveRequest, db: Session = Depends(get_db)):
+    """人工审核通过：写进该模板的「办案经验问法」条目（新版本），下一个同类案件即可推荐。"""
+    result = KnowledgeExperienceService(db).approve(
+        candidate_id, text=body.text, element_key=body.element_key, note=body.note, actor_id=current_actor_id())
+    db.commit()
+    return envelope(result, '已审核发布到知识库')
+
+
+@router.post('/knowledge/experience/{candidate_id}/reject')
+def experience_reject(candidate_id: str, body: ExperienceRejectRequest, db: Session = Depends(get_db)):
+    result = KnowledgeExperienceService(db).reject(candidate_id, note=body.note, actor_id=current_actor_id())
+    db.commit()
+    return envelope(result, '已驳回')
 
 
 @router.get('/knowledge/entries/{entry_id}/links')

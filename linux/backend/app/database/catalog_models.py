@@ -177,3 +177,47 @@ class KnowledgeSuggestionFeedback(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decided_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_question_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class KnowledgeExperienceCandidate(TimestampMixin, Base):
+    """从已结案案件提炼出的一条候选问法，等待人工审核（Task 02）。
+
+    同一适用范围（模板 / 案由）里，脱敏后相同或相近的问法合并成一条候选，来源逐条记在
+    ``knowledge_experience_sources``。只有审核通过的才写进知识条目的「建议问法」并生成新版本。
+    """
+
+    __tablename__ = 'knowledge_experience_candidates'
+    __table_args__ = (UniqueConstraint('scope_key', 'dedupe_key', name='uq_knowledge_experience_scope_key'),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # 模板 backendKey 优先，其次案由分类；旧案件为空串（通用）。
+    scope_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    scope_title: Mapped[str] = mapped_column(String(128), nullable=False, default='')
+    template_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    case_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    element_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    dedupe_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    proposed_text: Mapped[str] = mapped_column(String(300), nullable=False)
+    mask_rules_json: Mapped[str] = mapped_column(Text, nullable=False, default='[]')
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default='PENDING', index=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    published_text: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    published_entry_id: Mapped[str | None] = mapped_column(ForeignKey('knowledge_entries.id'), nullable=True)
+    published_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class KnowledgeExperienceSource(Base):
+    """候选问法出自哪个已结案案件的哪道题。每道题只提炼一次；只存问题文字，不存回答。"""
+
+    __tablename__ = 'knowledge_experience_sources'
+    __table_args__ = (UniqueConstraint('case_id', 'question_id', name='uq_knowledge_experience_source'),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    candidate_id: Mapped[str] = mapped_column(
+        ForeignKey('knowledge_experience_candidates.id', ondelete='CASCADE'), nullable=False, index=True)
+    case_id: Mapped[str] = mapped_column(ForeignKey('cases.id', ondelete='CASCADE'), nullable=False, index=True)
+    question_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    original_text: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

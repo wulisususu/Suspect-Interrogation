@@ -366,3 +366,68 @@ export async function fetchEntryUsage(entryId: string): Promise<Array<Suggestion
   const response = await http.get(`/api/v1/knowledge/entries/${encodeURIComponent(entryId)}/usage`)
   return unwrap<Array<SuggestionUsage & { text: string; elementKey: string | null }>>(response.data)
 }
+
+/** 经验提炼（Task 02）：已结案案件中民警补充的问法，规则脱敏后等待人工审核。 */
+export type ExperienceStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+
+export interface ExperienceCandidate {
+  id: string
+  scopeKey: string
+  scopeTitle: string
+  templateKey: string | null
+  caseType: string | null
+  elementKey: string | null
+  elementLabel: string
+  proposedText: string
+  /** 脱敏时替换过的信息类型，如 人名、车牌 */
+  maskRules: string[]
+  status: ExperienceStatus
+  reviewedBy: string | null
+  reviewedAt: string | null
+  reviewNote: string | null
+  publishedText: string | null
+  publishedEntryId: string | null
+  publishedVersion: number | null
+  caseCount: number
+  sources: Array<{ caseId: string; questionId: string; originalText: string; harvestedAt: string | null }>
+  createdAt: string | null
+}
+
+export interface ExperienceScope {
+  scopeKey: string
+  title: string
+  templateKey: string | null
+  caseType: string | null
+  closedCases: number
+  elements: Array<{ key: string; label: string }>
+  /** 结案时仍未确认的要素：容易漏问的地方 */
+  gaps: Array<{ elementKey: string; label: string; cases: number }>
+}
+
+export interface ExperienceOverview {
+  counts: Record<ExperienceStatus, number>
+  scopes: ExperienceScope[]
+  candidates: ExperienceCandidate[]
+}
+
+/** 扫描已结案案件提炼候选问法；可重复执行，每道题只提炼一次。 */
+export async function harvestExperience(): Promise<{ scannedCases: number; addedSources: number; newCandidates: number }> {
+  const response = await http.post('/api/v1/knowledge/experience/harvest')
+  return unwrap<{ scannedCases: number; addedSources: number; newCandidates: number }>(response.data)
+}
+
+export async function fetchExperience(status?: ExperienceStatus): Promise<ExperienceOverview> {
+  const response = await http.get('/api/v1/knowledge/experience', { params: status ? { status } : {} })
+  return unwrap<ExperienceOverview>(response.data)
+}
+
+/** 审核通过：写进该模板的「办案经验问法」条目（新版本），下一个同类案件即可推荐。 */
+export async function approveExperience(candidateId: string, payload: { text: string; elementKey?: string | null; note?: string }) {
+  const response = await http.post(`/api/v1/knowledge/experience/${encodeURIComponent(candidateId)}/approve`, payload)
+  return unwrap<{ candidate: ExperienceCandidate; entry: KnowledgeEntry }>(response.data)
+}
+
+export async function rejectExperience(candidateId: string, note?: string): Promise<ExperienceCandidate> {
+  const response = await http.post(`/api/v1/knowledge/experience/${encodeURIComponent(candidateId)}/reject`, { note })
+  return unwrap<ExperienceCandidate>(response.data)
+}
