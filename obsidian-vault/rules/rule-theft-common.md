@@ -9,6 +9,8 @@ keywords:
   - 盗窃
   - 财物损失
   - 定稿校验
+templates:
+  - theft
 ---
 # 盗窃案件财物损失核对
 

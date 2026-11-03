@@ -9,6 +9,8 @@ keywords:
   - 电动车
   - 盗窃
   - 定稿校验
+templates:
+  - THEFT_EBIKE_V1
 ---
 # 盗窃电动车笔录定稿校验
 
