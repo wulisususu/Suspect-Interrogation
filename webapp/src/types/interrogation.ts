@@ -275,6 +275,8 @@ export interface AudioLevelSample {
   sampleRate: number
   rms: number
   peak: number
+  /** 实际采到的输入设备名（如 "MacBook 麦克风"、"AirPods Pro"），用于排查录不到声音。 */
+  deviceLabel?: string
 }
 
 export interface AsrCaptureStatus {

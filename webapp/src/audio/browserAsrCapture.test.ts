@@ -236,7 +236,7 @@ describe('question preparation capture replacement', () => {
   it('stops the prior stream and opens the requested new URL', async () => {
     const sockets: Array<{ url: string; readyState: number; onopen?: () => void; onclose?: () => void }> = []
     const tracks = [{ stop: vi.fn() }]
-    const getUserMedia = vi.fn(async () => ({ getTracks: () => tracks }))
+    const getUserMedia = vi.fn(async () => ({ getTracks: () => tracks, getAudioTracks: () => tracks }))
 
     class FakeWebSocket {
       static OPEN = 1
@@ -522,5 +522,33 @@ describe('duplicate capture socket', () => {
     // 报 incomplete 会把另一窗口正在录的那一路标成未完成；重连会与对方互抢。
     expect(branch).not.toContain('failIncomplete')
     expect(branch).not.toContain('scheduleReconnect')
+  })
+})
+
+describe('downmixToMono', () => {
+  it('keeps audio that only arrives on the right channel', async () => {
+    const { downmixToMono } = await import('./browserAsrCapture')
+    const left = new Float32Array(8)                      // 全零：Mac 蓝牙耳机的左声道
+    const right = new Float32Array(8).fill(0.5)
+    const mixed = downmixToMono([left, right])
+    expect(Math.max(...mixed)).toBeCloseTo(0.25)
+    // 旧实现只取第 0 声道，这里会是全零，ASR 于是一个字都出不来
+    expect(mixed.some((value) => value > 0)).toBe(true)
+  })
+
+  it('passes a single channel through unchanged', async () => {
+    const { downmixToMono } = await import('./browserAsrCapture')
+    const only = new Float32Array([0.1, -0.2, 0.3])
+    expect(Array.from(downmixToMono([only]))).toEqual([0.1, -0.2, 0.3].map((v) => Math.fround(v)))
+  })
+
+  it('averages more than two channels', async () => {
+    const { downmixToMono } = await import('./browserAsrCapture')
+    const mixed = downmixToMono([
+      new Float32Array([1, 1]),
+      new Float32Array([0, 0]),
+      new Float32Array([0, 2]),
+    ])
+    expect(Array.from(mixed)).toEqual([1 / 3, 1].map((v) => Math.fround(v)))
   })
 })

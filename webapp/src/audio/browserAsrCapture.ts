@@ -7,7 +7,7 @@ import {
 const TARGET_SAMPLE_RATE = 16_000
 
 type CaptureKind = 'FORMAL' | 'QUESTION_PREP'
-type BrowserAudioLevelSample = { sampleCount: number; sampleRate: number; rms: number; peak: number }
+type BrowserAudioLevelSample = { sampleCount: number; sampleRate: number; rms: number; peak: number; deviceLabel?: string }
 
 export interface BrowserFormalAudioFrame {
   sequence: number
@@ -22,6 +22,25 @@ export interface BrowserFormalAudioFrameStore {
   clear(): Promise<void>
   loadProgress?(): Promise<{ nextSequence: number; nextStartSample: bigint } | null>
   saveProgress?(nextSequence: number, nextStartSample: bigint): Promise<void>
+}
+
+/**
+ * 多声道平均成单声道。
+ *
+ * 只取第 0 声道是 macOS 上录不到声音的经典陷阱：部分立体声输入（尤其蓝牙耳机
+ * 走 HFP）只有右声道有信号，而电平条走 AnalyserNode 会自动下混，于是"波形在动、
+ * 识别不出字"。平均所有声道可以同时兼容单声道与这种不对称输入。
+ */
+export function downmixToMono(channelData: Float32Array[]): Float32Array {
+  if (!channelData.length) return new Float32Array(0)
+  if (channelData.length === 1) return channelData[0]!
+  const frames = channelData[0]!.length
+  const mixed = new Float32Array(frames)
+  for (const data of channelData) {
+    for (let index = 0; index < frames; index += 1) mixed[index] += data[index] ?? 0
+  }
+  for (let index = 0; index < frames; index += 1) mixed[index]! /= channelData.length
+  return mixed
 }
 
 export class BrowserFormalCaptureLeaseError extends Error {
@@ -611,6 +630,8 @@ class BrowserPcmStreamer {
   onUnexpectedClose: (() => void) | null = null
   onIncomplete: ((message: string) => void) | null = null
   onSuperseded: ((reason: string) => void) | null = null
+  /** 实际采到的输入设备名，用于把"录不到声音"指向具体设备。 */
+  private deviceLabel = ''
 
   async start(url: string, kind: CaptureKind, captureKey?: string, captureLease?: BrowserFormalCaptureLease) {
     this.kind = kind
@@ -648,7 +669,8 @@ class BrowserPcmStreamer {
 
       const media = await this.waitForStartup(navigator.mediaDevices.getUserMedia({
         audio: {
-          channelCount: 1,
+          // 刻意不强制 channelCount：部分 macOS 设备（尤其蓝牙耳机）在单声道请求下
+          // 只保留左声道，而有效信号在右声道。取回原始声道后由 monoFrame 自己下混。
           // 打开浏览器音频处理：办案民警用的常是笔记本/耳麦，输入电平偏低，
           // 裸信号会低到 ASR 无法识别（实测 RMS 70 vs 正常语音 1700）。
           // 自动增益把电平拉回可用区间；回声消除防止模板朗读串进笔录音频。
@@ -669,6 +691,7 @@ class BrowserPcmStreamer {
         throw new Error('浏览器麦克风采集已取消')
       }
       this.stream = media
+      this.deviceLabel = media.getAudioTracks()[0]?.label ?? ''
 
       const context = new AudioContext()
       this.context = context
@@ -688,7 +711,7 @@ class BrowserPcmStreamer {
 
       processor.onaudioprocess = (event) => {
         if (this.stopped || this.failed) return
-        const pcm = resampler.process(event.inputBuffer.getChannelData(0))
+        const pcm = resampler.process(this.monoFrame(event.inputBuffer))
         if (!pcm.length) return
         const bytes = new Uint8Array(pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength))
         if (this.kind === 'FORMAL') this.persistFormalPcm(bytes)
@@ -722,6 +745,7 @@ class BrowserPcmStreamer {
           sampleRate: context.sampleRate,
           rms: Math.sqrt(sumSquares / waveformPcm.length) * 32768,
           peak: peak * 32768,
+          deviceLabel: this.deviceLabel,
         })
       }, 40)
     } catch (error) {
@@ -764,6 +788,21 @@ class BrowserPcmStreamer {
     ])
     if (result.cancelled) throw new Error('浏览器麦克风采集已取消')
     return result.value
+  }
+
+  /**
+   * 把所有声道平均成单声道。
+   *
+   * 以前直接 `getChannelData(0)`：macOS 上部分立体声麦克风（尤其蓝牙耳机走 HFP）
+   * 只有右声道有信号，取左声道就只剩 −50 dB 底噪；而电平条走 AnalyserNode 会自动
+   * 下混，看起来"有电平"，于是现象是波形在动但一个字都识别不出来。
+   */
+  private monoFrame(buffer: AudioBuffer): Float32Array {
+    const channels = buffer.numberOfChannels
+    if (channels <= 1) return buffer.getChannelData(0)
+    const data: Float32Array[] = []
+    for (let channel = 0; channel < channels; channel += 1) data.push(buffer.getChannelData(channel))
+    return downmixToMono(data)
   }
 
   private bindSocket(socket: WebSocket) {

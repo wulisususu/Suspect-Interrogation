@@ -60,6 +60,7 @@ import {
   replaceAsrFragmentGroup,
   upsertAsrFragmentByCaptureTime,
 } from '../utils/asrFragments'
+import { initialSilentInputState, nextSilentInputState, silentInputMessage } from '../utils/silentInput'
 import type { RuntimeSessionConnection } from '../runtime'
 import type {
   AudioLevelSample,
@@ -273,11 +274,29 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     return scope.generation === caseGeneration && scope.caseId === caseId.value
   }
 
+  // 录音开始 3 秒内仍没有有效电平，就明确指向"麦克风没收到声音"。
+  // 否则民警只能等到停止时看到"没有识别到语音"，误以为是识别坏了。
+  let silentInput = initialSilentInputState()
+
+  function resetSilentInputCheck() {
+    silentInput = initialSilentInputState()
+  }
+
+  function checkSilentInput(sample: AudioLevelSample, scope: CaseScope) {
+    const next = nextSilentInputState(silentInput, sample.peak, Date.now())
+    silentInput = { startedAt: next.startedAt, settled: next.settled }
+    if (!next.warn) return
+    const message = silentInputMessage(sample.deviceLabel)
+    capture.value.error = message
+    feedbackIfCurrent(scope, message, true)
+  }
+
   function appendAudioLevel(sample: AudioLevelSample, scope: CaseScope, captureSessionId: string) {
     if (!isCurrentScope(scope) || !capture.value.running
       || capture.value.captureSessionId !== captureSessionId) return
     capture.value.audioLevels = [...(capture.value.audioLevels ?? []), sample].slice(-240)
     capture.value.audioLevelUpdatedAt = Date.now()
+    checkSilentInput(sample, scope)
   }
 
   function disposeCaptureEvents() {
@@ -814,6 +833,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
     try {
       const status = await startAsrCapture(scope.caseId)
       applyCaptureStatus(status, scope)
+      resetSilentInputCheck()
       feedbackIfCurrent(scope, '录音已开始')
     } catch (err) {
       feedbackIfCurrent(scope, backendErrorMessage(err), true)
