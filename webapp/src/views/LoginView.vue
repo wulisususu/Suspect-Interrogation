@@ -8,7 +8,6 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { fetchAuthSession, loginOfficer } from '../api/officers'
-import { sessionAllowsEntry } from '../utils/officerAuth'
 import type { LoginTarget } from '../utils/rootRoute'
 
 const props = defineProps<{ next?: LoginTarget }>()
@@ -32,7 +31,7 @@ onMounted(async () => {
   try {
     const session = await fetchAuthSession()
     configured.value = session.configured
-    if (sessionAllowsEntry(session)) emit('authenticated')
+    if (session.configured && session.authenticated && !session.locked) emit('authenticated')
   } catch {
     // 会话探测失败不阻断手动登录
   } finally {
