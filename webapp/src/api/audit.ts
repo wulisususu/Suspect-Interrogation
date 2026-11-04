@@ -55,6 +55,7 @@ const ACTION_LABELS: Record<string, string> = {
   SELF_SERVICE_ANSWER_CONFIRM: '自助：本人确认回答',
   SELF_SERVICE_ANSWER_UNCONFIRM: '自助：本人撤回确认',
   SELF_SERVICE_HANDOVER: '自助：交民警定稿',
+  SELF_SERVICE_EXIT: '自助：中途退出自助模式',
 }
 
 const TARGET_LABELS: Record<string, string> = {

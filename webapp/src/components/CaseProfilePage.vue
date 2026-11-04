@@ -2,12 +2,15 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { backendErrorMessage } from '../api/interrogation'
 import { saveIdentityProfileFacts, updateCaseProfile } from '../api/caseProfile'
+import { bindCaseOfficers } from '../api/officers'
+import { useOfficerRoster } from '../composables/officerRoster'
 import { branding } from '../config/branding'
 import { TEMPLATE_CATALOG } from '../config/templateCatalog'
 import type { CaseSummary, FactItem } from '../types/interrogation'
 import { calculateAge } from '../utils/identityOcr'
 import { createIdentityForm, identityCompleteness, identityFactValues, identityFormError } from '../utils/identityForm'
 import IdentityFieldRow from './IdentityFieldRow.vue'
+import OfficerSelect from './OfficerSelect.vue'
 
 /**
  * ② 建档 · 被询问人身份信息（样板 P06）
@@ -23,6 +26,14 @@ const error = ref('')
 const message = ref('')
 
 const form = reactive(createIdentityForm())
+const roster = useOfficerRoster()
+const rosterOfficers = roster.officers
+const rosterAvailable = roster.available
+/** 已有姓名的询问人 / 记录员在名录里对上警号，下拉才能显示为已选中。 */
+function matchRoster() {
+  form.officerBadge = roster.byName(form.officerName)?.badgeNumber ?? ''
+  form.recorderBadge = roster.byName(form.recorderName)?.badgeNumber ?? ''
+}
 
 const profileFact = (key: string) => props.facts.find((item) => item.key === key)
 const cardSource = computed(() => (props.summary.identitySource === 'ID_CARD_READER' ? 'CARD' : 'MANUAL'))
@@ -83,15 +94,18 @@ function syncFromProps() {
   form.officerUnit = factText('officer_unit', branding.unitName)
   form.recorderName = factText('recorder_name')
   form.recorderUnit = factText('recorder_unit', form.officerUnit)
+  matchRoster()
 }
 
 watch(() => [props.summary, props.facts], syncFromProps, { deep: true, immediate: true })
+watch(roster.loaded, matchRoster)
 
 async function save(next = false) {
   if (props.locked) { if (next) emit('next'); return }
   if (busy.value) return
   const validation = identityFormError(form)
   if (validation) { error.value = validation; return }
+  if (form.officerBadge && form.officerBadge === form.recorderBadge) { error.value = '询问人与记录员应为不同民警。'; return }
   const name = form.suspectName.trim()
   const idNumber = form.idNumber.trim().toUpperCase()
 
@@ -111,6 +125,7 @@ async function save(next = false) {
       caseType: form.caseType.trim() || 'suspect_interrogation',
     })
     await saveIdentityProfileFacts(props.summary.id, identityFactValues(form))
+    if (form.officerBadge && form.recorderBadge) await bindCaseOfficers(props.summary.id, form.officerBadge, form.recorderBadge)
 
     message.value = '身份、案件信息及询问笔录固定头部已保存。'
     emit('saved')
@@ -194,13 +209,13 @@ onMounted(syncFromProps)
               </select>
             </IdentityFieldRow>
             <IdentityFieldRow label="询问地点" source="MANUAL" source-text="可修改"><input v-model="form.interrogationPlace" placeholder="如：一楼报案大厅" :disabled="!!busy || locked" /></IdentityFieldRow>
-            <IdentityFieldRow label="询问人" source="MANUAL" source-text="默认当前 · 可改" required>
-              <input v-model="form.officerName" class="person-name" placeholder="填写询问人" :disabled="!!busy || locked" />
+            <IdentityFieldRow label="询问人" source="MANUAL" :source-text="rosterAvailable ? '民警名录' : '手工填写'" required>
+              <OfficerSelect v-model:name="form.officerName" v-model:badge="form.officerBadge" class="person-name" :officers="rosterOfficers" :available="rosterAvailable" :exclude="form.recorderBadge" :disabled="!!busy || locked" placeholder="选择询问人" aria-label="询问人" @pick="$event && (form.officerUnit = $event.unit || form.officerUnit)" />
               <input v-model="form.officerUnit" aria-label="询问人工作单位" placeholder="工作单位" :disabled="!!busy || locked" />
             </IdentityFieldRow>
             <IdentityFieldRow label="询问时间" source="MANUAL" source-text="自动记录" required><input value="开始询问后由系统自动记录" readonly disabled /></IdentityFieldRow>
-            <IdentityFieldRow label="记录员" source="MANUAL" source-text="手工填写" required>
-              <input v-model="form.recorderName" class="person-name" placeholder="填写记录员" :disabled="!!busy || locked" />
+            <IdentityFieldRow label="记录员" source="MANUAL" :source-text="rosterAvailable ? '民警名录' : '手工填写'" required>
+              <OfficerSelect v-model:name="form.recorderName" v-model:badge="form.recorderBadge" class="person-name" :officers="rosterOfficers" :available="rosterAvailable" :exclude="form.officerBadge" :disabled="!!busy || locked" placeholder="选择记录员" aria-label="记录员" @pick="$event && (form.recorderUnit = $event.unit || form.recorderUnit)" />
               <input v-model="form.recorderUnit" aria-label="记录员工作单位" placeholder="工作单位（同询问人可留空）" :disabled="!!busy || locked" />
             </IdentityFieldRow>
             <IdentityFieldRow label="询问次数 / 人大代表" source="MANUAL" source-text="下拉选择">
@@ -269,6 +284,7 @@ onMounted(syncFromProps)
 .birth-input { flex: 0 0 180px; max-width: 180px; }
 .age-text { color: var(--ink-900); font-size: var(--text-base); white-space: nowrap; }
 .person-name { flex: 0 0 7em; max-width: 7em; }
+.inquiry-grid :deep(select.person-name) { flex: 0 0 11em; width: 11em; max-width: 11em; }
 
 .profile-progress { flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-5) var(--space-10); }
 .progress-score { display: flex; flex-direction: column; gap: var(--space-2); }

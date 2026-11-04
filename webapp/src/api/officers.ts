@@ -77,6 +77,12 @@ export async function fetchOfficers(activeOnly = false): Promise<Officer[]> {
   return unwrap<Officer[]>(response.data)
 }
 
+/** 本案询问人 / 记录员从民警名录绑定（两人须不同）；后端同时把询问人姓名写入案件主审民警。 */
+export async function bindCaseOfficers(caseId: string, interrogatorBadgeNumber: string | null, recorderBadgeNumber: string | null): Promise<void> {
+  const response = await http.put(`/api/v1/cases/${encodeURIComponent(caseId)}/officers`, { interrogatorBadgeNumber, recorderBadgeNumber })
+  unwrap<unknown>(response.data)
+}
+
 export async function fetchOfficerSignatures(badgeNumber: string): Promise<OfficerSignature[]> {
   const response = await http.get(`/api/v1/officers/${encodeURIComponent(badgeNumber)}/signatures`)
   return unwrap<OfficerSignature[]>(response.data)

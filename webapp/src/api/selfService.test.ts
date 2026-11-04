@@ -17,6 +17,8 @@ describe('self-service api', () => {
       ['/api/v1/cases/c1/self-service/events', { kind: 'IDENTITY_CONFIRM' }],
       ['/api/v1/cases/c1/self-service/events', { kind: 'ANSWER_CONFIRM', questionId: 'q3' }],
     ])
+    await recordSelfServiceEvent('c1', 'EXIT', undefined, { reason: '设备故障', step: 'answer' })
+    expect(post.mock.calls.at(-1)).toEqual(['/api/v1/cases/c1/self-service/events', { kind: 'EXIT', reason: '设备故障', step: 'answer' }])
   })
 
   it('surfaces backend refusals', async () => {

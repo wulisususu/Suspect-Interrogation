@@ -1,12 +1,16 @@
 import { http } from './http'
 
 /** 自助模式中当事人本人的确认动作；后端只写审计留痕，不改正本。 */
-export type SelfServiceEventKind = 'IDENTITY_CONFIRM' | 'ANSWER_CONFIRM' | 'ANSWER_UNCONFIRM' | 'HANDOVER'
+export type SelfServiceEventKind = 'IDENTITY_CONFIRM' | 'ANSWER_CONFIRM' | 'ANSWER_UNCONFIRM' | 'HANDOVER' | 'EXIT'
+/** 中途退出时所在的步骤，随退出原因写入操作日志 */
+export type SelfServiceStep = 'template' | 'profile' | 'identity' | 'answer'
 
 export interface SelfServiceState {
   caseId: string
   identityConfirmedAt: string | null
   handedOverAt: string | null
+  /** 最近一次中途退出自助模式的时间 */
+  lastExitAt?: string | null
   /** 本人已确认、且确认后回答未被改动的题目 */
   confirmedAnswers: { questionId: string; confirmedAt: string }[]
 }
@@ -25,7 +29,12 @@ export async function fetchSelfServiceState(caseId: string): Promise<SelfService
   return unwrap<SelfServiceState>(response.data)
 }
 
-export async function recordSelfServiceEvent(caseId: string, kind: SelfServiceEventKind, questionId?: string): Promise<SelfServiceState> {
-  const response = await http.post(`/api/v1/cases/${encodeURIComponent(caseId)}/self-service/events`, { kind, ...(questionId ? { questionId } : {}) })
+export async function recordSelfServiceEvent(
+  caseId: string,
+  kind: SelfServiceEventKind,
+  questionId?: string,
+  exit?: { reason: string; step: SelfServiceStep },
+): Promise<SelfServiceState> {
+  const response = await http.post(`/api/v1/cases/${encodeURIComponent(caseId)}/self-service/events`, { kind, ...(questionId ? { questionId } : {}), ...(exit ?? {}) })
   return unwrap<SelfServiceState>(response.data)
 }

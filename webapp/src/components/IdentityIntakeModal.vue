@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ArrowRight, CreditCard, LoaderCircle, ShieldCheck, X } from '@lucide/vue'
 import { backendErrorMessage, createCaseWithIdentity, fetchRuntimeCapabilities } from '../api/interrogation'
 import { getRuntimeAdapter, type RuntimeCapabilities } from '../runtime'
 import type { CaseSummary } from '../types/interrogation'
 import { calculateAge } from '../utils/identityOcr'
-import { createIdentityForm, identityFactValues, identityFormError } from '../utils/identityForm'
+import { createIdentityForm, identityFactValues, intakeFormError } from '../utils/identityForm'
 import { saveIdentityProfileFacts } from '../api/caseProfile'
+import { bindCaseOfficers } from '../api/officers'
+import { useOfficerRoster } from '../composables/officerRoster'
 import ManualIdentityFields from './ManualIdentityFields.vue'
+import OfficerSelect from './OfficerSelect.vue'
 import { readerMessage } from '../utils/deviceMessage'
 
 const emit = defineEmits<{ close: []; created: [item: CaseSummary] }>()
@@ -24,8 +27,14 @@ const modalElement = ref<HTMLElement | null>(null)
 let previousFocus: HTMLElement | null = null
 const identityAvailable = computed(() => capabilities.value?.identity.state === 'AVAILABLE')
 // 主审民警不再预填"当前警官"占位串：该值会原样写入建案审计的操作人，
-// 占位文字等于伪造操作人。留空则要求现场填写。
+// 占位文字等于伪造操作人。名录可用时默认选中当前登录民警，否则留空要求现场填写。
 const form = reactive({ ...createIdentityForm(), officerName: '' })
+const roster = useOfficerRoster()
+watch(roster.loaded, () => {
+  const me = roster.sessionOfficer.value && roster.byBadge(roster.sessionOfficer.value.badgeNumber)
+  if (!me || form.officerBadge || form.officerName.trim()) return
+  form.officerBadge = me.badgeNumber; form.officerName = me.name; form.officerUnit = me.unit
+})
 function syncAge() { form.age = calculateAge(form.birthDate) }
 function showReaderError(reason?: string | null) {
   const message = readerMessage(reason)
@@ -73,10 +82,9 @@ async function readCard() {
 
 async function submit() {
   if (busy.value || (mode.value === 'card' && !cardApplied.value)) return
-  const validation = identityFormError(form)
+  const validation = intakeFormError(form, mode.value)
   if (validation) { error.value = validation; return }
   const officerName = form.officerName.trim()
-  if (!officerName) { error.value = '请填写主审民警姓名，该姓名会作为建案操作的留痕人。'; return }
   const suspectName = form.suspectName.trim(); const idNumber = form.idNumber.trim().toUpperCase()
   busy.value = 'submit'; error.value = ''; errorDetail.value = ''
   try {
@@ -96,9 +104,17 @@ async function submit() {
       },
     })
     createdCase.value = item
-    if (mode.value === 'manual') await saveIdentityProfileFacts(item.id, identityFactValues(form))
+    await saveCaseDetails(item.id)
     emit('created', item)
   } catch (cause) { error.value = (createdCase.value ? '案件已创建，部分补充资料保存失败。可重试保存，不会重复建案；也可进入已建案件补充。' : '') + backendErrorMessage(cause) } finally { busy.value = '' }
+}
+/** 建案后的补充：名录民警绑定本案（签署与审计用），记录民警与工作单位写入笔录头部；人工录入另存其余字段。 */
+async function saveCaseDetails(caseId: string) {
+  if (form.officerBadge && form.recorderBadge) await bindCaseOfficers(caseId, form.officerBadge, form.recorderBadge)
+  const values = identityFactValues(form)
+  const facts = mode.value === 'manual' ? values : Object.fromEntries(
+    (['recorder_name', 'officer_unit', 'recorder_unit'] as const).filter((key) => values[key]).map((key) => [key, values[key]]))
+  await saveIdentityProfileFacts(caseId, facts)
 }
 onMounted(async () => { previousFocus = document.activeElement as HTMLElement | null; modalElement.value?.querySelector<HTMLElement>('button')?.focus(); document.addEventListener('keydown', onEscape); try { capabilities.value = await fetchRuntimeCapabilities() } catch (cause) { error.value = backendErrorMessage(cause) } })
 onUnmounted(() => { document.removeEventListener('keydown', onEscape); previousFocus?.focus() })
@@ -109,9 +125,16 @@ onUnmounted(() => { document.removeEventListener('keydown', onEscape); previousF
     <header><div><h2 id="intake-title">{{ mode === 'manual' ? '人工录入身份信息' : '新建询问' }}</h2><p v-if="mode === 'manual'" class="intake-subtitle">请对照证件原件逐项填写，核对后进入选择模板。</p></div><div class="intake-header-actions"><span v-if="mode === 'manual'" class="review-reminder">需现场复核</span><button v-if="mode === 'manual' && !createdCase" type="button" class="back-to-card" :disabled="!!busy" @click="selectMode('card')">返回读卡</button><button class="close-button" type="button" aria-label="关闭新建询问" :disabled="!!busy" @click="close"><X :size="21" /></button></div></header>
     <div v-if="mode === 'card'" class="intake-tabs" aria-label="身份信息录入方式"><button type="button" class="active" aria-pressed="true" :disabled="!!busy" @click="selectMode('card')">身份证读取（推荐）</button><button type="button" aria-pressed="false" :disabled="!!busy" @click="selectMode('manual')">人工录入</button></div>
     <form @submit.prevent="submit">
+      <section class="officer-band" aria-labelledby="intake-officers-title">
+        <h3 id="intake-officers-title">本案民警<small>必填 · {{ roster.available.value ? '从民警名录选择，主审民警默认当前登录民警' : roster.loaded.value ? '民警名录不可用，请手工填写姓名' : '正在读取民警名录…' }}</small></h3>
+        <div class="officer-grid">
+          <label><span>主审民警 <b>*</b></span><OfficerSelect v-model:name="form.officerName" v-model:badge="form.officerBadge" :officers="roster.officers.value" :available="roster.available.value" :exclude="form.recorderBadge" :disabled="!!busy || !!createdCase" placeholder="请选择主审民警" aria-label="主审民警" @pick="form.officerUnit = $event?.unit || ''" /></label>
+          <label><span>记录民警 <b>*</b></span><OfficerSelect v-model:name="form.recorderName" v-model:badge="form.recorderBadge" :officers="roster.officers.value" :available="roster.available.value" :exclude="form.officerBadge" :disabled="!!busy || !!createdCase" placeholder="请选择记录民警" aria-label="记录民警" @pick="form.recorderUnit = $event?.unit || ''" /></label>
+        </div>
+      </section>
       <template v-if="mode === 'card'">
         <div class="identity-card" aria-live="polite"><CreditCard v-if="!cardApplied" :size="34" /><ShieldCheck v-else :size="34" /><strong>{{ cardApplied ? '身份证信息已读取，请核对以下内容' : '请将居民身份证平放至读卡器感应区' }}</strong><span :class="{ available: cardApplied }">{{ cardApplied ? '读取完成，请核对证件原件与本人信息' : capabilities ? identityAvailable ? '读卡器已就绪' : readerStatus.text : '正在检查读卡器…' }}</span><button type="button" :disabled="!!busy || !identityAvailable" @click="readCard"><LoaderCircle v-if="busy === 'card'" :size="16" class="spinning" />{{ busy === 'card' ? '读取中…' : cardApplied ? '重新读取' : '读取身份证' }}</button></div>
-        <dl class="identity-summary"><div v-for="row in [{ label: '姓名', value: form.suspectName }, { label: '公民身份号码', value: form.idNumber }, { label: '性别', value: form.gender }, { label: '民族', value: form.nation }, { label: '出生日期', value: form.birthDate }, { label: '年龄', value: form.age ? form.age + ' 岁' : '' }, { label: '身份证住址', value: form.idCardAddress }]" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ cardApplied ? row.value || '未读取到' : '待读取' }}</dd></div><div><dt><label for="intake-card-officer">主审民警</label></dt><dd><input id="intake-card-officer" v-model="form.officerName" :disabled="!!busy" placeholder="填写主审民警姓名" /></dd></div></dl>
+        <dl class="identity-summary"><div v-for="row in [{ label: '姓名', value: form.suspectName }, { label: '公民身份号码', value: form.idNumber }, { label: '性别', value: form.gender }, { label: '民族', value: form.nation }, { label: '出生日期', value: form.birthDate }, { label: '年龄', value: form.age ? form.age + ' 岁' : '' }, { label: '身份证住址', value: form.idCardAddress }]" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ cardApplied ? row.value || '未读取到' : '待读取' }}</dd></div></dl>
       </template>
       <template v-else><p class="manual-notice">人工录入信息请由另一名在场民警对照证件原件核对。保存录入信息不能替代现场身份核验。</p><ManualIdentityFields :form="form" :disabled="!!busy || !!createdCase" /></template>
       <div v-if="error" class="error" role="alert">{{ error }}<details v-if="errorDetail" class="error-detail"><summary>技术详情</summary><code>{{ errorDetail }}</code></details></div>
@@ -149,6 +172,13 @@ button { display: inline-flex; align-items: center; justify-content: center; gap
 .identity-summary > div { display: grid; grid-template-columns: 120px 1fr; gap: 12px; align-items: center; min-height: 32px; }
 dt { color: var(--ink-400); font-size: var(--text-base); } dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 .identity-summary input { text-align: right; min-height: 30px; border: 0; padding: 3px 6px; width: 100%; background: var(--primary-100); }
+.officer-band { margin: 0 0 18px; padding: 14px 18px 16px; border: 1px solid var(--primary-500); border-radius: 12px; background: var(--primary-50); }
+.officer-band h3 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 10px; color: var(--navy-800); font-size: var(--text-md); font-weight: 700; }
+.officer-band h3 small { color: var(--ink-500); font-size: var(--text-sm); font-weight: 400; }
+.officer-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 24px; }
+.officer-grid label { display: flex; flex-direction: column; gap: 5px; min-width: 0; color: var(--ink-700); font-size: var(--text-base); font-weight: 600; }
+.officer-grid label b { color: var(--danger-700); font-weight: 400; }
+.officer-grid .officer-select { min-height: 48px; border-color: var(--primary-500); background: var(--surface); color: var(--ink-900); font-weight: 400; }
 .manual-notice { margin: 0 0 20px; padding: 15px 17px; background: var(--warning-100); color: var(--warning-600); border-radius: 9px; font-size: var(--text-base); line-height: 1.6; }
 input,select,textarea { width: 100%; min-width: 0; min-height: 42px; border: 1px solid var(--primary-100); padding: 10px 12px; border-radius: 8px; background: var(--surface-sunken); color: var(--ink-700); font: inherit; }
 input:focus,select:focus,textarea:focus { outline: 2px solid var(--ink-400); outline-offset: 1px; }
@@ -158,5 +188,5 @@ input:focus,select:focus,textarea:focus { outline: 2px solid var(--ink-400); out
 footer { display: grid; grid-template-columns: 1fr 2fr; gap: 14px; margin-top: 18px; } footer button { min-height: 50px; }
 .spinning { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
 @media(max-height: 800px) { .identity-modal { padding: 22px 26px; } header { margin-bottom: 16px; } .identity-card { padding: 16px; gap: 8px; } .identity-summary { padding: 12px 16px; } .identity-summary > div { min-height: 29px; } }
-@media(max-width: 600px) { .identity-mask { padding: 12px; } .identity-modal { padding: 20px; } .manual-form { grid-template-columns: 1fr; } .identity-summary > div { grid-template-columns: 100px 1fr; } }
+@media(max-width: 600px) { .officer-grid { grid-template-columns: 1fr; } .identity-mask { padding: 12px; } .identity-modal { padding: 20px; } .manual-form { grid-template-columns: 1fr; } .identity-summary > div { grid-template-columns: 100px 1fr; } }
 </style>

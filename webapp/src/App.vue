@@ -87,6 +87,7 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
       :case-id="route.caseId"
       :start-at-template="freshCaseId === route.caseId"
       @handover="openCase(route.caseId)"
+      @exit="openHome"
     />
     <InterrogationWorkspace v-else-if="route.page === 'case'" :key="route.caseId" :case-id="route.caseId" :start-at-template="freshCaseId === route.caseId" @back="openCases" />
     <LoginView v-else-if="route.page === 'login'" :next="route.next" @back="openHome" @authenticated="afterLogin(route.next)" />

@@ -1,3 +1,4 @@
+import json
 from uuid import uuid4
 
 import pytest
@@ -47,7 +48,8 @@ def test_identity_answer_and_handover_confirmations_are_audited(db):
     case_id = theft_case(db)
     lock = body_questions(db, case_id)[2]
     service = SelfServiceService(db)
-    assert service.state(case_id) == {'caseId': case_id, 'identityConfirmedAt': None, 'handedOverAt': None, 'confirmedAnswers': []}
+    assert service.state(case_id) == {'caseId': case_id, 'identityConfirmedAt': None, 'handedOverAt': None,
+                                     'lastExitAt': None, 'confirmedAnswers': []}
 
     assert service.record(case_id, 'IDENTITY_CONFIRM')['identityConfirmedAt']
     with pytest.raises(DomainError) as error:
@@ -102,6 +104,23 @@ def test_frozen_case_and_foreign_question_are_rejected(db):
     assert error.value.code == 'FORMAL_RECORD_FROZEN'
 
 
+def test_exit_is_logged_with_reason_and_step_even_when_frozen(db):
+    case_id = theft_case(db)
+    service = SelfServiceService(db)
+    assert service.record(case_id, 'EXIT', reason='当事人身体不适', step='answer')['lastExitAt']
+    # 退出不改笔录，正本冻结后也必须能离开自助模式
+    case_repo.get(db, case_id).workflow_state = 'FROZEN'
+    db.flush()
+    service.record(case_id, 'EXIT', step='identity')
+    rows = list(db.scalars(select(AuditLog).where(AuditLog.case_id == case_id, AuditLog.action == 'SELF_SERVICE_EXIT')
+                           .order_by(AuditLog.created_at, AuditLog.id)))
+    assert [json.loads(row.after_json) for row in rows] == [{'reason': '当事人身体不适', 'step': 'answer'},
+                                                             {'reason': '未说明', 'step': 'identity'}]
+    with pytest.raises(DomainError) as error:
+        service.record('missing', 'EXIT')
+    assert error.value.code == 'CASE_NOT_FOUND'
+
+
 def test_self_service_api_round_trip(tmp_path):
     app = create_app(database_url=f"sqlite:///{tmp_path / 'api.db'}", hardware_gateway=MockHardwareGateway())
     with TestClient(app) as client:
@@ -117,3 +136,6 @@ def test_self_service_api_round_trip(tmp_path):
         assert response.json()['data']['confirmedAnswers'][0]['questionId'] == question_id
         assert client.post(f'/api/v1/cases/{case_id}/self-service/events', json={'kind': 'NOPE'}).status_code == 422
         assert client.get('/api/v1/cases/missing/self-service').status_code == 404
+        exited = client.post(f'/api/v1/cases/{case_id}/self-service/events', json={'kind': 'EXIT', 'reason': '设备故障', 'step': 'answer'})
+        assert exited.status_code == 200 and exited.json()['data']['lastExitAt']
+        assert client.post(f'/api/v1/cases/{case_id}/self-service/events', json={'kind': 'EXIT', 'step': 'lobby'}).status_code == 422
