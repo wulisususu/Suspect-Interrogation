@@ -19,6 +19,7 @@ from app.database.models import ASRAudioFrame, ASRCaptureSession, ASRFragment, C
 from app.repositories import audio_archive as archive_repo
 from app.repositories import asr_fragments as asr_repo
 from app.domain.errors import DomainError
+from app.services.capture_state import is_never_recorded
 from app.services.durable_audio_archive import (
     AudioStorageReserveError,
     BrowserAudioDiscontinuityError,
@@ -789,6 +790,8 @@ class LiveSpeechCoordinator:
                     capture.id
                     for capture in captures
                     if str(capture.asr_status or "").upper() != "COMPLETE"
+                    # 从未录到音频的采集不会有 ASR 回调，等下去只会耗满超时。
+                    and not is_never_recorded(capture)
                 ]
                 pending_speaker_jobs = (
                     int(

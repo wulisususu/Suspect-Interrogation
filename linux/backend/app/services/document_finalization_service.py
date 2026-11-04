@@ -16,6 +16,7 @@ from app.repositories import audit as audit_repo
 from app.repositories import cases as case_repo
 from app.repositories import qa_units as qa_repo
 from app.repositories import sessions as session_repo
+from app.services.capture_state import is_never_recorded
 from app.services.document_service import DocumentService
 from app.services.session_service import SessionService
 
@@ -122,7 +123,11 @@ class DocumentFinalizationService:
                     ASRCaptureSession.interrogation_session_id == target_session.id,
                 )
             ))
-            incomplete_captures = [row for row in captures if row.recording_status != "COMPLETE"]
+            incomplete_captures = [
+                row for row in captures
+                # 从未录到音频的空采集没有可归档的内容，不该挡住定稿。
+                if row.recording_status != "COMPLETE" and not is_never_recorded(row)
+            ]
             if incomplete_captures:
                 raise DomainError(
                     "AUDIO_ARCHIVE_INCOMPLETE",
