@@ -104,6 +104,9 @@ class _CaptureRuntime:
     seen_utterances: set[tuple[int, int]] = field(default_factory=set)
     audio_level_sample_count: int = 0
     last_audio_level_published_at: float | None = None
+    #: 最后一次收到浏览器音频帧的单调时间。客户端录音时每几十毫秒一帧（不说话也发
+    #: 静音帧），所以长时间没有新帧意味着那一端已经死了，不能继续占着麦克风。
+    last_frame_at: float = field(default_factory=time.monotonic)
 
 
 @dataclass
@@ -204,6 +207,7 @@ class AsrCaptureService:
             )
         if runtime is None or runtime.capture_session_id != str(capture_id):
             raise RuntimeError("browser audio capture is not active")
+        runtime.last_frame_at = time.monotonic()
         if self._live_speech_coordinator is None:
             raise RuntimeError("durable browser audio ingress is unavailable")
         durable_end = self._live_speech_coordinator.append_audio(
@@ -270,6 +274,9 @@ class AsrCaptureService:
         ensure_storage = getattr(self._live_speech_coordinator, "assert_storage_available_for_capture", None)
         if callable(ensure_storage):
             ensure_storage()
+
+        # 同一案件也可能留下僵尸（浏览器直接关掉），所以这里连自己的旧 runtime 一起收尾。
+        self._reap_idle_captures()
 
         with self._lock:
             existing = self._active.get(case_id)
@@ -472,6 +479,9 @@ class AsrCaptureService:
 
         with self.session_factory() as db:
             case_repo.get(db, case_id)
+
+        # 先收尾已经断掉的采集，否则僵尸会把麦克风一直占着。
+        self._reap_idle_captures(exclude_case_id=case_id)
 
         with self._lock:
             if self._any_capture_active_locked():
@@ -1677,6 +1687,38 @@ class AsrCaptureService:
             self.ai_supervisor.close_speech_session(speech_session_id)
         except Exception:
             pass
+
+    #: 客户端超过这么久没有任何音频帧，就认为那一路已经死了。录音时每几十毫秒
+    #: 一帧（不说话也在发静音帧），2 分钟足够宽松，不会误杀正常录音。
+    CAPTURE_IDLE_TIMEOUT_SECONDS = 120.0
+
+    def _reap_idle_captures(self, *, exclude_case_id: str | None = None) -> list[str]:
+        """收尾已经没有音频进来的采集，避免它永久占用麦克风。
+
+        浏览器异常退出、笔记本睡眠、网络中断都会让采集线程一直挂着：数据库里仍然
+        是 CAPTURING，下一个人想录音只会看到"正在占用麦克风"，而且没有任何入口能
+        解除。这里在启动新采集前把这些僵尸收尾掉。
+        """
+        now = time.monotonic()
+        with self._lock:
+            stale = [
+                runtime.case_id
+                for runtime in self._active.values()
+                if runtime.case_id != exclude_case_id
+                and runtime.thread is not None
+                and runtime.thread.is_alive()
+                and now - runtime.last_frame_at > self.CAPTURE_IDLE_TIMEOUT_SECONDS
+            ]
+        for case_id in stale:
+            logger.warning(
+                "reaping idle capture for case %s: no audio frames for %.0fs",
+                case_id, self.CAPTURE_IDLE_TIMEOUT_SECONDS,
+            )
+            try:
+                self.stop(case_id)
+            except Exception:
+                logger.exception("failed to reap idle capture for case %s", case_id)
+        return stale
 
     def _any_capture_active_locked(self) -> bool:
         return any(
