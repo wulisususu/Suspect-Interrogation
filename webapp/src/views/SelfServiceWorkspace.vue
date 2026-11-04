@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
+import { LogOut } from '@lucide/vue'
 import { backendErrorMessage, discardAsrFragment, fetchRuntimeCapabilities } from '../api/interrogation'
 import { fetchAuthSession } from '../api/officers'
 import { fetchSelfServiceState, recordSelfServiceEvent, type SelfServiceState } from '../api/selfService'
@@ -25,10 +26,11 @@ import { sessionStartGuard } from '../utils/sessionStartGuard'
  *   → 结束并交民警定稿：切回人工模式工作台，由民警在③摘入正本、④定稿、⑤签署。
  *
  * 本人的回答只生成待摘入草稿；「以上信息无误」「本题确认无误」「交民警定稿」写入审计留痕。
- * 本页不提供返回大厅 / 管理面板的入口，离开自助模式只能经民警交回或接管。
+ * 离开自助模式：正常经民警交回或接管；遇到不可抗力可点左上角「退出」，选择原因后回到大厅，
+ * 退出原因与所在步骤写入操作日志，案件保留在台账里，民警之后可从案件记录继续办理。
  */
 const props = defineProps<{ caseId: string; startAtTemplate?: boolean }>()
-const emit = defineEmits<{ handover: [] }>()
+const emit = defineEmits<{ handover: []; exit: [] }>()
 
 const store = useInterrogationStore()
 const templateStore = useTemplateInterrogationStore()
@@ -44,6 +46,11 @@ const busy = ref(false)
 const recordingQuestionId = ref<string | null>(null)
 const helpOpen = ref(false)
 const handoverOpen = ref(false)
+const exitOpen = ref(false)
+const EXIT_REASONS = ['当事人身体不适', '设备故障', '当事人不愿自助作答', '其他原因'] as const
+const exitReason = ref<string>(EXIT_REASONS[0])
+const exiting = ref(false)
+const exitError = ref('')
 let captureTarget: { questionId: string; captureId: string; replace: boolean } | null = null
 /** 已交回民警：同一案件马上由人工模式工作台接着用，卸载时不能再清空案件上下文。 */
 let handedOver = false
@@ -272,6 +279,30 @@ async function handOver() {
   }
 }
 
+function openExit() {
+  exitError.value = ''
+  helpOpen.value = false
+  handoverOpen.value = false
+  exitOpen.value = true
+}
+
+/** 中途退出：录音中先收尾保留已说的内容，再把原因写入操作日志，回到大厅。 */
+async function exitSelfService() {
+  if (exiting.value) return
+  exiting.value = true
+  exitError.value = ''
+  try {
+    if (captureTarget && !busy.value) await stopAnswer()
+    await recordSelfServiceEvent(props.caseId, 'EXIT', undefined, { reason: exitReason.value, step: page.value })
+    exitOpen.value = false
+    emit('exit')
+  } catch (err) {
+    exitError.value = `退出未能留痕：${backendErrorMessage(err)}，请重试或请民警处理`
+  } finally {
+    exiting.value = false
+  }
+}
+
 const unansweredCount = computed(() => questions.value.filter((item) => !item.answer).length)
 </script>
 
@@ -284,6 +315,8 @@ const unansweredCount = computed(() => questions.value.filter((item) => !item.an
 
     <template v-else>
       <header class="ss-topbar">
+        <button type="button" class="ss-exit" :disabled="exiting" @click="openExit"><LogOut :size="18" aria-hidden="true" />退出</button>
+        <span class="ss-topbar-divider" aria-hidden="true"></span>
         <strong>公安笔录一体机</strong>
         <span class="ss-topbar-divider" aria-hidden="true"></span>
         <span class="ss-case-chip">{{ caseChip }}</span>
@@ -361,8 +394,23 @@ const unansweredCount = computed(() => questions.value.filter((item) => !item.an
       </section>
     </template>
 
-    <div v-if="helpOpen || handoverOpen" class="ss-overlay" role="dialog" aria-modal="true" :aria-labelledby="helpOpen ? 'ss-help-title' : 'ss-handover-title'">
-      <section v-if="helpOpen" class="ss-dialog">
+    <div v-if="helpOpen || handoverOpen || exitOpen" class="ss-overlay" role="dialog" aria-modal="true" :aria-labelledby="exitOpen ? 'ss-exit-title' : helpOpen ? 'ss-help-title' : 'ss-handover-title'">
+      <section v-if="exitOpen" class="ss-dialog">
+        <h2 id="ss-exit-title">退出自助模式</h2>
+        <p>退出后回到大厅，已说的回答会保留为草稿，案件留在案件记录里，民警可随时继续办理。退出原因会写入操作日志。</p>
+        <fieldset class="ss-exit-reasons">
+          <legend>退出原因</legend>
+          <label v-for="reason in EXIT_REASONS" :key="reason" :class="{ active: exitReason === reason }">
+            <input v-model="exitReason" type="radio" name="ss-exit-reason" :value="reason" :disabled="exiting" />{{ reason }}
+          </label>
+        </fieldset>
+        <p v-if="exitError" class="ss-dialog-error" role="alert">{{ exitError }}</p>
+        <div class="ss-dialog-actions">
+          <button type="button" class="ss-dialog-secondary" :disabled="exiting" @click="exitOpen = false">返回继续</button>
+          <button type="button" class="ss-dialog-danger" :disabled="exiting" @click="exitSelfService">{{ exiting ? '正在退出…' : '确认退出' }}</button>
+        </div>
+      </section>
+      <section v-else-if="helpOpen" class="ss-dialog">
         <h2 id="ss-help-title">请稍候，民警马上过来</h2>
         <p>请向在场民警示意。民警可以为您讲解，或接管后改为由民警提问录入（人工模式）。</p>
         <div class="ss-dialog-actions">
@@ -389,6 +437,8 @@ const unansweredCount = computed(() => questions.value.filter((item) => !item.an
 .case-loading h1 { margin: 0; color: var(--ink-900); font-size: var(--text-2xl); }
 
 .ss-topbar { display: flex; align-items: center; gap: var(--space-4); flex: 0 0 auto; min-height: var(--height-topbar); padding: 0 var(--space-8); background: var(--navy-900); color: var(--surface); }
+.ss-exit { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; min-height: 44px; padding: 0 var(--space-4); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: var(--radius-md); background: transparent; color: var(--surface); font-size: var(--text-md); font-weight: 600; }
+.ss-exit:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
 .ss-topbar strong { font-size: var(--text-xl); font-weight: 650; letter-spacing: 0.5px; white-space: nowrap; }
 .ss-topbar-divider { flex: none; width: 1px; height: 20px; background: rgba(255, 255, 255, 0.22); }
 .ss-case-chip { min-width: 0; color: var(--primary-100); font-size: var(--text-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -411,8 +461,16 @@ const unansweredCount = computed(() => questions.value.filter((item) => !item.an
 .ss-dialog p { margin: 0; color: var(--ink-700); font-size: var(--text-md); line-height: 1.6; }
 .ss-dialog .ss-dialog-note { color: var(--warning-700); font-size: var(--text-sm); }
 .ss-dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-2); }
-.ss-dialog-primary, .ss-dialog-secondary { min-height: 52px; padding: 0 var(--space-6); border-radius: var(--radius-md); font-size: var(--text-md); font-weight: 600; }
+.ss-dialog-primary, .ss-dialog-secondary, .ss-dialog-danger { min-height: 52px; padding: 0 var(--space-6); border-radius: var(--radius-md); font-size: var(--text-md); font-weight: 600; }
 .ss-dialog-primary { border: 0; background: var(--primary-600); color: var(--surface); }
 .ss-dialog-primary:disabled { opacity: 0.6; }
 .ss-dialog-secondary { border: 1px solid var(--line-300); background: var(--surface); color: var(--ink-700); }
+.ss-dialog-danger { border: 0; background: var(--danger-600); color: var(--surface); }
+.ss-dialog-danger:disabled { opacity: 0.6; }
+.ss-dialog .ss-dialog-error { color: var(--danger-700); font-size: var(--text-sm); }
+.ss-exit-reasons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; padding: 0; border: 0; }
+.ss-exit-reasons legend { margin-bottom: var(--space-2); color: var(--ink-500); font-size: var(--text-sm); }
+.ss-exit-reasons label { display: flex; align-items: center; gap: var(--space-3); min-height: 52px; padding: 0 var(--space-4); border: 1px solid var(--line-300); border-radius: var(--radius-md); color: var(--ink-900); font-size: var(--text-md); cursor: pointer; }
+.ss-exit-reasons label.active { border-color: var(--primary-600); background: var(--primary-50); }
+.ss-exit-reasons input { width: 20px; height: 20px; accent-color: var(--primary-600); }
 </style>

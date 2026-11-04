@@ -2,7 +2,7 @@
 
 自助模式下由当事人对照屏幕逐题口述回答，回答仍以「待摘入」草稿挂在题目上，最终由
 在场民警核对后摘入正本。本服务只记录当事人本人的确认动作（身份信息无误、本题回答
-无误、交回民警），全部写入审计日志，不新建表、不改正本。
+无误、交回民警）以及中途退出自助模式，全部写入审计日志，不新建表、不改正本。
 
 状态从审计日志按时间顺序回放得出；本题确认带着确认时的回答原文，回答被重录或改动
 后原文对不上，确认自动失效，需要本人重新确认。
@@ -24,6 +24,7 @@ EVENT_ACTIONS = {
     'ANSWER_CONFIRM': 'SELF_SERVICE_ANSWER_CONFIRM',
     'ANSWER_UNCONFIRM': 'SELF_SERVICE_ANSWER_UNCONFIRM',
     'HANDOVER': 'SELF_SERVICE_HANDOVER',
+    'EXIT': 'SELF_SERVICE_EXIT',
 }
 QUESTION_EVENTS = {'ANSWER_CONFIRM', 'ANSWER_UNCONFIRM'}
 
@@ -51,13 +52,18 @@ class SelfServiceService:
                 return round_row.answer_text.strip()
         return ''
 
-    def record(self, case_id: str, kind: str, question_id: str | None = None) -> dict:
+    def record(self, case_id: str, kind: str, question_id: str | None = None, *, reason: str = '', step: str = '') -> dict:
         action = EVENT_ACTIONS.get(kind)
         if action is None:
             raise DomainError('INVALID_SELF_SERVICE_EVENT', '不支持的自助确认类型', 400)
-        assert_formal_record_mutable(self.db, case_id)
         after: dict = {}
         target_type, target_id = 'CASE', case_id
+        if kind == 'EXIT':
+            # 中途退出只留痕不改笔录：不可抗力时也要能离开，因此不受正本冻结限制
+            case_repo.get(self.db, case_id)
+            after = {'reason': reason.strip() or '未说明', 'step': step}
+        else:
+            assert_formal_record_mutable(self.db, case_id)
         if kind in QUESTION_EVENTS:
             question = self._question(case_id, question_id)
             target_type, target_id = 'CASE_QUESTION', question.id
@@ -75,13 +81,15 @@ class SelfServiceService:
         rows = self.db.scalars(select(AuditLog)
                                .where(AuditLog.case_id == case_id, AuditLog.action.in_(EVENT_ACTIONS.values()))
                                .order_by(AuditLog.created_at, AuditLog.id))
-        identity_at = handover_at = None
+        identity_at = handover_at = exit_at = None
         confirmed: dict[str, tuple[str, str]] = {}
         for row in rows:
             if row.action == EVENT_ACTIONS['IDENTITY_CONFIRM']:
                 identity_at = iso_utc(row.created_at)
             elif row.action == EVENT_ACTIONS['HANDOVER']:
                 handover_at = iso_utc(row.created_at)
+            elif row.action == EVENT_ACTIONS['EXIT']:
+                exit_at = iso_utc(row.created_at)
             elif row.action == EVENT_ACTIONS['ANSWER_CONFIRM']:
                 confirmed[row.target_id] = (json.loads(row.after_json or '{}').get('answerText', ''), iso_utc(row.created_at))
             elif row.action == EVENT_ACTIONS['ANSWER_UNCONFIRM']:
@@ -91,4 +99,5 @@ class SelfServiceService:
             question = self.db.get(CaseQuestion, question_id)
             if question is not None and question.active and text and self._answer_text(question) == text:
                 answers.append({'questionId': question_id, 'confirmedAt': at})
-        return {'caseId': case_id, 'identityConfirmedAt': identity_at, 'handedOverAt': handover_at, 'confirmedAnswers': answers}
+        return {'caseId': case_id, 'identityConfirmedAt': identity_at, 'handedOverAt': handover_at,
+                'lastExitAt': exit_at, 'confirmedAnswers': answers}

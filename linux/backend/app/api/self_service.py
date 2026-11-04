@@ -15,8 +15,11 @@ router = APIRouter(tags=['self-service'])
 class SelfServiceEventRequest(BaseModel):
     model_config = ConfigDict(extra='forbid', populate_by_name=True)
 
-    kind: Literal['IDENTITY_CONFIRM', 'ANSWER_CONFIRM', 'ANSWER_UNCONFIRM', 'HANDOVER']
+    kind: Literal['IDENTITY_CONFIRM', 'ANSWER_CONFIRM', 'ANSWER_UNCONFIRM', 'HANDOVER', 'EXIT']
     question_id: str | None = Field(default=None, alias='questionId', max_length=64)
+    # 仅 EXIT：退出原因与退出时所在步骤，写入操作日志
+    reason: str = Field(default='', max_length=200)
+    step: Literal['', 'template', 'profile', 'identity', 'answer'] = ''
 
 
 @router.get('/cases/{case_id}/self-service')
@@ -26,6 +29,6 @@ def get_self_service_state(case_id: str, db: Session = Depends(get_db)):
 
 @router.post('/cases/{case_id}/self-service/events')
 def record_self_service_event(case_id: str, body: SelfServiceEventRequest, db: Session = Depends(get_db)):
-    result = SelfServiceService(db).record(case_id, body.kind, body.question_id)
+    result = SelfServiceService(db).record(case_id, body.kind, body.question_id, reason=body.reason, step=body.step)
     db.commit()
-    return envelope(result, '已记录本人确认')
+    return envelope(result, '已退出自助模式' if body.kind == 'EXIT' else '已记录本人确认')

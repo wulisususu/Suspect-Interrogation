@@ -88,7 +88,7 @@ describe('SelfServiceAnswerPage', () => {
 })
 
 describe('SelfServiceWorkspace', () => {
-  it('keeps answers as drafts and leaves self-service only through the officer handover', () => {
+  it('keeps answers as drafts and leaves self-service through the officer handover or a logged exit', () => {
     expect(workspaceSource).toContain("{ draft: true, replace: target.replace }")
     expect(workspaceSource).toContain("recordSelfServiceEvent(props.caseId, 'HANDOVER')")
     expect(workspaceSource).toContain("recordSelfServiceEvent(props.caseId, 'IDENTITY_CONFIRM')")
@@ -96,5 +96,13 @@ describe('SelfServiceWorkspace', () => {
     expect(workspaceSource).not.toContain("emit('back')")
     // 卸载钩子晚于人工模式工作台挂载执行，交回后不能再清空同一案件的上下文
     expect(workspaceSource).toContain('if (handedOver) return')
+  })
+
+  it('offers a top-left exit that records the reason and step before returning to the lobby', () => {
+    expect(workspaceSource.indexOf('class="ss-exit"')).toBeLessThan(workspaceSource.indexOf('<strong>公安笔录一体机</strong>'))
+    expect(workspaceSource).toContain("recordSelfServiceEvent(props.caseId, 'EXIT', undefined, { reason: exitReason.value, step: page.value })")
+    // 留痕成功后才离开；录音中先收尾保留已说的回答
+    expect(workspaceSource.indexOf("'EXIT'")).toBeLessThan(workspaceSource.indexOf("emit('exit')"))
+    expect(workspaceSource).toContain('if (captureTarget && !busy.value) await stopAnswer()')
   })
 })
