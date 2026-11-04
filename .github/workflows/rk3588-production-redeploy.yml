@@ -285,9 +285,10 @@ jobs:
           python3 -c "import json; assert '/api/v1/knowledge/check-rules' in json.load(open('/tmp/suspect-openapi.json'))['paths']"
           grep -rqF 'knowledge/check-rules' /opt/suspect-interrogation/current/webapp/dist/assets
           # 智能追问与采纳反馈：接口已挂出、前端已调用（下方脚本核对内置问法已入库、反馈表可读）。
-          python3 -c "import json; paths = json.load(open('/tmp/suspect-openapi.json'))['paths']; assert {'/api/v1/knowledge/suggestions', '/api/v1/knowledge/suggestions/feedback', '/api/v1/knowledge/usage', '/api/v1/knowledge/experience', '/api/v1/knowledge/experience/harvest', '/api/v1/knowledge/experience/{candidate_id}/approve', '/api/v1/knowledge/experience/{candidate_id}/reject'} <= set(paths)"
+          python3 -c "import json; paths = json.load(open('/tmp/suspect-openapi.json'))['paths']; assert {'/api/v1/knowledge/suggestions', '/api/v1/knowledge/suggestions/feedback', '/api/v1/knowledge/usage', '/api/v1/knowledge/experience', '/api/v1/knowledge/experience/harvest', '/api/v1/knowledge/experience/{candidate_id}/approve', '/api/v1/knowledge/experience/{candidate_id}/reject', '/api/v1/cases/{case_id}/self-service', '/api/v1/cases/{case_id}/self-service/events'} <= set(paths)"
           grep -rqF 'knowledge/suggestions' /opt/suspect-interrogation/current/webapp/dist/assets
           grep -rqF 'knowledge/experience' /opt/suspect-interrogation/current/webapp/dist/assets
+          grep -rqF 'self-service/events' /opt/suspect-interrogation/current/webapp/dist/assets
           suspect_db_path="$(sudo -n bash -c 'set -a; source /etc/suspect-interrogation/runtime.env; printf %s "${SUSPECT_DB_PATH:-/var/lib/suspect-interrogation/interrogation.db}"')"
           sudo -n -u suspect-interrogation env \
             PYTHONPATH=/opt/suspect-interrogation/current/linux/backend \

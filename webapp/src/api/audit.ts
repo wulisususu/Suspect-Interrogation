@@ -51,6 +51,10 @@ const ACTION_LABELS: Record<string, string> = {
   OFFICER_VOICEPRINT_SAMPLE_DISABLE: '停用声纹样本',
   SPEAKER_DEVICE_CALIBRATION_RECOMPUTE: '重新校准说话人识别',
   SPEAKER_REFERENCE_REBUILD: '重建说话人参考',
+  SELF_SERVICE_IDENTITY_CONFIRM: '自助：本人确认身份信息',
+  SELF_SERVICE_ANSWER_CONFIRM: '自助：本人确认回答',
+  SELF_SERVICE_ANSWER_UNCONFIRM: '自助：本人撤回确认',
+  SELF_SERVICE_HANDOVER: '自助：交民警定稿',
 }
 
 const TARGET_LABELS: Record<string, string> = {
@@ -70,6 +74,7 @@ const TARGET_LABELS: Record<string, string> = {
   OFFICER_VOICE_PROFILE: '民警声纹档案',
   OFFICER_VOICE_SAMPLE: '民警声纹样本',
   SPEAKER_DEVICE_CALIBRATION: '说话人识别校准',
+  CASE_QUESTION: '笔录题目',
 }
 
 export function auditActionLabel(action: string): string {

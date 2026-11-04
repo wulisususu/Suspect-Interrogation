@@ -16,7 +16,9 @@ import InterrogationWorkspace from './views/InterrogationWorkspace.vue'
 import KnowledgeAdminView from './views/KnowledgeAdminView.vue'
 import OfficerSignatureAdminView from './views/OfficerSignatureAdminView.vue'
 import RecordingAdminView from './views/RecordingAdminView.vue'
-import { parseRootRoute, rootRouteUrl, type AdminPanel, type RootRoute } from './utils/rootRoute'
+import SelfServiceWorkspace from './views/SelfServiceWorkspace.vue'
+import { officerSessionActive } from './utils/officerAuth'
+import { parseRootRoute, rootRouteUrl, type AdminPanel, type LoginTarget, type RootRoute } from './utils/rootRoute'
 
 const route = ref<RootRoute>(parseRootRoute(location.search))
 /** 大厅「开始新建笔录」进入台账时直接打开身份录入；仅本次导航有效，不写入地址栏。 */
@@ -33,17 +35,31 @@ function go(next: RootRoute) {
 
 /** 新建的案件按样板流程从①选模板开始（读卡建案 → 选模板 → 建档 → 问答），仅本次进入有效。 */
 const freshCaseId = ref('')
+/** 本次新建的案件走哪种模式：自助模式建档后交当事人本人作答。 */
+const newCaseSelfService = ref(false)
 const openCase = (caseId: string) => go({ page: 'case', caseId })
 function openNewCase(caseId: string) {
-  go({ page: 'case', caseId })
+  const selfService = newCaseSelfService.value
+  go({ page: 'case', caseId, ...(selfService ? { selfService } : {}) })
   freshCaseId.value = caseId
 }
 const openCases = () => go({ page: 'cases' })
-function startNewRecord() {
+function startNewRecord(selfService = false) {
   go({ page: 'cases' })
   startNew.value = true
+  newCaseSelfService.value = selfService
 }
 const openLogin = () => go({ page: 'login' })
+
+/** 大厅入口：人工模式、自助模式与管理面板都要民警先验证身份，登录当天有效。 */
+async function enter(target: LoginTarget) {
+  if (await officerSessionActive()) afterLogin(target)
+  else go({ page: 'login', next: target })
+}
+function afterLogin(target: LoginTarget = 'admin') {
+  if (target === 'admin') openAdmin()
+  else startNewRecord(target === 'self')
+}
 const openHome = () => go({ page: 'home' })
 const lock = () => { locked.value = true }
 function unlock() {
@@ -65,9 +81,16 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
 <template>
   <LockScreen v-if="locked" @unlock="unlock" />
   <MaintenanceGate v-else>
-    <InterrogationWorkspace v-if="route.page === 'case'" :key="route.caseId" :case-id="route.caseId" :start-at-template="freshCaseId === route.caseId" @back="openCases" />
-    <LoginView v-else-if="route.page === 'login'" @back="openHome" @authenticated="openAdmin" />
-    <KioskHomeView v-else-if="route.page === 'home'" @start="startNewRecord" @police-entry="openLogin" />
+    <SelfServiceWorkspace
+      v-if="route.page === 'case' && route.selfService"
+      :key="`self-${route.caseId}`"
+      :case-id="route.caseId"
+      :start-at-template="freshCaseId === route.caseId"
+      @handover="openCase(route.caseId)"
+    />
+    <InterrogationWorkspace v-else-if="route.page === 'case'" :key="route.caseId" :case-id="route.caseId" :start-at-template="freshCaseId === route.caseId" @back="openCases" />
+    <LoginView v-else-if="route.page === 'login'" :next="route.next" @back="openHome" @authenticated="afterLogin(route.next)" />
+    <KioskHomeView v-else-if="route.page === 'home'" @enter="enter" />
     <AdminShell v-else-if="route.page === 'admin'" title="管理面板" back-label="返回大厅" @back="openHome" @lock="lock">
       <AdminPanelView
         @cases="openCases"

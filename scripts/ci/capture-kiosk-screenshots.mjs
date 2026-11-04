@@ -301,11 +301,10 @@ try {
   await clickButtonContaining(client, '取消')
   await waitForSelector(client, '.kiosk-home')
   await screenshot(client, 'kiosk-home', 1920, 1080)
-  await clickButtonContaining(client, '民警入口')
-  await waitForSelector(client, '.login-preview-page')
-  // 登录页已是真实警号 + 密码验证，不再有「预览进入」按钮。CI 未配置民警名录
-  // （预览模式，后端不强制鉴权），直接打开管理面板。
-  await navigate(client, `${baseUrl}/?view=admin`, '.admin-panel')
+  // 大厅入口（人工 / 自助 / 管理面板）先验证民警身份；CI 未配置民警名录
+  // （预览模式，后端不强制鉴权），点「管理面板」直接进入，不经过登录页。
+  await clickButtonContaining(client, '管理面板')
+  await waitForSelector(client, '.admin-panel')
   await screenshot(client, 'admin-panel', 1920, 1080)
   await clickSelector(client, 'button[aria-label="进入案件记录"]')
   await waitForSelector(client, '.case-ledger')

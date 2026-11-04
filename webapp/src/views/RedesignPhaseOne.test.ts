@@ -5,7 +5,7 @@ import loginSource from './LoginView.vue?raw'
 
 describe('PDF phase-one frontend redesign', () => {
   it('keeps the existing case workspace reachable and exposes login as preview-only route', () => {
-    expect(appSource).toContain('<InterrogationWorkspace v-if="route.page === \'case\'"')
+    expect(appSource).toContain('<InterrogationWorkspace v-else-if="route.page === \'case\'"')
     expect(appSource).toContain('<LoginView v-else-if="route.page === \'login\'"')
     expect(appSource).toContain('CaseDashboardView')
   })

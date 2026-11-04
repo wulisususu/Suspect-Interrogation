@@ -2,13 +2,23 @@
 /**
  * 民警身份验证（真实登录）
  *
- * 后端已完成警号+密码登录：成功后下发 HttpOnly 会话 Cookie，10 分钟内免验，
- * 可手动锁定/解锁。本页只负责录入与跳转，不在浏览器里保存密码或伪造校验。
+ * 后端已完成警号+密码登录：成功后下发 HttpOnly 会话 Cookie，登录当天有效（24 小时），
+ * 到期需重新输入警号密码；可手动锁定/解锁。本页只负责录入与跳转，不在浏览器里保存密码或伪造校验。
+ * 大厅的人工模式、自助模式与管理面板共用本页，next 决定验证后去哪。
  */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { fetchAuthSession, loginOfficer } from '../api/officers'
+import type { LoginTarget } from '../utils/rootRoute'
 
+const props = defineProps<{ next?: LoginTarget }>()
 const emit = defineEmits<{ back: []; authenticated: [] }>()
+
+const SUBTITLES: Record<LoginTarget, string> = {
+  manual: '人工模式由民警办理，验证身份后开始新建笔录',
+  self: '自助模式需民警在场：验证身份后为当事人读卡建档，再交由本人作答',
+  admin: '管理功能仅限民警使用，验证身份后进入管理面板',
+}
+const subtitle = computed(() => SUBTITLES[props.next ?? 'admin'])
 
 const officerId = ref('')
 const password = ref('')
@@ -21,9 +31,7 @@ onMounted(async () => {
   try {
     const session = await fetchAuthSession()
     configured.value = session.configured
-    if (session.configured && session.authenticated && !session.locked) {
-      emit('authenticated')
-    }
+    if (session.configured && session.authenticated && !session.locked) emit('authenticated')
   } catch {
     // 会话探测失败不阻断手动登录
   } finally {
@@ -52,7 +60,7 @@ async function submitLogin() {
   <main class="login-preview-page">
     <section class="login-card" aria-labelledby="login-title">
       <h1 id="login-title">民警身份验证</h1>
-      <p class="login-subtitle">管理功能仅限民警使用，验证身份后进入管理面板</p>
+      <p class="login-subtitle">{{ subtitle }}</p>
       <p v-if="!checking && !configured" class="login-warning">
         尚未配置民警名录。请部署人员在板端执行
         <code>python -m app.auth.provision --badge-number &lt;警号&gt; --name &lt;姓名&gt; --unit &lt;单位&gt; --admin</code>
@@ -69,7 +77,7 @@ async function submitLogin() {
         </div>
       </form>
       <p v-if="feedback" class="login-feedback" role="alert">{{ feedback }}</p>
-      <p class="login-note">验证通过后 10 分钟内免验 · 收起与锁定均由民警手动触发</p>
+      <p class="login-note">登录后当天有效（24 小时），到期需重新验证 · 锁定由民警手动触发</p>
     </section>
   </main>
 </template>

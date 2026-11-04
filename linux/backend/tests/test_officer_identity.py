@@ -230,7 +230,9 @@ def test_sessions_expire_and_wrong_password_is_throttled_persistently(identity):
         token = service.login('038291', 'a-secure-password')['token']
         stored = db.scalar(select(OfficerSession))
         assert stored.token_hash != token
-        now[0] += timedelta(hours=8)
+        now[0] += timedelta(hours=23)
+        assert service.authenticate(token).badge_number == '038291'
+        now[0] += timedelta(hours=1)
         with pytest.raises(DomainError) as error:
             service.authenticate(token)
         assert error.value.code == 'AUTH_SESSION_REQUIRED'
