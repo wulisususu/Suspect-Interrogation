@@ -7,7 +7,8 @@
  * 溯源是一条可核对的引用链：原件路径、依据文件、条款/页码、文件版本、效力区间与取代关系；
  * 已失效 / 未生效 / 被取代的条目在列表里标出，且不进办案提示。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { X } from '@lucide/vue'
 import EmptyState from '../components/EmptyState.vue'
 import ExperienceReviewPanel from '../components/ExperienceReviewPanel.vue'
 import {
@@ -189,9 +190,16 @@ async function openEntry(entry: KnowledgeEntry) {
   }
 }
 
+/** 编辑窗打开时清掉页面上旧的提示，并把光标放到标题。 */
+function openEditor() {
+  feedback.value = ''
+  editing.value = true
+  void nextTick(() => document.querySelector<HTMLInputElement>('.entry-modal input')?.focus())
+}
+
 function startCreate() {
   selected.value = null
-  editing.value = true
+  openEditor()
   form.value = {
     title: '', categoryId: categories.value[0]?.id ?? '', content: '', keywords: '',
     kind: 'faq', status: 'pending', ...emptyCitation(),
@@ -428,60 +436,8 @@ onMounted(async () => {
           </table>
         </div>
 
-        <aside v-if="selected || editing" class="knowledge-detail" aria-label="条目详情">
-          <template v-if="editing">
-            <h2>{{ selected ? '编辑条目' : '新增条目' }}</h2>
-            <label>标题<input v-model="form.title" maxlength="256" /></label>
-            <div class="two-col">
-              <label>分类
-                <select v-model="form.categoryId">
-                  <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
-                </select>
-              </label>
-              <label>类型
-                <select v-model="form.kind">
-                  <option value="faq">问答</option>
-                  <option value="wiki">概念</option>
-                </select>
-              </label>
-            </div>
-            <div class="two-col">
-              <label>状态
-                <select v-model="form.status">
-                  <option value="pending">待确认</option>
-                  <option value="verified">已验证</option>
-                </select>
-              </label>
-              <label>原件路径<input v-model="form.sourceRef" placeholder="raw/xxx.pdf#第3条" maxlength="512" /></label>
-            </div>
-            <fieldset class="citation-fields">
-              <legend>引用出处</legend>
-              <label>依据文件<input v-model="form.sourceDocument" placeholder="中华人民共和国治安管理处罚法" maxlength="256" /></label>
-              <div class="two-col">
-                <label>条款 / 页码<input v-model="form.sourceLocator" placeholder="第四十九条第一款 / p.12" maxlength="128" /></label>
-                <label>文件版本<input v-model="form.sourceVersion" placeholder="2012 修正 / 法释〔2013〕8号" maxlength="64" /></label>
-              </div>
-              <div class="two-col">
-                <label>生效日期<input v-model="form.effectiveFrom" type="date" /></label>
-                <label>失效日期（当日起失效）<input v-model="form.effectiveUntil" type="date" :min="form.effectiveFrom || undefined" /></label>
-              </div>
-              <label class="inline-check"><input v-model="form.superseded" type="checkbox" />已被新版取代（不再进办案提示）</label>
-              <label v-if="form.superseded || form.supersededById">取代它的条目
-                <select v-model="form.supersededById">
-                  <option value="">（未关联）</option>
-                  <option v-for="option in successorOptions" :key="option.id" :value="option.id">{{ option.title }}</option>
-                </select>
-              </label>
-            </fieldset>
-            <label>关键词<input v-model="form.keywords" placeholder="用顿号或逗号分隔" /></label>
-            <label>正文<textarea v-model="form.content" rows="12" /></label>
-            <div class="detail-actions">
-              <button type="button" class="ghost" @click="editing = false">取消</button>
-              <button type="button" class="primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存' }}</button>
-            </div>
-          </template>
-
-          <template v-else-if="selected">
+        <aside v-if="selected && !editing" class="knowledge-detail" aria-label="条目详情">
+          <template v-if="selected">
             <h2>{{ selected.title }}</h2>
             <p class="detail-meta">
               {{ selected.categoryName }} · v{{ selected.version }} ·
@@ -537,7 +493,7 @@ onMounted(async () => {
               </ul>
             </div>
             <div class="detail-actions">
-              <button type="button" class="ghost" @click="editing = true">编辑</button>
+              <button type="button" class="primary" @click="openEditor">编辑</button>
               <button type="button" class="ghost" @click="selected = null">关闭</button>
             </div>
           </template>
@@ -582,6 +538,67 @@ onMounted(async () => {
         <p>扫描 {{ report.scanned }} · 新增 {{ report.added.length }} · 更新 {{ report.updated.length }} · 停用 {{ report.disabled.length }} · 冲突 {{ report.conflicts.length }} · 拒绝 {{ report.rejected.length }}</p>
       </div>
     </template>
+
+    <div v-if="editing" class="entry-modal" role="dialog" aria-modal="true" aria-labelledby="entry-modal-title" @keydown.esc="editing = false">
+      <section class="entry-modal-card">
+        <header class="entry-modal-head">
+          <div>
+            <h2 id="entry-modal-title">{{ selected ? '编辑条目' : '新增条目' }}</h2>
+            <p>{{ selected ? `${selected.title} · 保存后生成 v${selected.version + 1}，历史版本保留` : '标题、分类和正文必填；引用出处用于核对依据，可后补' }}</p>
+          </div>
+          <button type="button" class="entry-modal-close" aria-label="关闭" @click="editing = false"><X :size="22" /></button>
+        </header>
+        <div class="entry-modal-body">
+          <div class="entry-modal-main">
+            <label><span>标题 <b>*</b></span><input v-model="form.title" maxlength="256" placeholder="如：盗窃电动车追问要点" /></label>
+            <div class="three-col">
+              <label><span>分类 <b>*</b></span>
+                <select v-model="form.categoryId">
+                  <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+                </select>
+              </label>
+              <label>类型
+                <select v-model="form.kind">
+                  <option value="faq">问答</option>
+                  <option value="wiki">概念</option>
+                </select>
+              </label>
+              <label>状态
+                <select v-model="form.status">
+                  <option value="pending">待确认</option>
+                  <option value="verified">已验证</option>
+                </select>
+              </label>
+            </div>
+            <label>关键词<input v-model="form.keywords" placeholder="用顿号或逗号分隔，如：电动车、车锁、充电" /></label>
+            <label class="entry-content"><span>正文 <b>*</b></span><textarea v-model="form.content" placeholder="写下问话要点、法规条文或取证规范的正文" /></label>
+          </div>
+          <fieldset class="citation-fields">
+            <legend>引用出处</legend>
+            <label>原件路径<input v-model="form.sourceRef" placeholder="raw/xxx.pdf#第3条" maxlength="512" /></label>
+            <label>依据文件<input v-model="form.sourceDocument" placeholder="中华人民共和国治安管理处罚法" maxlength="256" /></label>
+            <label>条款 / 页码<input v-model="form.sourceLocator" placeholder="第四十九条第一款 / p.12" maxlength="128" /></label>
+            <label>文件版本<input v-model="form.sourceVersion" placeholder="2012 修正 / 法释〔2013〕8号" maxlength="64" /></label>
+            <div class="two-col">
+              <label>生效日期<input v-model="form.effectiveFrom" type="date" /></label>
+              <label>失效日期（当日起失效）<input v-model="form.effectiveUntil" type="date" :min="form.effectiveFrom || undefined" /></label>
+            </div>
+            <label class="inline-check"><input v-model="form.superseded" type="checkbox" />已被新版取代（不再进办案提示）</label>
+            <label v-if="form.superseded || form.supersededById">取代它的条目
+              <select v-model="form.supersededById">
+                <option value="">（未关联）</option>
+                <option v-for="option in successorOptions" :key="option.id" :value="option.id">{{ option.title }}</option>
+              </select>
+            </label>
+          </fieldset>
+        </div>
+        <footer class="entry-modal-foot">
+          <p v-if="feedback" class="entry-modal-feedback" role="status">{{ feedback }}</p>
+          <button type="button" class="ghost" @click="editing = false">取消</button>
+          <button type="button" class="primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : selected ? '保存为新版本' : '创建条目' }}</button>
+        </footer>
+      </section>
+    </div>
 
     <div v-if="importOpen && importReport" class="import-modal" role="dialog" aria-modal="true" aria-label="导入预演">
       <section>
@@ -680,6 +697,30 @@ td .badge + .badge { margin-left: 4px; }
 .import-card { padding: var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-md); background: var(--surface); }
 .import-card header { display: flex; justify-content: space-between; color: var(--ink-600); font-size: var(--text-sm); }
 .import-card p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-xs); }
+.entry-modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: var(--space-5); background: rgba(22, 38, 63, 0.72); }
+.entry-modal-card { display: flex; flex-direction: column; width: min(1180px, 100%); max-height: calc(100dvh - var(--osk-height, 0px) - 2 * var(--space-5)); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-pop); overflow: hidden; }
+.entry-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-5) var(--space-6) var(--space-4); border-bottom: 1px solid var(--line-200); }
+.entry-modal-head h2 { margin: 0; color: var(--ink-900); font-size: var(--text-2xl); font-weight: 650; }
+.entry-modal-head p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-sm); }
+.entry-modal-close { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; color: var(--ink-500); cursor: pointer; }
+.entry-modal-close:hover { background: var(--surface-sunken); }
+.entry-modal-body { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: var(--space-5); padding: var(--space-5) var(--space-6); overflow: auto; }
+.entry-modal-main { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.entry-modal label { display: flex; flex-direction: column; gap: var(--space-2); color: var(--ink-700); font-size: var(--text-sm); font-weight: 600; }
+.entry-modal label b { color: var(--danger-700); font-weight: 400; }
+.entry-modal input, .entry-modal select, .entry-modal textarea { min-height: 46px; padding: var(--space-2) var(--space-3); border: 1px solid var(--line-300); border-radius: var(--radius-md); background: var(--surface); color: var(--ink-900); font-size: var(--text-md); font-weight: 400; font-family: inherit; }
+.entry-modal input:focus, .entry-modal select:focus, .entry-modal textarea:focus { outline: 2px solid var(--primary-100); border-color: var(--primary-600); }
+.entry-modal .entry-content { flex: 1; }
+.entry-modal textarea { flex: 1; min-height: 300px; line-height: 1.7; resize: vertical; }
+.entry-modal .citation-fields { gap: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-4); background: var(--surface-sunken); }
+.entry-modal .citation-fields legend { font-size: var(--text-sm); }
+.entry-modal .inline-check { flex-direction: row; align-items: center; gap: var(--space-2); font-weight: 400; }
+.entry-modal .inline-check input { width: 20px; min-height: 20px; height: 20px; accent-color: var(--primary-600); }
+.three-col { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.entry-modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--line-200); }
+.entry-modal-foot .primary, .entry-modal-foot .ghost { min-height: 48px; padding: 0 var(--space-6); font-size: var(--text-md); }
+.entry-modal-feedback { margin: 0 auto 0 0; color: var(--danger-700); font-size: var(--text-sm); }
+@media (max-width: 960px) { .entry-modal-body { grid-template-columns: 1fr; } }
 .import-modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: var(--space-5); background: rgba(22, 38, 63, 0.72); }
 .import-modal section { display: flex; flex-direction: column; gap: var(--space-2); width: min(560px, 100%); padding: var(--space-5); border-radius: var(--radius-lg); background: var(--surface); }
 .import-modal h2 { margin: 0; font-size: var(--text-lg); }
