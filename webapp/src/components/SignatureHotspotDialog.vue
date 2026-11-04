@@ -40,7 +40,7 @@ const emit = defineEmits<{ cancel: []; handwrite: [] }>()
             <small>未预录入签名</small>
           </li>
         </ul>
-        <p v-else class="hotspot-dialog-empty">本案尚未绑定询问民警，可改为现场手写</p>
+        <p v-else class="hotspot-dialog-empty">本案尚未绑定询问民警，签名将记为当前登录民警（留痕可追溯）</p>
         <p class="hotspot-dialog-note">民警签名预录入管理尚未接入；改为现场手写同样写入文书并留痕</p>
         <footer>
           <button type="button" class="hotspot-dialog-secondary" @click="emit('cancel')">取消</button>

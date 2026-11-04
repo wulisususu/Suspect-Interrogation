@@ -25,6 +25,10 @@ def frozen_case(tmp_path):
     init_database(factory.kw['bind'])
     with factory() as db:
         db.add(Case(id='CASE-A', workflow_state='FROZEN', document_status='FROZEN'))
+        from app.database.officer_models import Officer
+
+        db.add(Officer(badge_number='001', name='小莫', unit='', password_hash='x'))
+        db.add(Officer(badge_number='002', name='小张', unit='', password_hash='x'))
         db.flush()
         db.add(DocumentSnapshot(id='snapshot-a', case_id='CASE-A', version=1, content_json='{}',
                                 content_hash=hashlib.sha256(b'{}').hexdigest()))
@@ -73,3 +77,52 @@ def test_both_signing_aliases_reject_images_before_saving_or_finalizing(frozen_c
             assert len(response.json()['data']['signatures']) == index + 1
         with frozen_case() as db:
             assert db.get(Case, 'CASE-A').workflow_state == 'SIGNED'
+
+
+def _as_officer(monkeypatch, badge: str, name: str) -> None:
+    from app.auth.context import Actor
+
+    monkeypatch.setattr(
+        'app.auth.context.current_actor',
+        lambda: Actor(badge_number=badge, name=name, unit='', is_admin=False),
+    )
+
+
+def test_officer_signature_is_allowed_when_the_case_has_no_binding(frozen_case, monkeypatch):
+    """历史案件、自助报案没有询问人/记录人绑定，以前会被一律 403，笔录永远签不完。"""
+    _as_officer(monkeypatch, '001', '小莫')
+    with frozen_case() as db:
+        state = DocumentService(db).sign('CASE-A', signer_role='OFFICER', signer_name='', image_data=PNG)
+        assert [row['signerName'] for row in state['signatures']] == ['小莫']
+        audit = db.scalar(select(AuditLog).where(AuditLog.action == 'OFFICER_SIGNATURE_WITHOUT_BINDING'))
+        assert audit is not None
+        assert 'no interrogator or recorder binding' in audit.detail_json
+
+
+def test_officer_signature_still_requires_the_bound_officer(frozen_case, monkeypatch):
+    from app.database.officer_models import CaseOfficerBinding
+
+    with frozen_case() as db:
+        db.add(CaseOfficerBinding(case_id='CASE-A', interrogator_badge_number='002', recorder_badge_number='001'))
+        db.commit()
+
+    _as_officer(monkeypatch, '999', '外人')
+    with frozen_case() as db:
+        with pytest.raises(DomainError) as error:
+            DocumentService(db).sign('CASE-A', signer_role='OFFICER', signer_name='', image_data=PNG)
+        assert error.value.code == 'OFFICER_SIGNATURE_FORBIDDEN'
+        assert db.scalar(select(SignatureRecord)) is None
+
+
+def test_bound_officer_can_sign(frozen_case, monkeypatch):
+    from app.database.officer_models import CaseOfficerBinding
+
+    with frozen_case() as db:
+        db.add(CaseOfficerBinding(case_id='CASE-A', interrogator_badge_number='002', recorder_badge_number='001'))
+        db.commit()
+
+    _as_officer(monkeypatch, '001', '小莫')
+    with frozen_case() as db:
+        state = DocumentService(db).sign('CASE-A', signer_role='OFFICER', signer_name='', image_data=PNG)
+        assert [row['signerName'] for row in state['signatures']] == ['小莫']
+        assert db.scalar(select(AuditLog).where(AuditLog.action == 'OFFICER_SIGNATURE_WITHOUT_BINDING')) is None

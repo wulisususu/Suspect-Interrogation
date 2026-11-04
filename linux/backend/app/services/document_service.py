@@ -235,7 +235,24 @@ class DocumentService:
             from app.database.officer_models import CaseOfficerBinding
 
             binding = self.db.get(CaseOfficerBinding, case_id)
-            if binding is None or actor.badge_number not in {binding.interrogator_badge_number, binding.recorder_badge_number}:
+            if binding is None:
+                # 没有绑定询问人/记录人的案件（历史案件、自助报案）以前一律 403，
+                # 结果是笔录冻结后永远签不完。一体化设备上登录民警就是办案人，
+                # 这里放行并留审计；已绑定的案件仍然严格校验签名人。
+                audit_repo.add(
+                    self.db,
+                    case_id=case_id,
+                    actor_id=actor.badge_number,
+                    action="OFFICER_SIGNATURE_WITHOUT_BINDING",
+                    target_type="CASE",
+                    target_id=case_id,
+                    detail={
+                        "badgeNumber": actor.badge_number,
+                        "name": actor.name,
+                        "reason": "case has no interrogator or recorder binding",
+                    },
+                )
+            elif actor.badge_number not in {binding.interrogator_badge_number, binding.recorder_badge_number}:
                 raise DomainError("OFFICER_SIGNATURE_FORBIDDEN", "签名民警必须是本案询问人或记录员", 403)
             name = actor.name
         if not name:
