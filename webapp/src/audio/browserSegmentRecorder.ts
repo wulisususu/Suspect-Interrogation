@@ -238,7 +238,14 @@ class BrowserSegmentRecorder {
   async start() {
     this.uploader.start()
     const media = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      audio: {
+        channelCount: 1,
+        // 与 browserAsrCapture 一致：开启浏览器音频处理，保证低输入电平的
+        // 笔记本/耳麦也能录到可用音量的证据音频。
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
       video: false,
     })
     if (this.finishPromise) {

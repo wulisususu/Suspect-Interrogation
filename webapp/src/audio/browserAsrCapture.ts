@@ -649,9 +649,12 @@ class BrowserPcmStreamer {
       const media = await this.waitForStartup(navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
+          // 打开浏览器音频处理：办案民警用的常是笔记本/耳麦，输入电平偏低，
+          // 裸信号会低到 ASR 无法识别（实测 RMS 70 vs 正常语音 1700）。
+          // 自动增益把电平拉回可用区间；回声消除防止模板朗读串进笔录音频。
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
         },
         video: false,
       }).then((resolved) => {
