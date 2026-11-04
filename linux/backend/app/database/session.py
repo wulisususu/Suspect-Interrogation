@@ -36,9 +36,17 @@ def make_session_factory(engine: Engine) -> sessionmaker[Session]:
 
 
 def begin_sqlite_immediate(db: Session) -> None:
-    """Serialize a read-then-write allocation before its first database read."""
-    if db.get_bind().dialect.name == "sqlite" and not db.in_transaction():
-        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+    """Serialize a read-then-write allocation before its first database read.
+
+    The session is usually already autobegun by an earlier read in the same request,
+    but pysqlite only opens the SQLite transaction before the first write, so ask the
+    driver. An open driver transaction has already written and holds the write lock.
+    """
+    if db.get_bind().dialect.name != "sqlite":
+        return
+    connection = db.connection()
+    if not connection.connection.driver_connection.in_transaction:
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
 
 
 def init_database(engine: Engine) -> None:

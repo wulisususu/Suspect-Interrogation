@@ -24,6 +24,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.database.catalog_models import KnowledgeCategory, KnowledgeCheckBinding, KnowledgeEntry
+from app.database.session import begin_sqlite_immediate
 from app.domain.errors import DomainError
 from app.repositories import audit as audit_repo
 from app.repositories import cases as case_repo
@@ -134,6 +135,13 @@ class KnowledgeCheckService:
 
     # --------------------------------------------------------- 内置规则
 
+    def _missing_bundled(self, notes):
+        known = set(self.db.scalars(select(KnowledgeEntry.vault_uid).where(
+            KnowledgeEntry.vault_uid.in_([note.uid for note in notes]))))
+        known_paths = set(self.db.scalars(select(KnowledgeEntry.source_path).where(
+            KnowledgeEntry.source_path.in_([note.relative_path for note in notes]))))
+        return [note for note in notes if note.uid not in known and note.relative_path not in known_paths]
+
     def ensure_bundled_rules(self, root: Path | None = None) -> list[str]:
         """把仓库 Vault 里的规则笔记补进库（只补从未入库的 uid，删掉/停用过的不复活）。
 
@@ -153,11 +161,11 @@ class KnowledgeCheckService:
                 notes.append(note)
         if not notes:
             return []
-        known = set(self.db.scalars(select(KnowledgeEntry.vault_uid).where(
-            KnowledgeEntry.vault_uid.in_([note.uid for note in notes]))))
-        known_paths = set(self.db.scalars(select(KnowledgeEntry.source_path).where(
-            KnowledgeEntry.source_path.in_([note.relative_path for note in notes]))))
-        missing = [note for note in notes if note.uid not in known and note.relative_path not in known_paths]
+        if not self._missing_bundled(notes):
+            return []
+        # 同时打开案件的两个请求都会走到这里：拿写锁后重查，后到的请求不再重复入库。
+        begin_sqlite_immediate(self.db)
+        missing = self._missing_bundled(notes)
         if not missing:
             return []
         knowledge = KnowledgeService(self.db)
