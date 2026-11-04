@@ -25,7 +25,8 @@ from app.services.serializers import iso_utc
 
 
 EXEMPTION_SECONDS = 600
-SESSION_HOURS = 8
+# 登录一次当天有效：24 小时后会话过期，需重新输入警号密码。
+SESSION_HOURS = 24
 PASSWORD_ITERATIONS = 600_000
 MAX_SIGNATURE_BYTES = 512_000
 

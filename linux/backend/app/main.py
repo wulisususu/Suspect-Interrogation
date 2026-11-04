@@ -34,6 +34,7 @@ from app.api.errors import install_error_handlers
 from app.api.identity import router as identity_router
 from app.api.interrogation import router as interrogation_router
 from app.api.responses import envelope
+from app.api.self_service import router as self_service_router
 from app.api.signature import router as signature_router
 from app.api.speaker_calibration import router as speaker_calibration_router
 from app.api.template_workspace import router as template_workspace_router
@@ -343,6 +344,7 @@ def create_app(
     app.include_router(identity_router, prefix="/api/v1")
     app.include_router(interrogation_router, prefix="/api/v1")
     app.include_router(template_workspace_router, prefix="/api/v1")
+    app.include_router(self_service_router, prefix="/api/v1")
     app.include_router(signature_router, prefix="/api/v1")
     app.include_router(device_router, prefix="/api/v1")
     app.include_router(ai_router, prefix="/api/v1")

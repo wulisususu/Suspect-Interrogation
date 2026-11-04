@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import source from './InterrogationWorkspace.vue?raw'
+import answerCaptureSource from '../composables/answerCapture.ts?raw'
 
 describe('interrogation workspace shell', () => {
   it('does not render the device capability and fingerprint action module', () => {
@@ -74,9 +75,9 @@ describe('hold-to-append capture retrieval', () => {
     // 收尾片段在采集线程退出时才提交，实测比停止响应晚约 1 秒；停止后立即读取
     // 会每次扑空。片段缺席时必须轮询补读，只有在停止响应确认 ASR 完成且连续
     // 两轮仍无片段时才允许提前判定"没有听清"。
-    const start = source.indexOf('async function finishCapture')
-    const end = source.indexOf('async function startCardAnswer')
-    const body = source.slice(start, end)
+    const start = answerCaptureSource.indexOf('async function finishCapture')
+    const end = answerCaptureSource.indexOf('return { liveText')
+    const body = answerCaptureSource.slice(start, end)
     expect(start).toBeGreaterThan(-1)
     expect(body).toContain('while (!fragments.length && Date.now() < deadline)')
     expect(body).toContain("store.capture.asrStatus === 'COMPLETE'")

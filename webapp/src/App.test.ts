@@ -25,8 +25,17 @@ describe('root navigation query handling', () => {
     expect(source).toContain('RecordingAdminView')
   })
 
-  it('treats a successful login as entering the admin panel', () => {
-    expect(source).toContain('@authenticated="openAdmin"')
+  it('continues to the entry the officer picked after login, admin panel by default', () => {
+    expect(source).toContain('@authenticated="afterLogin(route.next)"')
+    expect(source).toContain("if (target === 'admin') openAdmin()")
     expect(source).not.toContain('@admin="openAdmin"')
+  })
+
+  it('gates both lobby modes behind the officer login and opens self-service cases in their own workspace', () => {
+    expect(source).toContain('<KioskHomeView v-else-if="route.page === \'home\'" @enter="enter" />')
+    expect(source).toContain('if (await officerSessionActive()) afterLogin(target)')
+    expect(source).toContain("go({ page: 'login', next: target })")
+    expect(source).toContain('v-if="route.page === \'case\' && route.selfService"')
+    expect(source).toContain('@handover="openCase(route.caseId)"')
   })
 })

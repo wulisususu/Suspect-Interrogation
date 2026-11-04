@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ChevronRight, Lock, Mic, Nfc, ServerCog, ShieldCheck } from '@lucide/vue'
+import { ChevronRight, Lock, Mic, Nfc, ServerCog, ShieldCheck, UserRoundCheck } from '@lucide/vue'
 import { backendErrorMessage, fetchCases, fetchRuntimeCapabilities } from '../api/interrogation'
 import KioskPendingBanner from '../components/KioskPendingBanner.vue'
 import { branding } from '../config/branding'
 import type { RuntimeCapabilities, RuntimeCapabilityName } from '../runtime/types'
 import type { CaseSummary } from '../types/interrogation'
 import { unfinishedCases } from '../utils/kioskLobby'
+import type { LoginTarget } from '../utils/rootRoute'
 
 /**
  * 首页 · 一体机大厅（样板 P04）
  *
- * 办理人员进门看到的第一屏：人工模式入口、未完成办理提示（只给条数）与设备自检。
- * 嫌疑人询问不提供当事人自助模式，右栏放设备自检。案件详情属于民警验证后的管理域。
+ * 进门看到的第一屏：左人工模式（民警提问录入）、右自助模式（当事人本人作答），
+ * 两种模式都要民警先验证身份，登录当天有效。未完成办理只给条数，设备自检收在底部状态条。
+ * 案件详情属于民警验证后的管理域。
  */
-const emit = defineEmits<{ start: []; policeEntry: [] }>()
+const emit = defineEmits<{ enter: [target: LoginTarget] }>()
 
 const cases = ref<CaseSummary[]>([])
 const loading = ref(true)
@@ -60,6 +62,11 @@ const flowSteps = [
   { title: '问答与定稿', detail: '民警提问实时转写，划选摘入正本' },
   { title: '签署打印', detail: '屏上签名捺印，打印件含签章装卷' },
 ]
+const selfSteps = [
+  { title: '民警建档', detail: '民警读卡建案、选好模板，再把屏幕交给本人' },
+  { title: '本人作答', detail: '本人核对身份，对照屏幕逐题口述回答' },
+  { title: '民警定稿', detail: '在场民警核对摘入正本，签署打印' },
+]
 
 async function load() {
   loading.value = true
@@ -68,7 +75,9 @@ async function load() {
   try {
     cases.value = await fetchCases(50)
   } catch (cause) {
-    loadError.value = backendErrorMessage(cause)
+    // 未登录时案件列表本就不可读：大厅照常显示，民警点任一模式登录即可
+    const code = (cause as { code?: string } | null)?.code
+    if (code !== 'AUTH_SESSION_REQUIRED' && code !== 'AUTH_SESSION_LOCKED') loadError.value = backendErrorMessage(cause)
   } finally {
     loading.value = false
   }
@@ -94,20 +103,20 @@ onUnmounted(() => {
     <header class="kiosk-topbar">
       <strong>{{ branding.productName }}</strong>
       <span v-if="branding.venueName" class="kiosk-venue">{{ branding.venueName }}</span>
-      <button type="button" class="kiosk-police-entry" @click="emit('policeEntry')"><Lock :size="14" aria-hidden="true" />民警入口</button>
+      <button type="button" class="kiosk-police-entry" @click="emit('enter', 'admin')"><Lock :size="14" aria-hidden="true" />管理面板</button>
     </header>
 
     <div class="kiosk-body">
       <section class="kiosk-greeting">
         <div>
           <h1>欢迎使用公安笔录一体机</h1>
-          <p>民警办案请点人工模式 · 全程保密</p>
+          <p>民警提问请选人工模式，本人自述请选自助模式 · 全程保密</p>
         </div>
         <span class="kiosk-clock">{{ clockText }}</span>
       </section>
 
       <p v-if="loadError" class="kiosk-alert" role="alert">{{ loadError }}<button type="button" @click="load">重新检查</button></p>
-      <KioskPendingBanner v-else-if="pendingCount" :count="pendingCount" @verify="emit('policeEntry')" />
+      <KioskPendingBanner v-else-if="pendingCount" :count="pendingCount" @verify="emit('enter', 'admin')" />
 
       <div class="kiosk-modes">
         <section class="kiosk-card" aria-labelledby="kiosk-manual-title">
@@ -130,30 +139,51 @@ onUnmounted(() => {
             </ol>
           </div>
           <footer>
-            <small>笔录生成后可导出 Word / PDF 或打印件</small>
-            <button type="button" class="kiosk-primary" @click="emit('start')">开始新建笔录<ChevronRight :size="17" aria-hidden="true" /></button>
+            <small>需民警验证身份 · 登录当天有效</small>
+            <button type="button" class="kiosk-primary" @click="emit('enter', 'manual')">开始新建笔录<ChevronRight :size="17" aria-hidden="true" /></button>
           </footer>
         </section>
 
-        <section class="kiosk-card kiosk-devices" aria-labelledby="kiosk-device-title">
-          <h2 id="kiosk-device-title">设备自检</h2>
-          <ul>
-            <li v-for="item in deviceItems" :key="item.key" :title="item.detail || undefined">
-              <component :is="item.icon" :size="18" aria-hidden="true" />
-              <span>{{ item.title }}</span>
-              <em :class="{ ok: item.ok }">{{ item.label }}</em>
-            </li>
-          </ul>
-          <p v-if="deviceError" class="kiosk-alert" role="alert">{{ deviceError }}</p>
-          <button type="button" class="kiosk-secondary" @click="load">重新自检</button>
+        <section class="kiosk-card kiosk-card-self" aria-labelledby="kiosk-self-title">
+          <header class="kiosk-card-head">
+            <span class="kiosk-card-icon" aria-hidden="true"><UserRoundCheck :size="52" /></span>
+            <div>
+              <h2 id="kiosk-self-title">自助模式 <span class="kiosk-badge">本人作答</span></h2>
+              <p>当事人对照屏幕逐题口述回答，系统录音转写，民警全程在场核对定稿</p>
+              <small>适用：报案人 / 被害人 / 证人自述 · 民警全程在场</small>
+            </div>
+          </header>
+          <div class="kiosk-flow">
+            <span class="kiosk-flow-label">办理流程</span>
+            <ol>
+              <li v-for="(step, index) in selfSteps" :key="step.title">
+                <b>{{ index + 1 }}</b>
+                <strong>{{ step.title }}</strong>
+                <span>{{ step.detail }}</span>
+              </li>
+            </ol>
+          </div>
+          <footer>
+            <small>需民警验证身份并建档后，再交由本人作答</small>
+            <button type="button" class="kiosk-primary" @click="emit('enter', 'self')">进入自助模式<ChevronRight :size="17" aria-hidden="true" /></button>
+          </footer>
         </section>
       </div>
 
       <section class="kiosk-strip" aria-label="办理须知">
         <span><i class="dot is-primary" aria-hidden="true"></i>合规：民警在场确认后定稿</span>
         <span><i class="dot is-success" aria-hidden="true"></i>隐私：全程保密，仅用于本次办理</span>
-        <span><i class="dot" :class="devicesReady ? 'is-success' : 'is-warning'" aria-hidden="true"></i>{{ deviceSummary }}</span>
+        <span class="kiosk-strip-devices" :title="deviceItems.map((item) => `${item.title}：${item.label}${item.detail ? `（${item.detail}）` : ''}`).join('\n')">
+          <i class="dot" :class="devicesReady ? 'is-success' : 'is-warning'" aria-hidden="true"></i>{{ deviceSummary }}
+          <button type="button" class="kiosk-recheck" @click="load">重新自检</button>
+        </span>
       </section>
+      <p v-if="deviceError" class="kiosk-alert" role="alert">{{ deviceError }}</p>
+      <ul v-else-if="devices && !devicesReady" class="kiosk-device-faults">
+        <li v-for="item in deviceItems.filter((entry) => !entry.ok)" :key="item.key" :title="item.detail || undefined">
+          <component :is="item.icon" :size="16" aria-hidden="true" />{{ item.title }}<em>{{ item.label }}</em>
+        </li>
+      </ul>
     </div>
 
     <footer class="kiosk-footer">
@@ -186,6 +216,10 @@ onUnmounted(() => {
 .kiosk-modes { display: grid; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-8); min-height: 0; }
 .kiosk-card { display: flex; flex-direction: column; gap: var(--space-8); padding: var(--space-8); border: 1px solid var(--line-200); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
 .kiosk-modes > .kiosk-card:first-child { border-color: var(--primary-500); background: var(--primary-50); }
+.kiosk-card-self .kiosk-card-icon { background: var(--success-100); color: var(--success-700); }
+.kiosk-card-self .kiosk-badge { background: var(--success-700); }
+.kiosk-card-self .kiosk-flow b { background: var(--success-700); }
+.kiosk-card-self .kiosk-flow strong { color: var(--success-700); }
 .kiosk-card-head { display: flex; gap: var(--space-4); }
 .kiosk-card-icon { display: grid; place-items: center; width: 108px; height: 108px; flex: none; border-radius: var(--radius-lg); background: var(--primary-100); color: var(--primary-600); }
 .kiosk-card h2 { display: flex; align-items: center; gap: var(--space-3); margin: 0 0 var(--space-3); color: var(--ink-900); font-size: var(--text-4xl); font-weight: 650; }
@@ -205,15 +239,12 @@ onUnmounted(() => {
 .kiosk-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 60px; border: 0; border-radius: var(--radius-md); background: var(--primary-600); color: var(--surface); font-size: var(--text-xl); font-weight: 600; box-shadow: var(--shadow-active); }
 .kiosk-primary:hover { background: var(--primary-700); }
 
-.kiosk-devices h2 { font-size: var(--text-4xl); }
-.kiosk-devices ul { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.kiosk-devices li { display: flex; align-items: center; gap: var(--space-3); min-height: 72px; padding: 0 var(--space-6); border-radius: var(--radius-md); background: var(--surface-sunken); color: var(--ink-700); font-size: var(--text-xl); }
-.kiosk-devices li em { margin-left: auto; color: var(--warning-700); font-style: normal; font-weight: 600; }
-.kiosk-devices li em.ok { color: var(--success-700); }
-.kiosk-secondary { min-height: 60px; margin-top: auto; border: 1px solid var(--primary-500); border-radius: var(--radius-md); background: var(--surface); color: var(--primary-600); font-size: var(--text-base); font-weight: 600; }
-
 .kiosk-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); padding: var(--space-5) var(--space-8); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--ink-700); font-size: var(--text-lg); }
 .kiosk-strip span { display: flex; align-items: center; gap: var(--space-2); }
+.kiosk-recheck { margin-left: auto; min-height: 36px; padding: 0 var(--space-3); border: 1px solid var(--primary-500); border-radius: var(--radius-sm); background: var(--surface); color: var(--primary-600); font-size: var(--text-sm); font-weight: 600; white-space: nowrap; }
+.kiosk-device-faults { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: calc(var(--space-4) * -1) 0 0; padding: 0; list-style: none; }
+.kiosk-device-faults li { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-3); border-radius: var(--radius-pill); background: var(--warning-100); color: var(--warning-700); font-size: var(--text-sm); }
+.kiosk-device-faults em { font-style: normal; font-weight: 600; }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .dot.is-primary { background: var(--primary-600); }
 .dot.is-success { background: var(--success-600); }

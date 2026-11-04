@@ -23,6 +23,17 @@ describe('root route', () => {
     expect(parseRootRoute('?view=admin-case')).toEqual({ page: 'admin-cases' })
   })
 
+  it('keeps the self-service mode and the post-login target across refreshes', () => {
+    expect(parseRootRoute('?caseId=C-1&mode=self')).toEqual({ page: 'case', caseId: 'C-1', selfService: true })
+    expect(parseRootRoute('?caseId=C-1&mode=other')).toEqual({ page: 'case', caseId: 'C-1' })
+    expect(parseRootRoute('?view=login&next=self')).toEqual({ page: 'login', next: 'self' })
+    expect(parseRootRoute('?view=login&next=nope')).toEqual({ page: 'login' })
+    const base = 'https://kiosk.local/?view=login&next=self'
+    expect(rootRouteUrl(base, { page: 'case', caseId: 'C-1', selfService: true })).toBe('https://kiosk.local/?caseId=C-1&mode=self')
+    expect(rootRouteUrl('https://kiosk.local/?caseId=C-1&mode=self', { page: 'case', caseId: 'C-1' })).toBe('https://kiosk.local/?caseId=C-1')
+    expect(rootRouteUrl('https://kiosk.local/', { page: 'login', next: 'manual' })).toBe('https://kiosk.local/?view=login&next=manual')
+  })
+
   it('writes routes back while preserving unrelated query parameters', () => {
     const base = 'https://kiosk.local/app/?debug=1&view=cases'
     expect(rootRouteUrl(base, { page: 'case', caseId: 'C 1' })).toBe('https://kiosk.local/app/?debug=1&caseId=C+1')
