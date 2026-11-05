@@ -83,10 +83,14 @@ describe('ReviewChecklistPanel knowledge-base rules', () => {
 
 describe('ReviewRecordPreview (design P13 right column)', () => {
   it('previews every question and marks unanswered ones 未获取', async () => {
-    const html = await renderToString(createSSRApp(ReviewRecordPreview, { questions }))
+    const session = { id: 's', caseId: 'C-1', status: 'READY', stage: 'IDENTITY', startedAt: null, endedAt: null, pausedAt: null, updatedAt: 1 }
+    const html = await renderToString(createSSRApp(ReviewRecordPreview, { summary: { id: 'C-1', suspectName: '王某某' }, facts, session, questions }))
     expect(html).toContain('1 问已答 · 2 题未获取')
     expect(html).toContain('答：今天早上 7 时 20 分。')
     expect(html).toContain('答：（未获取）')
-    expect(html).toContain('已录音但未摘入正本')
+    expect(html).toContain('第 2 题已录音但未摘入正本')
+    // 与打印件同一份纸面：A4 逐页、页码
+    expect(html).toContain('class="record-sheet"')
+    expect(html).toContain('第1页，共1页')
   })
 })

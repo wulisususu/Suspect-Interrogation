@@ -21,7 +21,8 @@ const frozen = {
 describe('signing and archive UI state', () => {
   it('renders the document with the three inline signature hotspots', async () => {
     const html = await screen({ signingState: frozen })
-    expect(html).toContain('完整回答第一行\n完整回答第二行')
+    // 答案里的换行在纸面上另起一行（各占一条横线）
+    expect(html).toMatch(/record-row"[^>]*><!--\[-->答：完整回答第一行<!--\]--><\/div><div class="is-line record-row"[^>]*><!--\[-->完整回答第二行/)
     expect(html).toContain('被询问人签名')
     expect(html).toContain('指纹捺印')
     expect(html).toContain('民警签名')
