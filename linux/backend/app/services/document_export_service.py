@@ -97,7 +97,7 @@ def _image_stream(data_url: str):
     return BytesIO(base64.b64decode(encoded))
 
 
-def _add_bottom_rule(paragraph) -> None:
+def _add_bottom_rule(paragraph, *, offset: int = 0) -> None:
     """段落下方的横线（抬头分隔线与问答行的稿纸线）。
 
     OOXML 的 CT_PPr 是有序的：pBdr 必须排在 spacing/ind/jc 之前，直接 append 会被
@@ -124,12 +124,13 @@ def _add_bottom_rule(paragraph) -> None:
     bottom = OxmlElement('w:bottom')
     bottom.set(qn('w:val'), 'single')
     bottom.set(qn('w:sz'), '6')
-    bottom.set(qn('w:space'), '4')
+    # 相邻段落边框完全相同会被合并成一个框（中间不画线），所以逐段交替 spacing 打破合并
+    bottom.set(qn('w:space'), str(4 + (offset % 2)))
     bottom.set(qn('w:color'), '808080')
     borders.append(bottom)
 
 
-def _set_row(paragraph, *, ruled: bool) -> None:
+def _set_row(paragraph, *, ruled: bool, offset: int = 0) -> None:
     """一行 10 mm：纸质笔录是每行一条横线，Word 里用固定行距加段落下边框対応。"""
     from docx.enum.text import WD_LINE_SPACING
     from docx.shared import Mm
@@ -139,7 +140,7 @@ def _set_row(paragraph, *, ruled: bool) -> None:
     paragraph.paragraph_format.space_before = 0
     paragraph.paragraph_format.space_after = 0
     if ruled:
-        _add_bottom_rule(paragraph)
+        _add_bottom_rule(paragraph, offset=offset)
 
 
 def _underlined(paragraph, text: str, min_em: float | None = None) -> None:
@@ -252,9 +253,11 @@ def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
             pairs.extend([('问', str(entry.get('formalQuestionText') or entry.get('questionText') or '')),
                           ('答', str(entry.get('answerText') or '（未获取）'))])
 
+    ruled_rows = 0
     for prefix, text in pairs:
         paragraph = document.add_paragraph()
-        _set_row(paragraph, ruled=True)
+        _set_row(paragraph, ruled=True, offset=ruled_rows)
+        ruled_rows += 1
         paragraph.paragraph_format.keep_with_next = prefix == '问'
         paragraph.add_run(f'{prefix}：').bold = True
         paragraph.add_run(text)
