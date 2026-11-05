@@ -130,8 +130,8 @@ def _add_bottom_rule(paragraph, *, offset: int = 0) -> None:
     borders.append(bottom)
 
 
-def _set_row(paragraph, *, ruled: bool, offset: int = 0) -> None:
-    """一行 10 mm：纸质笔录是每行一条横线，Word 里用固定行距加段落下边框対応。"""
+def _set_row(paragraph) -> None:
+    """一行 10 mm 的固定行高，对应纸面的行距。"""
     from docx.enum.text import WD_LINE_SPACING
     from docx.shared import Mm
 
@@ -139,8 +139,6 @@ def _set_row(paragraph, *, ruled: bool, offset: int = 0) -> None:
     paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
     paragraph.paragraph_format.space_before = 0
     paragraph.paragraph_format.space_after = 0
-    if ruled:
-        _add_bottom_rule(paragraph, offset=offset)
 
 
 def _underlined(paragraph, text: str, min_em: float | None = None) -> None:
@@ -159,6 +157,51 @@ def _underlined(paragraph, text: str, min_em: float | None = None) -> None:
         if used < min_em:
             filler = paragraph.add_run('\u3000' * max(1, round(min_em - used)))
             filler.underline = True
+
+
+def _cell_bottom_border(cell) -> None:
+    """单元格下边框：稿纸的每一行靠表格线实现，段落边框会被合并掉。"""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    properties = cell._tc.get_or_add_tcPr()
+    borders = properties.find(qn('w:tcBorders'))
+    if borders is None:
+        borders = OxmlElement('w:tcBorders')
+        properties.append(borders)
+    bottom = OxmlElement('w:bottom')
+    bottom.set(qn('w:val'), 'single')
+    bottom.set(qn('w:sz'), '6')
+    bottom.set(qn('w:space'), '0')
+    bottom.set(qn('w:color'), '808080')
+    borders.append(bottom)
+
+
+def _plain_table(document, width_mm: float):
+    """无边框、单元格零边距的单列表格。"""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Mm
+
+    table = document.add_table(rows=0, cols=1)
+    table.autofit = False
+    properties = table._tbl.tblPr
+    borders = OxmlElement('w:tblBorders')
+    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        element = OxmlElement(f'w:{edge}')
+        element.set(qn('w:val'), 'none')
+        element.set(qn('w:sz'), '0')
+        borders.append(element)
+    properties.append(borders)
+    margins = OxmlElement('w:tblCellMar')
+    for edge in ('top', 'left', 'bottom', 'right'):
+        element = OxmlElement(f'w:{edge}')
+        element.set(qn('w:w'), '0')
+        element.set(qn('w:type'), 'dxa')
+        margins.append(element)
+    properties.append(margins)
+    table.columns[0].width = Mm(width_mm)
+    return table
 
 
 def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
@@ -225,15 +268,18 @@ def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
         [('现住址', fact('current_address'), None)],
         [('户籍所在地', fact('household_registration'), None)],
     ]
-    for row in field_rows:
+    for row_index, row in enumerate(field_rows):
         paragraph = document.add_paragraph()
-        _set_row(paragraph, ruled=False)
+        _set_row(paragraph)
         for index, (label, value, width) in enumerate(row):
             if index:
                 paragraph.add_run('　')
             paragraph.add_run(label)
             paragraph.add_run(' ')
             _underlined(paragraph, value, width)
+        if row_index == len(field_rows) - 1:
+            # 抬头区与正文之间的分隔线；单独一段，不存在相邻边框合并的问题
+            _add_bottom_rule(paragraph)
 
     transcript = content.get('transcript') or {}
     pairs: list[tuple[str, str]] = []
@@ -253,14 +299,25 @@ def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
             pairs.extend([('问', str(entry.get('formalQuestionText') or entry.get('questionText') or '')),
                           ('答', str(entry.get('answerText') or '（未获取）'))])
 
-    ruled_rows = 0
-    for prefix, text in pairs:
-        paragraph = document.add_paragraph()
-        _set_row(paragraph, ruled=True, offset=ruled_rows)
-        ruled_rows += 1
-        paragraph.paragraph_format.keep_with_next = prefix == '问'
-        paragraph.add_run(f'{prefix}：').bold = True
-        paragraph.add_run(text)
+    if pairs:
+        from docx.enum.table import WD_ROW_HEIGHT_RULE
+        from docx.shared import Mm
+
+        table = _plain_table(document, 168)
+        for index, (prefix, text) in enumerate(pairs):
+            row = table.add_row()
+            row.height = Mm(10)
+            row.height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
+            cell = row.cells[0]
+            cell.width = Mm(168)
+            paragraph = cell.paragraphs[0]
+            _set_row(paragraph)
+            # 问题与它的答案不分页拆开
+            if prefix == '问' and index + 1 < len(pairs):
+                paragraph.paragraph_format.keep_with_next = True
+            paragraph.add_run(f'{prefix}：').bold = True
+            paragraph.add_run(text)
+            _cell_bottom_border(cell)
 
     saved = [row for row in signatures or [] if str(getattr(row, 'image_data', '') or '').startswith('data:')]
     if saved:
@@ -269,7 +326,7 @@ def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
         for role, label in (('SUSPECT', '被询问人（签名）'), ('OFFICER', '询问人（签名）')):
             row = by_role.get(role)
             paragraph = document.add_paragraph()
-            _set_row(paragraph, ruled=False)
+            _set_row(paragraph)
             paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
             paragraph.add_run(f'{label}：')
             if row is not None:
@@ -280,7 +337,7 @@ def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
             else:
                 paragraph.add_run('　' * 6)
         stamp = document.add_paragraph(_record_date(session.get('endedAt')))
-        _set_row(stamp, ruled=False)
+        _set_row(stamp)
         stamp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
     footer = section.footer.paragraphs[0]

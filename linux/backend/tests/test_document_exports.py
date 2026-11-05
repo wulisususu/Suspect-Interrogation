@@ -69,7 +69,9 @@ def test_docx_is_real_puretext_from_frozen_snapshot_and_audited(exports):
             assert '实时姓名' not in xml and '不能用临时回合' not in xml
             assert '<w:keepNext/>' in xml
             # 抬头区那条横线（预览里的 border-bottom）
+            # 抬头分隔线走段落边框；问答的稿纸线走表格单元格边框（段落边框会合并）
             assert '<w:pBdr>' in xml
+            assert '<w:tcBorders>' in xml
             # 冻结版本/校验值不再出现在正文里
             assert '冻结版本' not in xml and '正本校验值' not in xml
             # 民警与当事人签名图现在会嵌进导出件
