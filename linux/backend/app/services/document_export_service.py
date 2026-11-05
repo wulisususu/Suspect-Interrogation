@@ -41,6 +41,14 @@ def _record_time(value) -> str:
         return '未记录'
 
 
+def _record_date(value) -> str:
+    """落款日期用中文年月日，和纸质笔录一致。"""
+    text = _record_time(value)
+    if text == '未记录':
+        return ''
+    return f'{text[0:4]}年{text[5:7]}月{text[8:10]}日'
+
+
 def _paragraphs(content: dict) -> list[str]:
     """Use the frozen editor's canonical answers, with older snapshot compatibility."""
     case = content.get('case') or {}
@@ -80,11 +88,49 @@ def _paragraphs(content: dict) -> list[str]:
     return lines
 
 
-def _write_docx(path: Path, lines: list[str], snapshot) -> None:
-    from docx import Document
+def _image_stream(data_url: str):
+    """把签名/指纹的 data URL 变成 python-docx 能嵌入的字节流。"""
+    import base64
+    from io import BytesIO
+
+    _, _, encoded = str(data_url or '').partition(',')
+    return BytesIO(base64.b64decode(encoded))
+
+
+def _add_bottom_rule(paragraph) -> None:
+    """抬头区下面那条横线：预览里是 border-bottom，Word 里用段落底边框对应。"""
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
+
+    properties = paragraph._p.get_or_add_pPr()
+    borders = OxmlElement('w:pBdr')
+    bottom = OxmlElement('w:bottom')
+    bottom.set(qn('w:val'), 'single')
+    bottom.set(qn('w:sz'), '6')
+    bottom.set(qn('w:space'), '6')
+    bottom.set(qn('w:color'), '808080')
+    borders.append(bottom)
+    properties.append(borders)
+
+
+def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
     from docx.shared import Cm, Pt
+
+    case = content.get('case') or {}
+    session = content.get('session') or {}
+    facts = {item.get('key'): str(item.get('value') or '').strip() for item in content.get('facts') or []}
+
+    def fact(key: str) -> str:
+        value = facts.get(key)
+        return value if value and value not in {'未录入', '未填写'} else '未记录'
+
+    interrogator = case.get('interrogator') or {}
+    recorder = case.get('recorder') or {}
+    interrogator_name = interrogator.get('displayName') or interrogator.get('name') or case.get('officerName') or '未记录'
+    recorder_name = recorder.get('displayName') or recorder.get('name') or fact('recorder_name')
 
     document = Document()
     section = document.sections[0]
@@ -96,21 +142,85 @@ def _write_docx(path: Path, lines: list[str], snapshot) -> None:
     normal.font.size = Pt(12)
     normal.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
     normal.paragraph_format.line_spacing = 1.5
-    for index, text in enumerate(lines):
-        paragraph = document.add_paragraph(text)
-        if text.startswith('问：') or index == 0:
+
+    title = document.add_paragraph('询 问 笔 录')
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title.paragraph_format.space_after = Pt(4)
+    title_run = title.runs[0]
+    title_run.bold = True
+    title_run.font.size = Pt(18)
+
+    subtitle = document.add_paragraph(f"询问次数：{fact('interrogation_round') if fact('interrogation_round') != '未记录' else '1'}")
+    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    subtitle.paragraph_format.space_after = Pt(12)
+
+    meta_lines = [
+        f"询问时间：{_record_time(session.get('startedAt'))} 至 {_record_time(session.get('endedAt'))}",
+        f"询问地点：{fact('interrogation_place')}",
+        f"询问人：{interrogator_name}　工作单位：{fact('officer_unit')}",
+        f"记录人：{recorder_name}　工作单位：{fact('recorder_unit')}",
+        f"被询问人：{case.get('suspectName') or '未记录'}　性别：{case.get('gender') or '未记录'}　出生日期：{case.get('birthDate') or '未记录'}",
+        f"证件类型：{fact('id_document_type')}　证件号码：{case.get('idNumber') or case.get('id_number') or '未记录'}",
+        f"联系方式：{fact('contact')}　现住址：{fact('current_address')}",
+        f"案件编号：{case.get('case_id') or case.get('id') or case.get('caseId') or '未记录'}",
+    ]
+    for index, line in enumerate(meta_lines):
+        paragraph = document.add_paragraph(line)
+        paragraph.paragraph_format.space_after = Pt(0)
+        if index == len(meta_lines) - 1:
+            _add_bottom_rule(paragraph)
+
+    transcript = content.get('transcript') or {}
+    pairs: list[tuple[str, str]] = []
+    if transcript.get('source') == 'LEGACY_MESSAGES':
+        for message in transcript.get('messages') or []:
+            speaker = str(message.get('speaker') or message.get('from') or '').upper()
+            prefix = '问' if speaker in {'民警', 'OFFICER', 'POLICE', 'QUESTION', 'INTERROGATOR', 'RECORDER'} else '答'
+            pairs.append((prefix, str(message.get('text') or '')))
+    elif 'questions' in transcript:
+        for question in transcript.get('questions') or []:
+            if question.get('active') is False:
+                continue
+            pairs.extend([('问', str(question.get('text') or '')),
+                          ('答', str(question.get('formalAnswerText') or '（未获取）'))])
+    else:
+        for entry in transcript.get('entries') or []:
+            pairs.extend([('问', str(entry.get('formalQuestionText') or entry.get('questionText') or '')),
+                          ('答', str(entry.get('answerText') or '（未获取）'))])
+
+    for index, (prefix, text) in enumerate(pairs):
+        paragraph = document.add_paragraph()
+        paragraph.paragraph_format.space_before = Pt(8) if index == 0 else Pt(0)
+        paragraph.paragraph_format.first_line_indent = Pt(24)
+        # 问题与它的答案不要被分页切开
+        if prefix == '问':
             paragraph.paragraph_format.keep_with_next = True
-        if index == 0:
-            paragraph.alignment = 1
-            paragraph.runs[0].bold = True
-            paragraph.runs[0].font.size = Pt(18)
-    document.add_paragraph(f'冻结版本：{snapshot.version}　正本校验值：{snapshot.content_hash}')
-    footer = section.footer.paragraphs[0]
-    footer.alignment = 1
-    field = OxmlElement('w:fldSimple')
-    field.set(qn('w:instr'), 'PAGE')
-    footer._p.append(field)
-    document.core_properties.title = '询问笔录（纯文字版）'
+        paragraph.add_run(f'{prefix}：').bold = True
+        paragraph.add_run(text)
+
+    # 签名区：预览里是页脚签名行，这里落成右下的签名位，图片直接嵌入。
+    saved = [row for row in signatures or [] if str(getattr(row, 'image_data', '') or '').startswith('data:')]
+    if saved:
+        document.add_paragraph('')
+        by_role = {str(getattr(row, 'signer_role', '')).upper(): row for row in saved}
+        for role, label in (('SUSPECT', '被询问人（签名）'), ('OFFICER', '询问人（签名）')):
+            row = by_role.get(role)
+            paragraph = document.add_paragraph()
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            paragraph.paragraph_format.space_after = Pt(2)
+            paragraph.add_run(f'{label}：')
+            if row is not None:
+                run = paragraph.add_run()
+                try:
+                    run.add_picture(_image_stream(row.image_data), width=Cm(3.2))
+                except Exception:  # noqa: BLE001 - 签名图坏了不该让整个导出失败
+                    paragraph.add_run('　' * 6)
+            else:
+                paragraph.add_run('　' * 6)
+        stamp = document.add_paragraph(_record_date(session.get('endedAt')))
+        stamp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    document.core_properties.title = '询问笔录'
     document.core_properties.author = ''
     document.save(path)
 
@@ -216,12 +326,12 @@ class DocumentExportService:
         except (ValueError, TypeError, AttributeError):
             raise DomainError('DOCUMENT_CONTENT_INVALID', '冻结正本内容无效', 409)
         signatures, fingerprint, manifest = [], None, []
+        signatures = list(self.db.scalars(select(SignatureRecord).where(
+            SignatureRecord.case_id == case_id, SignatureRecord.snapshot_id == snapshot.id,
+            SignatureRecord.status == 'SAVED').order_by(SignatureRecord.signer_role.desc())))
         if format == 'PDF':
             from app.database.document_mark_models import DocumentFingerprint
 
-            signatures = list(self.db.scalars(select(SignatureRecord).where(
-                SignatureRecord.case_id == case_id, SignatureRecord.snapshot_id == snapshot.id,
-                SignatureRecord.status == 'SAVED').order_by(SignatureRecord.signer_role.desc())))
             if case.workflow_state not in {'SIGNED', 'REPORT_GENERATED'} or {row.signer_role for row in signatures} != {'SUSPECT', 'OFFICER'}:
                 raise DomainError('DOCUMENT_SIGNATURES_REQUIRED', '双方签署完成后才能导出签章版 PDF', 409)
             fingerprint = self.db.scalar(select(DocumentFingerprint).where(
@@ -238,7 +348,7 @@ class DocumentExportService:
         temporary = path.with_suffix('.tmp')
         try:
             if format == 'DOCX':
-                _write_docx(temporary, lines, snapshot)
+                _write_docx(temporary, content, snapshot, signatures)
             else:
                 _write_pdf(temporary, lines, snapshot, signatures, fingerprint)
             temporary.replace(path)

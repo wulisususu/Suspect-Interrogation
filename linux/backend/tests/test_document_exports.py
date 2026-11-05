@@ -68,7 +68,15 @@ def test_docx_is_real_puretext_from_frozen_snapshot_and_audited(exports):
             assert '张某' in xml and '昨晚八点。' in xml and '手机&lt;&amp;&gt;一部。' in xml
             assert '实时姓名' not in xml and '不能用临时回合' not in xml
             assert '<w:keepNext/>' in xml
-            assert not any(name.startswith('word/media/') for name in archive.namelist())
+            # 抬头区那条横线（预览里的 border-bottom）
+            assert '<w:pBdr>' in xml
+            # 冻结版本/校验值不再出现在正文里
+            assert '冻结版本' not in xml and '正本校验值' not in xml
+            # 民警与当事人签名图现在会嵌进导出件
+            assert '被询问人（签名）' in xml and '询问人（签名）' in xml
+            # python-docx 会按图片内容去重，两份签名用同一张图时只落一份，所以只断言有图
+            media = [name for name in archive.namelist() if name.startswith('word/media/')]
+            assert media
         assert download['format'] == 'DOCX'
         rows = list(db.scalars(select(AuditLog).where(AuditLog.case_id == 'CASE-A')))
         assert {row.action for row in rows} == {'DOCUMENT_EXPORT', 'DOCUMENT_EXPORT_DOWNLOAD'}
