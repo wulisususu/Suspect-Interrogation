@@ -98,19 +98,35 @@ def _image_stream(data_url: str):
 
 
 def _add_bottom_rule(paragraph) -> None:
-    """抬头区下面那条横线：预览里是 border-bottom，Word 里用段落底边框对应。"""
+    """段落下方的横线（抬头分隔线与问答行的稿纸线）。
+
+    OOXML 的 CT_PPr 是有序的：pBdr 必须排在 spacing/ind/jc 之前，直接 append 会被
+    Word 与 LibreOffice 一起忽略——这正是导出件"没有下划线"的直接原因。
+    """
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
     properties = paragraph._p.get_or_add_pPr()
-    borders = OxmlElement('w:pBdr')
+    borders = properties.find(qn('w:pBdr'))
+    if borders is None:
+        borders = OxmlElement('w:pBdr')
+        anchor = None
+        for tag in ('w:shd', 'w:tabs', 'w:suppressAutoHyphens', 'w:spacing', 'w:ind', 'w:jc', 'w:rPr'):
+            anchor = properties.find(qn(tag))
+            if anchor is not None:
+                break
+        if anchor is not None:
+            anchor.addprevious(borders)
+        else:
+            properties.append(borders)
+    for child in list(borders):
+        borders.remove(child)
     bottom = OxmlElement('w:bottom')
     bottom.set(qn('w:val'), 'single')
     bottom.set(qn('w:sz'), '6')
-    bottom.set(qn('w:space'), '6')
+    bottom.set(qn('w:space'), '4')
     bottom.set(qn('w:color'), '808080')
     borders.append(bottom)
-    properties.append(borders)
 
 
 def _set_row(paragraph, *, ruled: bool) -> None:
@@ -127,8 +143,14 @@ def _set_row(paragraph, *, ruled: bool) -> None:
 
 
 def _underlined(paragraph, text: str, min_em: float | None = None) -> None:
-    """填写栏：值带下划线，不足宽度补全角空格，让横线连成一条。"""
+    """填写栏：值带下划线，不足宽度补全角空格，让横线连成一条。
+
+    空值也要留出可填写的横线——纸质笔录里每个栏目都必须有线，否则导出件看起来
+    像"这一栏被漏掉了"。
+    """
     value = str(text or '')
+    if not value and not min_em:
+        min_em = 8
     run = paragraph.add_run(value)
     run.underline = True
     if min_em:
@@ -209,6 +231,7 @@ def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
             if index:
                 paragraph.add_run('　')
             paragraph.add_run(label)
+            paragraph.add_run(' ')
             _underlined(paragraph, value, width)
 
     transcript = content.get('transcript') or {}

@@ -77,6 +77,17 @@ def test_docx_is_real_puretext_from_frozen_snapshot_and_audited(exports):
             # python-docx 会按图片内容去重，两份签名用同一张图时只落一份，所以只断言有图
             media = [name for name in archive.namelist() if name.startswith('word/media/')]
             assert media
+            # pBdr 必须排在 spacing 之前，否则 Word/LibreOffice 直接忽略这条横线
+            from lxml import etree
+
+            root = etree.fromstring(archive.read('word/document.xml'))
+            word = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+            disordered = []
+            for properties in root.iter(f'{word}pPr'):
+                tags = [child.tag.replace(word, '') for child in properties]
+                if 'pBdr' in tags and 'spacing' in tags and tags.index('pBdr') > tags.index('spacing'):
+                    disordered.append(tags)
+            assert not disordered, disordered
         assert download['format'] == 'DOCX'
         rows = list(db.scalars(select(AuditLog).where(AuditLog.case_id == 'CASE-A')))
         assert {row.action for row in rows} == {'DOCUMENT_EXPORT', 'DOCUMENT_EXPORT_DOWNLOAD'}
