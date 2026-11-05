@@ -54,10 +54,15 @@
   --paper-muted: #8c97a6;
   --paper-hotspot-border: #8aa9c9;
   --paper-hotspot-bg: #f7fbff;
+  /* 正式笔录纸面（仿派出所打印件）：纯黑字、纯黑横线 */
+  --record-ink: #000000;
+  --record-rule: #000000;
 
   /* 字体 */
   --font-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
   --font-serif: "FangSong", "STFangsong", "SimSun", serif;
+  /* 正式笔录用宋体（与派出所打印件一致）：装有中易宋体（Windows）时用它，否则用随前端分发的宋体（RecordSong），各终端打印一致 */
+  --font-record: "SimSun", "宋体", "NSimSun", "RecordSong", "Noto Serif CJK SC", serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
 
   --text-xs: 13px;

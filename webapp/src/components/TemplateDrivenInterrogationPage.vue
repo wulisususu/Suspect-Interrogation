@@ -580,7 +580,7 @@ async function confirmSignature() {
             :knowledge-checks="ruleChecks"
           />
         </div>
-        <ReviewRecordPreview :questions="workspace.questions" />
+        <ReviewRecordPreview :summary="summary" :facts="facts" :session="session" :questions="workspace.questions" />
       </div>
 
       <footer class="review-footer record-no-print">

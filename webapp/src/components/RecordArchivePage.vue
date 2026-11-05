@@ -131,7 +131,7 @@ function escapeHtml(value: string) {
     </template>
 
     <div class="archive-print-only">
-      <RecordPaper class="archive-paper" :summary="summary" :facts="facts" :session="session" :questions="questions" :subtitle="`归档正式件 · ${branding.volumePrefix ? `卷号 ${volumeNo}` : volumeNo}`">
+      <RecordPaper :scale="1" :summary="summary" :facts="facts" :session="session" :questions="questions">
         <template #footer>
         <footer class="archive-signatures">
           <div v-for="role in (['SUSPECT', 'OFFICER'] as const)" :key="role" class="archive-signature">
@@ -186,9 +186,8 @@ function escapeHtml(value: string) {
 .archive-footnote { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--ink-500); font-size: var(--text-xs); }
 
 .archive-print-only { display: none; }
-.archive-paper { width: 794px; margin: 0 auto; }
-.archive-signatures { margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--paper-rule); }
-.archive-signature { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; min-height: 40px; }
+.archive-signatures { padding-top: 4mm; }
+.archive-signature { display: flex; font-size: 14pt; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; min-height: 40px; }
 .archive-signature img { max-width: 200px; max-height: 70px; object-fit: contain; }
 .archive-signatures > p { margin: 0; color: var(--paper-muted); font: var(--text-xs)/1.7 var(--font-sans); }
 

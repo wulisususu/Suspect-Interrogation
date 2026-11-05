@@ -57,7 +57,7 @@ const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.su
     <div class="print-preview-column">
       <div class="print-preview-scroll" aria-label="询问笔录打印预览">
         <div class="print-preview-size" :style="{ width: `${794 * zoom / 100}px` }">
-          <RecordPaper class="signing-paper" :style="{ zoom: zoom / 100 }" :summary="summary" :facts="facts" :session="session" :questions="questions">
+          <RecordPaper class="signing-paper" :scale="zoom / 100" :summary="summary" :facts="facts" :session="session" :questions="questions">
             <template #footer>
             <footer class="paper-signatures">
               <div class="paper-sign-row" aria-label="文末签章">
@@ -98,7 +98,7 @@ const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.su
         <span>{{ zoom }}%</span>
         <button type="button" aria-label="放大打印预览" :disabled="zoom >= 100" @click="zoom += 10"><Plus :size="17" /></button>
         <button type="button" :disabled="busy" @click="emit('print')"><Printer :size="16" />打印预览</button>
-        <small>连续预览，打印时自动分页</small>
+        <small>逐页预览，与打印件一致</small>
       </footer>
     </div>
 
@@ -159,14 +159,13 @@ const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.su
 .print-preview-scroll { overflow: auto; min-width: 0; min-height: 0; padding: var(--space-5); }
 .print-preview-size { margin: 0 auto; }
 
-.signing-paper { width: 794px; min-height: 1123px; }
 
-.paper-signatures { margin-top: 32px; }
+.paper-signatures { padding-top: 4mm; }
 .paper-signatures > p { padding-top: 16px; border-top: 1px solid var(--paper-rule); font: var(--text-xs)/1.7 var(--font-sans); color: var(--paper-muted); }
 
 .paper-sign-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
 .paper-sign-cell { display: flex; flex-direction: column; gap: 6px; min-height: 92px; }
-.paper-sign-label { font: var(--text-sm)/1.5 var(--font-serif); }
+.paper-sign-label { font: 14pt/1.5 var(--font-record); }
 .paper-sign-cell img { max-width: 100%; max-height: 72px; object-fit: contain; align-self: flex-start; }
 .hotspot.is-officer { border-color: var(--success-600); background: var(--success-100); }
 .signing-row-actions { display: flex; gap: var(--space-2); }

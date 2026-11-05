@@ -131,7 +131,7 @@ const caseTypeText = computed(() => (props.summary.caseType === 'suspect_interro
 .detail-coverage li { display: inline-flex; align-items: center; gap: 2px; }
 .detail-coverage li.ok { color: var(--success-700); }
 .detail-missing { margin: var(--space-2) 0 0; color: var(--warning-700); font-size: var(--text-xs); }
-.detail-preview :deep(.record-paper) { padding: var(--space-5); border: 1px solid var(--line-200); border-radius: var(--radius-md); font-size: var(--text-sm); }
+.detail-preview :deep(.record-sheets) { padding: var(--space-3) 0; }
 .detail-signatures { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-4); font-size: var(--text-xs); }
 .detail-signatures img { max-height: 48px; vertical-align: middle; }
 .detail-signatures small { color: var(--paper-muted); }
