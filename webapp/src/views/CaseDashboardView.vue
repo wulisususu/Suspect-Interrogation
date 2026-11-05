@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { ChevronLeft, ChevronRight, Search } from '@lucide/vue'
 import { backendErrorMessage, fetchCases } from '../api/interrogation'
+import { exportDocumentToFile, type DocumentExportFormat } from '../api/documentExports'
 import EmptyState from '../components/EmptyState.vue'
 import FilterSelect, { type FilterOption } from '../components/FilterSelect.vue'
 import IdentityIntakeModal from '../components/IdentityIntakeModal.vue'
@@ -93,9 +94,26 @@ function closeIntake() {
   identityOpen.value = false
   if (props.autoNew) emit('newCancelled')
 }
-function runAction(item: CaseSummary, action: LedgerAction) {
-  if (action.kind === 'open') emit('open', item.id)
-  else if (action.kind === 'detail') emit('detail', item.id)
+const exportingCaseId = ref('')
+const actionMessage = ref('')
+const actionError = ref('')
+
+async function runAction(item: CaseSummary, action: LedgerAction) {
+  if (action.kind === 'open') { emit('open', item.id); return }
+  if (action.kind === 'detail') { emit('detail', item.id); return }
+  if (action.kind !== 'export' || !action.exportFormat) return
+  if (exportingCaseId.value) return
+  exportingCaseId.value = item.id
+  actionMessage.value = ''
+  actionError.value = ''
+  try {
+    const fileName = await exportDocumentToFile(item.id, action.exportFormat as DocumentExportFormat)
+    actionMessage.value = `已导出 ${item.id} · ${fileName}`
+  } catch (error) {
+    actionError.value = `${item.id}：${backendErrorMessage(error)}`
+  } finally {
+    exportingCaseId.value = ''
+  }
 }
 
 const PHASE_ORDER: CasePhase[] = ['PREPARE', 'IN_PROGRESS', 'REVIEW', 'SIGNING', 'DONE']
@@ -152,6 +170,9 @@ onMounted(() => {
       <div class="ledger-field"><span>主审</span><FilterSelect v-model="officerFilter" label="" :options="officerFilterOptions" all-label="全部" /></div>
     </form>
 
+    <p v-if="actionMessage" class="ledger-action-note is-ok">{{ actionMessage }}</p>
+    <p v-if="actionError" class="ledger-action-note is-error">{{ actionError }}</p>
+
     <section class="ledger-table-shell">
       <table class="case-dashboard-table">
         <thead>
@@ -169,8 +190,8 @@ onMounted(() => {
                 v-for="action in ledgerActions(item)"
                 :key="action.label"
                 type="button"
-                :disabled="action.kind === 'pending'"
-                :title="action.kind === 'pending' ? '功能待接入' : undefined"
+                :disabled="action.kind === 'pending' || (action.kind === 'export' && !!exportingCaseId)"
+                :title="action.kind === 'pending' ? '功能待接入' : action.kind === 'export' ? '按冻结正本生成导出件并下载' : undefined"
                 @click.stop="runAction(item, action)"
               >{{ action.label }}</button>
             </td>
@@ -233,3 +254,6 @@ onMounted(() => {
 .ledger-pager b { color: var(--ink-900); }
 @media (max-width: 900px) { .ledger-filters { grid-template-columns: 1fr; } }
 </style>
+.ledger-action-note { margin: var(--space-3) 0 0; font-size: var(--text-sm); }
+.ledger-action-note.is-ok { color: var(--success-700); }
+.ledger-action-note.is-error { color: var(--danger-700); }

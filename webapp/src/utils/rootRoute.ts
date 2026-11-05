@@ -15,7 +15,8 @@ export type RootRoute =
   /** selfService：自助模式（当事人本人作答），地址栏记为 mode=self，刷新后仍停在自助页面 */
   | { page: 'case'; caseId: string; selfService?: boolean }
   | { page: 'admin-case'; adminCaseId: string }
-  | { page: 'admin-placeholder'; panel: AdminPanel }
+  /** recordingCaseId：从案件详情跳进录音管理时预选该案件 */
+  | { page: 'admin-placeholder'; panel: AdminPanel; recordingCaseId?: string }
 
 const SIMPLE_PAGES = ['cases', 'admin', 'admin-cases', 'admin-pending', 'admin-audit'] as const
 
@@ -34,7 +35,9 @@ export function parseRootRoute(search: string): RootRoute {
   }
   if (view === 'admin-placeholder') {
     const panel = params.get('panel') as AdminPanel | null
-    return panel && ADMIN_PANELS.includes(panel) ? { page: 'admin-placeholder', panel } : { page: 'admin' }
+    if (!panel || !ADMIN_PANELS.includes(panel)) return { page: 'admin' }
+    const recordingCaseId = params.get('recordingCaseId') || undefined
+    return recordingCaseId ? { page: 'admin-placeholder', panel, recordingCaseId } : { page: 'admin-placeholder', panel }
   }
   const simple = SIMPLE_PAGES.find((page) => page === view)
   return simple ? { page: simple } : { page: 'home' }
@@ -42,13 +45,16 @@ export function parseRootRoute(search: string): RootRoute {
 
 export function rootRouteUrl(current: string, route: RootRoute): string {
   const next = new URL(current)
-  for (const key of ['view', 'caseId', 'mode', 'adminCaseId', 'panel', 'next']) next.searchParams.delete(key)
+  for (const key of ['view', 'caseId', 'mode', 'adminCaseId', 'panel', 'next', 'recordingCaseId']) next.searchParams.delete(key)
   if (route.page === 'case') {
     next.searchParams.set('caseId', route.caseId)
     if (route.selfService) next.searchParams.set('mode', 'self')
   } else if (route.page !== 'home') next.searchParams.set('view', route.page)
   if (route.page === 'login' && route.next) next.searchParams.set('next', route.next)
   if (route.page === 'admin-case') next.searchParams.set('adminCaseId', route.adminCaseId)
-  if (route.page === 'admin-placeholder') next.searchParams.set('panel', route.panel)
+  if (route.page === 'admin-placeholder') {
+    next.searchParams.set('panel', route.panel)
+    if (route.recordingCaseId) next.searchParams.set('recordingCaseId', route.recordingCaseId)
+  }
   return next.toString()
 }

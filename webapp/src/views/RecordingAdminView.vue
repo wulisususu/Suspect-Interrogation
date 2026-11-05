@@ -27,6 +27,8 @@ import type { CaseSummary } from '../types/interrogation'
 
 const emit = defineEmits<{ login: [] }>()
 
+const props = defineProps<{ caseId?: string }>()
+
 type Gate = 'loading' | 'unconfigured' | 'unauthenticated' | 'ready' | 'error'
 
 const gate = ref<Gate>('loading')
@@ -78,9 +80,10 @@ async function boot() {
 
 async function loadCases() {
   cases.value = await fetchCases(60)
-  if (!caseId.value && cases.value.length) {
-    await selectCase(cases.value[0]!.id)
-  }
+  if (caseId.value) return
+  // 从案件详情跳进来时预选该案件；否则退回第一条。
+  const preferred = props.caseId && cases.value.some((item) => item.id === props.caseId) ? props.caseId : cases.value[0]?.id
+  if (preferred) await selectCase(preferred)
 }
 
 async function selectCase(next: string) {

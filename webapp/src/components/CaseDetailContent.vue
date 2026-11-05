@@ -22,7 +22,7 @@ const props = defineProps<{
   questions: FormalQuestion[]
   signingState: DocumentSigningState | null
 }>()
-const emit = defineEmits<{ open: [caseId: string] }>()
+const emit = defineEmits<{ open: [caseId: string]; recordings: [caseId: string] }>()
 
 const archived = computed(() => props.summary.workflowState === 'REPORT_GENERATED')
 // 后端要求正本已冻结才能导出；WORD 只要冻结，PDF 还需要双方签署与指纹捺印。
@@ -62,7 +62,7 @@ const caseTypeText = computed(() => (props.summary.caseType === 'suspect_interro
         <p>{{ archived ? `已归档 ${formatRecordTime(summary.updatedAt)} · 笔录只读` : '未归档 · 可继续办理或补录，标注缺项原因后再定稿' }}</p>
       </div>
       <div class="case-detail-actions">
-        <button type="button" class="detail-secondary" disabled title="录音在线回放待接入；原始录音已完整归档，可在卷宗目录取用">查看本笔录录音</button>
+        <button type="button" class="detail-secondary" title="按题目或原始采集回放本案录音（会记录查阅原因）" @click="emit('recordings', summary.id)">查看本笔录录音</button>
         <button type="button" class="detail-secondary" :disabled="!canExport || !!exporting" :title="canExport ? '按冻结正本生成 .docx' : '正本冻结后才能导出'" @click="exportAs('DOCX')">{{ exporting === 'DOCX' ? '正在导出…' : '导出 Word' }}</button>
         <button type="button" class="detail-secondary" :disabled="!canExport || !!exporting" :title="canExport ? '签章版 .pdf，需双方签署与指纹捺印' : '正本冻结后才能导出'" @click="exportAs('PDF')">{{ exporting === 'PDF' ? '正在导出…' : '导出 PDF' }}</button>
         <button v-if="!archived" type="button" class="detail-primary" @click="emit('open', summary.id)">继续办理</button>

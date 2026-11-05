@@ -23,8 +23,14 @@ describe('case ledger (design P20)', () => {
   })
 
   it('offers the row actions for each state', () => {
-    expect(ledgerActions(c('REPORT_GENERATED'))).toEqual([{ label: '导出 Word', kind: 'pending' }, { label: '导出 PDF', kind: 'pending' }])
-    expect(ledgerActions(c('SIGNED'))).toEqual([{ label: '补签', kind: 'open' }, { label: '导出', kind: 'pending' }])
+    expect(ledgerActions(c('REPORT_GENERATED'))).toEqual([
+      { label: '导出 Word', kind: 'export', exportFormat: 'DOCX' },
+      { label: '导出 PDF', kind: 'export', exportFormat: 'PDF' },
+    ])
+    expect(ledgerActions(c('SIGNED'))).toEqual([
+      { label: '补签', kind: 'open' },
+      { label: '导出', kind: 'export', exportFormat: 'DOCX' },
+    ])
     expect(ledgerActions(c('SUMMARY'))).toEqual([{ label: '补录', kind: 'open' }, { label: '预览', kind: 'detail' }])
     expect(ledgerActions(c('QUESTIONING'))).toEqual([{ label: '继续办理', kind: 'open' }])
     expect(ledgerActions(c('IDENTITY_READY'))).toEqual([{ label: '继续办理', kind: 'open' }])

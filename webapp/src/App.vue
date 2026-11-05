@@ -101,7 +101,12 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
       />
     </AdminShell>
     <AdminShell v-else-if="route.page === 'admin-case'" title="案件详情" back-label="返回案件记录" @back="openCases" @lock="lock">
-      <AdminCaseDetailView :key="route.adminCaseId" :case-id="route.adminCaseId" @open="openCase" />
+      <AdminCaseDetailView
+        :key="route.adminCaseId"
+        :case-id="route.adminCaseId"
+        @open="openCase"
+        @recordings="(caseId) => go({ page: 'admin-placeholder', panel: 'recordings', recordingCaseId: caseId })"
+      />
     </AdminShell>
     <AdminShell v-else-if="route.page === 'admin-pending'" title="未完成办理" @back="openAdmin" @lock="lock">
       <AdminPendingView @open="openCase" @detail="(caseId) => go({ page: 'admin-case', adminCaseId: caseId })" />
@@ -112,7 +117,7 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
     <AdminShell v-else-if="route.page === 'admin-placeholder'" :title="PANEL_TITLES[route.panel]" @back="openAdmin" @lock="lock">
       <KnowledgeAdminView v-if="route.panel === 'knowledge'" />
       <OfficerSignatureAdminView v-else-if="route.panel === 'signatures'" @login="openLogin" />
-      <RecordingAdminView v-else-if="route.panel === 'recordings'" @login="openLogin" />
+      <RecordingAdminView v-else-if="route.panel === 'recordings'" :case-id="route.recordingCaseId" @login="openLogin" />
       <AdminPlaceholderView v-else :key="route.panel" :kind="route.panel" @open="openPlaceholder" />
     </AdminShell>
     <AdminShell v-else title="全部案件记录" @back="openAdmin" @lock="lock">

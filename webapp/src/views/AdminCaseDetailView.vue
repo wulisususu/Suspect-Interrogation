@@ -10,7 +10,7 @@ import type { FormalQuestion } from '../types/templateInterrogation'
 
 /** 案件详情页：只读加载案件、事实、会话、文书与签名，交给 CaseDetailContent 展示。 */
 const props = defineProps<{ caseId: string }>()
-const emit = defineEmits<{ open: [caseId: string] }>()
+const emit = defineEmits<{ open: [caseId: string]; recordings: [caseId: string] }>()
 
 const loading = ref(true)
 const error = ref('')
@@ -47,7 +47,7 @@ onMounted(load)
 <template>
   <p v-if="loading" class="detail-loading" role="status">正在读取案件详情…</p>
   <EmptyState v-else-if="error || !data" kind="error" :description="error || '案件不存在'" @retry="load" />
-  <CaseDetailContent v-else v-bind="data" @open="emit('open', $event)" />
+  <CaseDetailContent v-else v-bind="data" @open="emit('open', $event)" @recordings="emit('recordings', $event)" />
 </template>
 
 <style scoped>
