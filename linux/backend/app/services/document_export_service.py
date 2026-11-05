@@ -113,11 +113,37 @@ def _add_bottom_rule(paragraph) -> None:
     properties.append(borders)
 
 
+def _set_row(paragraph, *, ruled: bool) -> None:
+    """一行 10 mm：纸质笔录是每行一条横线，Word 里用固定行距加段落下边框対応。"""
+    from docx.enum.text import WD_LINE_SPACING
+    from docx.shared import Mm
+
+    paragraph.paragraph_format.line_spacing = Mm(10)
+    paragraph.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    paragraph.paragraph_format.space_before = 0
+    paragraph.paragraph_format.space_after = 0
+    if ruled:
+        _add_bottom_rule(paragraph)
+
+
+def _underlined(paragraph, text: str, min_em: float | None = None) -> None:
+    """填写栏：值带下划线，不足宽度补全角空格，让横线连成一条。"""
+    value = str(text or '')
+    run = paragraph.add_run(value)
+    run.underline = True
+    if min_em:
+        used = sum(1 if (ord(char) >= 0x2E80) else 0.5 for char in value)
+        if used < min_em:
+            filler = paragraph.add_run('\u3000' * max(1, round(min_em - used)))
+            filler.underline = True
+
+
 def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
-    from docx.shared import Cm, Pt
+    from docx.shared import Mm, Pt
 
     case = content.get('case') or {}
     session = content.get('session') or {}
@@ -125,50 +151,65 @@ def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
 
     def fact(key: str) -> str:
         value = facts.get(key)
-        return value if value and value not in {'未录入', '未填写'} else '未记录'
+        return value if value and value not in {'未录入', '未填写'} else ''
 
     interrogator = case.get('interrogator') or {}
     recorder = case.get('recorder') or {}
-    interrogator_name = interrogator.get('displayName') or interrogator.get('name') or case.get('officerName') or '未记录'
+    interrogator_name = interrogator.get('displayName') or interrogator.get('name') or case.get('officerName') or ''
     recorder_name = recorder.get('displayName') or recorder.get('name') or fact('recorder_name')
+    officer_unit = fact('officer_unit')
+    recorder_unit = fact('recorder_unit') or officer_unit
 
     document = Document()
     section = document.sections[0]
-    section.page_width, section.page_height = Cm(21), Cm(29.7)
-    section.top_margin = section.bottom_margin = Cm(2.5)
-    section.left_margin = section.right_margin = Cm(2.5)
+    section.page_width, section.page_height = Mm(210), Mm(297)
+    section.top_margin = Mm(22)
+    section.bottom_margin = Mm(26)
+    section.left_margin = section.right_margin = Mm(21)
+
     normal = document.styles['Normal']
     normal.font.name = 'SimSun'
-    normal.font.size = Pt(12)
+    normal.font.size = Pt(14)
     normal.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
-    normal.paragraph_format.line_spacing = 1.5
 
-    title = document.add_paragraph('询 问 笔 录')
+    # 首页标题区（对应预览的 30 mm 标题块）
+    round_text = fact('interrogation_round') or '1'
+    round_line = document.add_paragraph(f'第 {round_text} 次')
+    round_line.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    round_line.paragraph_format.space_after = Pt(6)
+    title = document.add_paragraph('询问笔录')
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title.paragraph_format.space_after = Pt(4)
+    title.paragraph_format.space_after = Mm(8)
     title_run = title.runs[0]
-    title_run.bold = True
-    title_run.font.size = Pt(18)
+    title_run.bold = False
+    title_run.font.size = Pt(24)
 
-    subtitle = document.add_paragraph(f"询问次数：{fact('interrogation_round') if fact('interrogation_round') != '未记录' else '1'}")
-    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    subtitle.paragraph_format.space_after = Pt(12)
+    clock = lambda value: _record_time(value).replace('-', '/') if value else ''
+    start_clock = clock(session.get('startedAt')) if session.get('startedAt') else clock(case.get('createdAt'))
+    end_clock = clock(session.get('endedAt')) if session.get('endedAt') else ''
+    id_type = fact('id_document_type') or '身份证'
+    id_number = str(case.get('idNumber') or case.get('id_number') or '')
 
-    meta_lines = [
-        f"询问时间：{_record_time(session.get('startedAt'))} 至 {_record_time(session.get('endedAt'))}",
-        f"询问地点：{fact('interrogation_place')}",
-        f"询问人：{interrogator_name}　工作单位：{fact('officer_unit')}",
-        f"记录人：{recorder_name}　工作单位：{fact('recorder_unit')}",
-        f"被询问人：{case.get('suspectName') or '未记录'}　性别：{case.get('gender') or '未记录'}　出生日期：{case.get('birthDate') or '未记录'}",
-        f"证件类型：{fact('id_document_type')}　证件号码：{case.get('idNumber') or case.get('id_number') or '未记录'}",
-        f"联系方式：{fact('contact')}　现住址：{fact('current_address')}",
-        f"案件编号：{case.get('case_id') or case.get('id') or case.get('caseId') or '未记录'}",
+    field_rows: list[list[tuple[str, str, float | None]]] = [
+        [('时间', start_clock, 12), ('至', end_clock, 10)],
+        [('地点', fact('interrogation_place'), None)],
+        [('询问人', interrogator_name, 5), ('工作单位', officer_unit, None)],
+        [('记录人', recorder_name, 5), ('工作单位', recorder_unit, None)],
+        [('被询问人', str(case.get('suspectName') or ''), None)],
+        [('身份证件种类及号码', f'{id_type}，{id_number}', None)],
+        [('性别', str(case.get('gender') or ''), 4), ('出生日期', str(case.get('birthDate') or ''), 9), ('人大代表', fact('peoples_representative'), 4)],
+        [('联系方式', fact('contact'), None)],
+        [('现住址', fact('current_address'), None)],
+        [('户籍所在地', fact('household_registration'), None)],
     ]
-    for index, line in enumerate(meta_lines):
-        paragraph = document.add_paragraph(line)
-        paragraph.paragraph_format.space_after = Pt(0)
-        if index == len(meta_lines) - 1:
-            _add_bottom_rule(paragraph)
+    for row in field_rows:
+        paragraph = document.add_paragraph()
+        _set_row(paragraph, ruled=False)
+        for index, (label, value, width) in enumerate(row):
+            if index:
+                paragraph.add_run('　')
+            paragraph.add_run(label)
+            _underlined(paragraph, value, width)
 
     transcript = content.get('transcript') or {}
     pairs: list[tuple[str, str]] = []
@@ -188,41 +229,54 @@ def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
             pairs.extend([('问', str(entry.get('formalQuestionText') or entry.get('questionText') or '')),
                           ('答', str(entry.get('answerText') or '（未获取）'))])
 
-    for index, (prefix, text) in enumerate(pairs):
+    for prefix, text in pairs:
         paragraph = document.add_paragraph()
-        paragraph.paragraph_format.space_before = Pt(8) if index == 0 else Pt(0)
-        paragraph.paragraph_format.first_line_indent = Pt(24)
-        # 问题与它的答案不要被分页切开
-        if prefix == '问':
-            paragraph.paragraph_format.keep_with_next = True
+        _set_row(paragraph, ruled=True)
+        paragraph.paragraph_format.keep_with_next = prefix == '问'
         paragraph.add_run(f'{prefix}：').bold = True
         paragraph.add_run(text)
 
-    # 签名区：预览里是页脚签名行，这里落成右下的签名位，图片直接嵌入。
     saved = [row for row in signatures or [] if str(getattr(row, 'image_data', '') or '').startswith('data:')]
     if saved:
-        document.add_paragraph('')
         by_role = {str(getattr(row, 'signer_role', '')).upper(): row for row in saved}
+        document.add_paragraph()
         for role, label in (('SUSPECT', '被询问人（签名）'), ('OFFICER', '询问人（签名）')):
             row = by_role.get(role)
             paragraph = document.add_paragraph()
+            _set_row(paragraph, ruled=False)
             paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            paragraph.paragraph_format.space_after = Pt(2)
             paragraph.add_run(f'{label}：')
             if row is not None:
-                run = paragraph.add_run()
                 try:
-                    run.add_picture(_image_stream(row.image_data), width=Cm(3.2))
-                except Exception:  # noqa: BLE001 - 签名图坏了不该让整个导出失败
+                    paragraph.add_run().add_picture(_image_stream(row.image_data), width=Mm(32))
+                except Exception:  # noqa: BLE001 - 签名图损坏不该让整份导出失败
                     paragraph.add_run('　' * 6)
             else:
                 paragraph.add_run('　' * 6)
         stamp = document.add_paragraph(_record_date(session.get('endedAt')))
+        _set_row(stamp, ruled=False)
         stamp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    footer = section.footer.paragraphs[0]
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    footer.add_run('第 ')
+    _page_field(footer, 'PAGE')
+    footer.add_run(' 页，共 ')
+    _page_field(footer, 'NUMPAGES')
+    footer.add_run(' 页')
 
     document.core_properties.title = '询问笔录'
     document.core_properties.author = ''
     document.save(path)
+
+
+def _page_field(paragraph, instruction: str) -> None:
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    field = OxmlElement('w:fldSimple')
+    field.set(qn('w:instr'), instruction)
+    paragraph._p.append(field)
 
 
 def _write_pdf(path: Path, lines: list[str], snapshot, signatures: list, fingerprint) -> None:
