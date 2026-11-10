@@ -133,20 +133,34 @@ export function reconcileBrowserFormalCursor(
 }
 
 export class BoundedBrowserAsrOutbox {
+  /**
+   * 待确认帧的内存镜像。每次读写都 getAll 整个 IndexedDB 是 O(积压帧数)，积压一多
+   * 每帧的入队和确认都会越来越慢；同一路采集由跨标签页锁保证只有一个写入者，
+   * 所以首次读取后只需在本对象内维护镜像，持久化仍以 IndexedDB 为准。
+   */
+  private cache: BrowserFormalAudioFrame[] | null = null
+
   constructor(
     private readonly store: BrowserFormalAudioFrameStore,
     private readonly maxBytes: number,
   ) {}
 
+  private async frames() {
+    if (!this.cache) {
+      this.cache = (await this.store.list()).sort((left, right) => left.sequence - right.sequence)
+    }
+    return this.cache
+  }
+
   async list() {
-    return (await this.store.list()).sort((left, right) => left.sequence - right.sequence)
+    return [...(await this.frames())]
   }
 
   async append(frame: BrowserFormalAudioFrame) {
     if (!Number.isInteger(frame.sequence) || frame.sequence < 1 || frame.pcm.byteLength === 0 || frame.pcm.byteLength % 2) {
       throw new Error('formal audio frame is invalid')
     }
-    const existing = await this.store.list()
+    const existing = await this.frames()
     const prior = existing.find((item) => item.sequence === frame.sequence)
     if (prior) {
       if (prior.startSample !== frame.startSample || !sameBytes(prior.pcm, frame.pcm)) {
@@ -159,14 +173,26 @@ export class BoundedBrowserAsrOutbox {
       throw new Error('formal audio outbox capacity is exhausted')
     }
     await this.store.put(frame)
+    // 必须原地修改同一个数组：put 期间可能有确认并发删除，换数组会让这里写进旧数组而丢帧。
+    const cache = await this.frames()
+    if (!cache.some((item) => item.sequence === frame.sequence)) {
+      cache.push(frame)
+      cache.sort((left, right) => left.sequence - right.sequence)
+    }
   }
 
-  acknowledge(sequence: number) {
-    return this.store.delete(sequence)
+  async acknowledge(sequence: number) {
+    await this.store.delete(sequence)
+    const cache = this.cache
+    if (!cache) return
+    const index = cache.findIndex((item) => item.sequence === sequence)
+    if (index >= 0) cache.splice(index, 1)
   }
 
-  clear() {
-    return this.store.clear()
+  async clear() {
+    await this.store.clear()
+    if (this.cache) this.cache.length = 0
+    else this.cache = []
   }
 
   loadProgress() {
@@ -185,6 +211,17 @@ const MAX_FORMAL_OUTBOX_BYTES = 16 * 1024 * 1024
 const FORMAL_HEADER_BYTES = 12
 const MAX_FORMAL_FRAME_BYTES = 32_000
 const FORMAL_ACK_TIMEOUT_MS = 5_000
+/**
+ * 已发出、尚待服务器确认的音频上限（约 2 秒 PCM16）。
+ *
+ * 以前一次只发一帧、等确认再发下一帧：每帧只有约 85 ms 音频，经 frp 公网一来一回
+ * 就要 200 ms 以上，上传速度只有实时的三分之一，积压越录越多，停止时也排不完。
+ * 服务端按到达顺序逐帧落盘并按序确认，所以可以连续发出多帧；未确认的帧仍留在
+ * IndexedDB，断线重连后从最早的未确认帧重发，服务端对已落盘的帧做幂等确认。
+ */
+const MAX_FORMAL_IN_FLIGHT_BYTES = 64_000
+/** 停止时排空缓存的等待：只要确认还在推进就继续等，连续这么久没有进展才判定失败。 */
+const FORMAL_DRAIN_STALL_MS = 10_000
 
 interface StoredBrowserFormalAudioFrame extends BrowserFormalAudioFrame {
   key: string
@@ -547,10 +584,18 @@ export async function waitForBrowserFormalOutboxDrain(
   timeoutMs: number,
   mayStopWithIncompleteOutbox: () => boolean = () => false,
 ) {
-  const deadline = Date.now() + timeoutMs
+  // timeoutMs 是"连续无进展"的上限：积压较多时只要确认仍在推进就继续等，
+  // 避免把一条正常但稍慢的链路误报成录音不完整。
+  let deadline = Date.now() + timeoutMs
+  let remaining = Number.POSITIVE_INFINITY
   while (true) {
     if (mayStopWithIncompleteOutbox()) return true
-    if (!(await outbox.list()).length) return true
+    const pending = (await outbox.list()).length
+    if (!pending) return true
+    if (pending < remaining) {
+      remaining = pending
+      deadline = Date.now() + timeoutMs
+    }
     if (Date.now() >= deadline) return false
     await pump()
     await new Promise<void>((resolve) => setTimeout(resolve, 10))
@@ -621,7 +666,11 @@ class BrowserPcmStreamer {
   private nextStartSample = 0n
   private frameWrites: Promise<void> = Promise.resolve()
   private pumping: Promise<void> | null = null
-  private inFlightSequence: number | null = null
+  /** 已发出、待确认的帧：sequence → 字节数。服务端按序确认，断线时整体作废重发。 */
+  private readonly inFlight = new Map<number, number>()
+  private inFlightBytes = 0
+  /** 已确认并从缓存删除的最大 sequence；并发的旧快照不得把这些帧再发一遍。 */
+  private acknowledgedThrough = 0
   private reconnectTimer: number | undefined
   private formalAckTimer: number | undefined
   private failureReason: string | null = null
@@ -822,7 +871,7 @@ class BrowserPcmStreamer {
     socket.onclose = (event) => {
       if (this.socket !== socket) return
       this.socket = null
-      this.inFlightSequence = null
+      this.clearInFlight()
       this.clearFormalAckTimer()
       this.incompleteMarker.onSocketClosed()
       if (this.stopped) return
@@ -891,20 +940,23 @@ class BrowserPcmStreamer {
       }
       const expectedEnd = frame.startSample + BigInt(frame.pcm.byteLength / 2)
       if (BigInt(durableEnd) !== expectedEnd) throw new Error('durable audio acknowledgement sample range mismatched')
-      if (this.inFlightSequence === sequence) this.clearFormalAckTimer()
+      // 收到确认说明链路在推进：重新计时，只有最早未确认的帧长时间无回应才断线重连。
+      this.clearFormalAckTimer()
       const outbox = this.outbox
       if (!outbox) throw new Error('durable audio outbox is unavailable')
       const removed = await removeBrowserFormalFrameAfterDurableAck(
         outbox,
         sequence,
         (error) => {
-          if (this.inFlightSequence === sequence) this.inFlightSequence = null
+          this.releaseInFlight(sequence)
           const detail = error instanceof Error ? error.message : String(error)
           this.failIncomplete(`服务器已确认音频，但本地缓存删除失败，原帧已保留：${detail}`, true)
         },
       )
       if (!removed) return
-      if (this.inFlightSequence === sequence) this.inFlightSequence = null
+      this.acknowledgedThrough = Math.max(this.acknowledgedThrough, sequence)
+      this.releaseInFlight(sequence)
+      this.armFormalAckTimer()
       await this.pumpFormalOutbox()
     } catch (error) {
       this.failIncomplete(error instanceof Error ? error.message : String(error))
@@ -917,7 +969,6 @@ class BrowserPcmStreamer {
       if (
         this.stopped
         || this.incompleteMarker.confirmed
-        || this.inFlightSequence !== null
         || !this.socket
       ) return
       if (!this.outbox && !(this.failed && this.incompleteMarkerMayBypassOutbox)) return
@@ -936,29 +987,50 @@ class BrowserPcmStreamer {
         reason: this.failureReason,
         pendingCount: pending.length,
         mayBypassPending: this.incompleteMarkerMayBypassOutbox,
-      }) && this.socket.readyState === WebSocket.OPEN) {
+      }) && this.inFlight.size === 0 && this.socket.readyState === WebSocket.OPEN) {
         this.socket.send(JSON.stringify({ type: 'capture_incomplete', reason: this.failureReason }))
         this.incompleteMarker.markSent()
         return
       }
-      if (!pending.length) {
-        return
+      const socket = this.socket
+      // 按 sequence 顺序连续发出尚未在途的帧，直到在途字节达到窗口上限。
+      for (const frame of pending) {
+        if (socket.readyState !== WebSocket.OPEN || this.socket !== socket) break
+        if (frame.sequence <= this.acknowledgedThrough || this.inFlight.has(frame.sequence)) continue
+        const bytes = frame.pcm.byteLength
+        if (this.inFlight.size > 0 && this.inFlightBytes + bytes > MAX_FORMAL_IN_FLIGHT_BYTES) break
+        socket.send(encodeBrowserFormalAsrFrame(frame.sequence, frame.startSample, frame.pcm))
+        this.inFlight.set(frame.sequence, bytes)
+        this.inFlightBytes += bytes
       }
-      const frame = await sendNextBrowserFormalFrame(this.socket, { list: async () => pending })
-      if (frame) {
-        this.inFlightSequence = frame.sequence
-        const socket = this.socket
-        if (socket?.readyState === WebSocket.OPEN) {
-          this.formalAckTimer = window.setTimeout(() => {
-            this.formalAckTimer = undefined
-            if (this.socket === socket && this.inFlightSequence === frame.sequence) {
-              socket.close(4000, 'durable audio acknowledgement timed out')
-            }
-          }, FORMAL_ACK_TIMEOUT_MS)
-        }
-      }
+      this.armFormalAckTimer()
     })().finally(() => { this.pumping = null })
     return this.pumping
+  }
+
+  private releaseInFlight(sequence: number) {
+    const bytes = this.inFlight.get(sequence)
+    if (bytes === undefined) return
+    this.inFlight.delete(sequence)
+    this.inFlightBytes -= bytes
+  }
+
+  private clearInFlight() {
+    this.inFlight.clear()
+    this.inFlightBytes = 0
+  }
+
+  /** 有在途帧且尚未计时时开始计时；超时说明最早的在途帧迟迟没有确认，断线重连重发。 */
+  private armFormalAckTimer() {
+    if (this.formalAckTimer !== undefined || this.inFlight.size === 0) return
+    const socket = this.socket
+    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    this.formalAckTimer = window.setTimeout(() => {
+      this.formalAckTimer = undefined
+      if (this.socket === socket && this.inFlight.size > 0) {
+        socket.close(4000, 'durable audio acknowledgement timed out')
+      }
+    }, FORMAL_ACK_TIMEOUT_MS)
   }
 
   private clearFormalAckTimer() {
@@ -1072,7 +1144,7 @@ class BrowserPcmStreamer {
             },
           },
           () => this.pumpFormalOutbox(),
-          10_000,
+          FORMAL_DRAIN_STALL_MS,
           () => this.incompleteMarker.confirmed,
         )
         if (!drained) {

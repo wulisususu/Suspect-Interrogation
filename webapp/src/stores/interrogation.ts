@@ -850,7 +850,9 @@ export const useInterrogationStore = defineStore('interrogation', () => {
    * 采集"的分裂状态。
    */
   async function stopCapture(_target?: AsrInsertionTarget, showFeedback = true): Promise<boolean> {
-    if (!captureAvailable.value || !capture.value.running) return true
+    // 只看后端是否仍在录音：能力探测瞬时失败（captureAvailable=false）时也必须真正发出停止，
+    // 否则前端以为已停，后端那一路录音会一直占着麦克风。
+    if (!capture.value.running) return true
     const scope = currentScope()
     if (captureBusy.value) {
       const message = '录音正在停止中，请稍后再试'

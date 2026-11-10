@@ -40,7 +40,19 @@ export function useAnswerCapture(guard: () => SessionStartGuard) {
   }
 
   async function beginCapture(): Promise<string | null> {
-    if (store.capture.running || store.captureBusy) return null
+    if (store.captureBusy) {
+      store.feedback('录音正在开始或停止，请稍候再点', true)
+      return null
+    }
+    if (store.capture.running) {
+      // 后端还有一路录音在跑，但本页没有对应的题卡（刷新页面、开始请求超时等）。
+      // 以前这里直接 return，点「回答」毫无反应、录音也停不掉；现在先收掉这一路再开始。
+      store.feedback('上一段录音仍在进行，正在先停止它…')
+      if (!(await store.stopCapture(undefined, false)) || store.capture.running) {
+        store.feedback(store.capture.error || '上一段录音未能停止，请稍后重试', true)
+        return null
+      }
+    }
     if (!(await ensureSessionRunning())) return null
     await store.startCapture()
     return store.capture.running ? store.capture.captureSessionId || null : null
