@@ -36,7 +36,8 @@ const store = useInterrogationStore()
 const templateStore = useTemplateInterrogationStore()
 
 type SelfPage = 'template' | 'profile' | 'identity' | 'answer'
-const page = ref<SelfPage>('identity')
+// 从大厅新建的自助案件直奔①选模板；首帧就定好，避免先渲染②建档再跳回
+const page = ref<SelfPage>(props.startAtTemplate ? 'template' : 'identity')
 const selfState = ref<SelfServiceState | null>(null)
 const identityChecked = ref(false)
 const devices = ref<RuntimeCapabilities | null>(null)
@@ -137,7 +138,7 @@ async function refreshDevices() {
 }
 
 watch(() => props.caseId, async (caseId) => {
-  page.value = 'identity'
+  page.value = props.startAtTemplate ? 'template' : 'identity'
   selfState.value = null
   void refreshDevices()
   void fetchAuthSession().then((session) => {

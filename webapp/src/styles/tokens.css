@@ -134,3 +134,44 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * 视口高度自适应
+ *
+ * 一体机与笔记本的可视高度差别很大：1920×1080 全屏约 950px，1366×768 扣掉浏览器
+ * 约 600px，再用 90% 缩放只剩 500px 出头。间距如果写死成 32/40px，后两种尺寸下首页、
+ * 选模板、自助建档都会溢出成滚动条。这里按可视高度分两档收紧间距与栏高，
+ * 让常见机型都能一屏看完，宽屏不受影响。
+ */
+@media (max-height: 820px) {
+  :root {
+    --space-4: 12px;
+    --space-5: 14px;
+    --space-6: 16px;
+    --space-7: 20px;
+    --space-8: 22px;
+    --space-10: 26px;
+    --space-12: 30px;
+    --height-topbar: 48px;
+    --height-stepbar: 38px;
+    --height-toolbar: 38px;
+  }
+}
+
+@media (max-height: 640px) {
+  :root {
+    --space-3: 8px;
+    --space-4: 8px;
+    --space-5: 10px;
+    --space-6: 10px;
+    --space-7: 12px;
+    --space-8: 14px;
+    --space-10: 14px;
+    --space-12: 16px;
+    --height-topbar: 42px;
+    --height-stepbar: 34px;
+    --height-toolbar: 34px;
+    --text-3xl: 24px;
+    --text-4xl: 28px;
+  }
+}
