@@ -68,6 +68,8 @@ export class SegmentUploader {
   private localSamples = 0
   private localFrames = 0
   private attempts = 0
+  /** 4429（另一个窗口占用租约）已重试次数；租约 60 秒无数据才失效，所以要跨过它再试。 */
+  private takeoverAttempts = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined
   private finishing: { resolve: () => void; reject: (error: Error) => void } | null = null
   private closed = false
@@ -202,6 +204,14 @@ export class SegmentUploader {
         return
       }
       if (event.code === 4429) {
+        // 另一个窗口占着租约。后端 60 秒收不到数据才判它失效，直接永久放弃会让本页
+        // 卡在"另一个窗口正在录"直到民警手动刷新——等过一次租约过期再抢一次。
+        if (this.takeoverAttempts < 1) {
+          this.takeoverAttempts += 1
+          this.onState?.('reconnecting')
+          this.reconnectTimer = setTimeout(() => this.connect(), 65_000)
+          return
+        }
         this.closed = true
         this.onState?.('error', '另一个窗口正在录这段全程录音')
         this.finishing?.reject(new Error('另一个窗口正在录这段全程录音'))
