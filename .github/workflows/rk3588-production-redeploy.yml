@@ -17,7 +17,8 @@ jobs:
   deploy:
     name: Deploy current linux-adaptation release
     runs-on: [self-hosted, rk3588, target-192-168-2-109]
-    timeout-minutes: 30
+    # 板子访问 GitHub 慢时（实测约 20 KB/s）光拉源码包就要 8 分钟以上，30 分钟会把正常部署也掐断
+    timeout-minutes: 60
     env:
       SUSPECT_DEPLOY_PORT: '18080'
       SUSPECT_TLS_LAN_IP: '192.168.2.109'
@@ -68,8 +69,12 @@ jobs:
           ROOT="$RUNNER_TEMP/production-${GITHUB_SHA}"
           rm -rf "$ROOT" "$ARCHIVE"
           mkdir -p "$ROOT"
-          curl -L --fail --retry 5 --retry-all-errors \
-            --connect-timeout 30 --max-time 300 \
+          # codeload 不支持断点续传（忽略 Range，整包重发），每次都得从头下载完整个包：
+          # 单次给足 25 分钟，只在真正卡住（2 分钟内低于 1 KB/s）时放弃重试。
+          # 原来的 --max-time 300 在慢网下每次下到一半就被掐断、从头再来，部署永远拉不完源码。
+          curl -L --fail --retry 3 --retry-all-errors \
+            --connect-timeout 30 --max-time 1500 \
+            --speed-limit 1024 --speed-time 120 \
             "https://codeload.github.com/${GITHUB_REPOSITORY}/tar.gz/${GITHUB_SHA}" \
             -o "$ARCHIVE"
           tar -xzf "$ARCHIVE" -C "$ROOT" --strip-components=1
