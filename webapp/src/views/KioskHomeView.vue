@@ -213,30 +213,36 @@ onUnmounted(() => {
 .kiosk-alert { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--danger-100); color: var(--danger-700); font-size: var(--text-sm); }
 .kiosk-alert button { min-height: 36px; padding: 0 var(--space-3); border: 1px solid var(--danger-600); border-radius: var(--radius-sm); background: var(--surface); color: var(--danger-700); }
 
-.kiosk-modes { display: grid; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-8); min-height: 0; }
-.kiosk-card { display: flex; flex-direction: column; gap: var(--space-8); padding: var(--space-8); border: 1px solid var(--line-200); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
+.kiosk-body > :not(.kiosk-modes) { flex: none; }
+/* 两张模式卡占满问候语与底部提示之间的剩余高度；卡片高度由这一行决定，不由内容撑开，
+   所以内容再多也不会盖到下面的「合规 / 隐私 / 设备」提示条（之前按钮被它挡住）。 */
+.kiosk-modes { display: grid; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--space-8); min-height: 240px; }
+.kiosk-card { display: flex; flex-direction: column; gap: var(--space-6); min-height: 0; padding: var(--space-6) var(--space-8); overflow: hidden; container-type: size; border: 1px solid var(--line-200); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
 .kiosk-modes > .kiosk-card:first-child { border-color: var(--primary-500); background: var(--primary-50); }
 .kiosk-card-self .kiosk-card-icon { background: var(--success-100); color: var(--success-700); }
 .kiosk-card-self .kiosk-badge { background: var(--success-700); }
 .kiosk-card-self .kiosk-flow b { background: var(--success-700); }
 .kiosk-card-self .kiosk-flow strong { color: var(--success-700); }
 .kiosk-card-head { display: flex; gap: var(--space-4); }
-.kiosk-card-icon { display: grid; place-items: center; width: 108px; height: 108px; flex: none; border-radius: var(--radius-lg); background: var(--primary-100); color: var(--primary-600); }
+.kiosk-card-icon { display: grid; place-items: center; width: clamp(64px, 10vh, 108px); height: clamp(64px, 10vh, 108px); flex: none; border-radius: var(--radius-lg); background: var(--primary-100); color: var(--primary-600); }
 .kiosk-card h2 { display: flex; align-items: center; gap: var(--space-3); margin: 0 0 var(--space-3); color: var(--ink-900); font-size: var(--text-4xl); font-weight: 650; }
 .kiosk-badge { padding: var(--space-1) var(--space-3); border-radius: var(--radius-pill); background: var(--primary-600); color: var(--surface); font-size: var(--text-md); font-weight: 600; }
 .kiosk-card-head p { margin: 0 0 var(--space-3); color: var(--ink-700); font-size: var(--text-xl); }
 .kiosk-card-head small, .kiosk-card footer small { color: var(--ink-400); font-size: var(--text-md); }
 
-.kiosk-flow { padding: var(--space-6) var(--space-8); border-radius: var(--radius-md); background: var(--surface-muted); }
+/* 流程说明居中放在标题与按钮之间，卡片有富余高度时上下留白均匀 */
+.kiosk-flow { margin-block: auto; padding: var(--space-5) var(--space-6); border-radius: var(--radius-md); background: var(--surface-muted); }
 .kiosk-flow-label { color: var(--ink-400); font-size: var(--text-md); }
-.kiosk-flow ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
-.kiosk-flow li { display: flex; flex-direction: column; gap: var(--space-2); }
-.kiosk-flow b { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--primary-600); color: var(--surface); font-size: var(--text-md); }
+.kiosk-flow ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
+/* 序号与步骤名同一行，说明在下：比序号单独占一行矮一截 */
+.kiosk-flow li { display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: start; align-items: center; column-gap: var(--space-2); row-gap: var(--space-1); }
+.kiosk-flow li > span { grid-column: 1 / -1; }
+.kiosk-flow b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--primary-600); color: var(--surface); font-size: var(--text-md); }
 .kiosk-flow strong { color: var(--primary-600); font-size: var(--text-xl); font-weight: 600; }
 .kiosk-flow span { color: var(--ink-500); font-size: var(--text-md); }
 
 .kiosk-card footer { display: flex; flex-direction: column; gap: var(--space-2); margin-top: auto; }
-.kiosk-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: 60px; border: 0; border-radius: var(--radius-md); background: var(--primary-600); color: var(--surface); font-size: var(--text-xl); font-weight: 600; box-shadow: var(--shadow-active); }
+.kiosk-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: clamp(48px, 6vh, 60px); border: 0; border-radius: var(--radius-md); background: var(--primary-600); color: var(--surface); font-size: var(--text-xl); font-weight: 600; box-shadow: var(--shadow-active); }
 .kiosk-primary:hover { background: var(--primary-700); }
 
 .kiosk-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); padding: var(--space-5) var(--space-8); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--ink-700); font-size: var(--text-lg); }
@@ -256,19 +262,30 @@ onUnmounted(() => {
   .kiosk-modes, .kiosk-strip { grid-template-columns: 1fr; }
 }
 
-/* 矮屏（1366×768 扣浏览器、或 90% 缩放后只剩 500px 上下）：流程说明与底部提示属于
-   辅助信息，优先保证两张模式卡与「开始」按钮留在首屏，不出现滚动条。 */
-@media (max-height: 640px) {
-  .kiosk-home { overflow: hidden; }
-  /* 1100px 以下的宽度断点会把两张卡改成一列；矮屏时竖排必然放不下，
-     这里强制恢复并排，宁可窄一点也不让第二张卡被切掉。 */
-  .kiosk-modes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
-  .kiosk-body { padding: 6px 8px 4px; gap: 6px; }
-  .kiosk-greeting h1 { font-size: 24px; }
-  .kiosk-greeting p { display: none; }
-  .kiosk-card { gap: var(--space-3); padding: var(--space-3) var(--space-4); }
-  .kiosk-card-head h2 { font-size: var(--text-lg); }
-  .kiosk-flow, .kiosk-strip { display: none; }
-  .kiosk-primary { min-height: 46px; font-size: var(--text-lg); }
+/* 卡片矮了就逐级收起辅助信息，保证标题与「开始」按钮完整可点：
+   先把流程压成一行步骤名，再收流程、说明小字、图标。按卡片自身高度判断，与屏幕尺寸、待办提示条是否出现无关。 */
+@container (max-height: 410px) {
+  .kiosk-flow { padding: var(--space-3) var(--space-5); }
+  .kiosk-flow-label, .kiosk-flow li > span { display: none; }
+  .kiosk-flow ol { margin-top: 0; }
+}
+@container (max-height: 290px) {
+  .kiosk-flow { display: none; }
+}
+@container (max-height: 230px) {
+  .kiosk-card-head small, .kiosk-card footer small { display: none; }
+  .kiosk-card-head p { margin-bottom: 0; }
+}
+@container (max-height: 170px) {
+  .kiosk-card-icon { display: none; }
+  .kiosk-card-head p { display: none; }
+}
+
+/* 宽度不足两列并排时：矮屏仍保持并排（竖排两张卡必然放不下），只有高度足够才改为上下排 */
+@media (max-width: 1100px) and (max-height: 900px) {
+  .kiosk-modes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+}
+@media (max-width: 1100px) and (min-height: 901px) {
+  .kiosk-modes { grid-template-rows: repeat(2, minmax(0, 1fr)); }
 }
 </style>

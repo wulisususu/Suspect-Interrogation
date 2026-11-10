@@ -110,7 +110,7 @@ const caseTypeText = computed(() => (props.summary.caseType === 'suspect_interro
 </template>
 
 <style scoped>
-.case-detail { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; }
+.case-detail { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; height: 100%; min-height: 0; }
 .case-detail-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
 .case-detail-head h1 { margin: 0; color: var(--ink-900); font-size: var(--text-2xl); font-weight: 600; }
 .case-detail-head p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-xs); }
@@ -118,7 +118,10 @@ const caseTypeText = computed(() => (props.summary.caseType === 'suspect_interro
 .detail-primary, .detail-secondary { min-height: 40px; padding: 0 var(--space-4); border-radius: var(--radius-sm); font-size: var(--text-sm); font-weight: 600; }
 .detail-primary { border: 0; background: var(--primary-600); color: var(--surface); }
 .detail-secondary { border: 1px solid var(--primary-500); background: var(--surface); color: var(--primary-600); }
-.case-detail-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.case-detail-body { display: grid; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--space-4); align-items: start; min-height: 0; }
+/* 文书预览占满右栏高度，笔录在卡片内部滚动；整页不随笔录长度变长 */
+.detail-preview { align-self: stretch; min-height: 0; }
+.detail-preview > :deep(.record-paper) { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .detail-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5); border-radius: var(--radius-lg); background: var(--surface); }
 .detail-card h2 { margin: 0; color: var(--ink-900); font-size: var(--text-md); font-weight: 600; }
 .detail-card dl { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; font-size: var(--text-sm); }
@@ -135,7 +138,7 @@ const caseTypeText = computed(() => (props.summary.caseType === 'suspect_interro
 .detail-signatures { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-4); font-size: var(--text-xs); }
 .detail-signatures img { max-height: 48px; vertical-align: middle; }
 .detail-signatures small { color: var(--paper-muted); }
-@media (max-width: 1100px) { .case-detail-body { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .case-detail { height: auto; } .case-detail-body { grid-template-columns: 1fr; grid-template-rows: none; } .detail-preview > :deep(.record-paper) { overflow: visible; } }
 </style>
 .detail-export-note { margin: var(--space-3) 0 0; font-size: var(--text-sm); }
 .detail-export-note.is-ok { color: var(--success-700); }

@@ -131,12 +131,14 @@ const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.su
           <div><dt>归档时间</dt><dd>签名捺印完成后自动登记</dd></div>
         </dl>
 
-        <button type="button" class="signing-primary" :disabled="busy || archiving || !signaturesReady" @click="emit('archive')">
-          {{ archiving ? '正在归档…' : signaturesReady ? '确认归档并结案' : '签名齐备后可归档' }}
-        </button>
-        <button type="button" class="signing-secondary" :disabled="!printAllowed" @click="emit('print')">
-          <Printer :size="16" />{{ printAllowed ? '打印笔录' : '签名完成后可打印' }}
-        </button>
+        <div class="signing-actions">
+          <button type="button" class="signing-primary" :disabled="busy || archiving || !signaturesReady" @click="emit('archive')">
+            {{ archiving ? '正在归档…' : signaturesReady ? '确认归档并结案' : '签名齐备后可归档' }}
+          </button>
+          <button type="button" class="signing-secondary" :disabled="!printAllowed" @click="emit('print')">
+            <Printer :size="16" />{{ printAllowed ? '打印笔录' : '签名完成后可打印' }}
+          </button>
+        </div>
         <p class="signing-note">打印件含已完成的签名；指纹按纸质流程在打印件上捺印后装卷。</p>
       </section>
     </aside>
@@ -197,14 +199,14 @@ const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.su
 .print-preview-controls button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 1px solid var(--line-300); border-radius: var(--radius-sm); background: var(--surface); color: var(--primary-600); font-size: var(--text-sm); }
 
 .signing-sidebar { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; overflow: auto; }
-.signing-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-5); border: 1px solid var(--line-200); border-radius: var(--radius-lg); background: var(--surface); }
+.signing-card { display: flex; flex-direction: column; gap: clamp(4px, 0.8vh, 8px); padding: var(--space-4) var(--space-5); border: 1px solid var(--line-200); border-radius: var(--radius-lg); background: var(--surface); }
 .signing-card > header { display: flex; align-items: center; gap: var(--space-2); }
 .signing-card h2 { margin: 0; color: var(--ink-900); font-size: var(--text-md); font-weight: 600; }
 
-.signing-card dl { margin: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.signing-card dl { margin: 0; display: flex; flex-direction: column; gap: clamp(2px, 0.6vh, 8px); }
 .signing-card dl > div { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); font-size: var(--text-sm); }
 .signing-card dt { color: var(--ink-400); }
-.signing-card dd { margin: 0; padding: 3px 10px; border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--ink-500); font-size: var(--text-xs); }
+.signing-card dd { margin: 0; padding: 2px 10px; border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--ink-500); font-size: var(--text-xs); }
 .signing-card dd.ok { background: var(--success-100); color: var(--success-700); }
 
 .signing-field { display: flex; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
@@ -213,7 +215,9 @@ const caseVolumeNo = computed(() => volumeNumber(branding.volumePrefix, props.su
 .signing-field > input[readonly] { background: var(--surface-sunken); color: var(--ink-500); }
 .signing-field > em { color: var(--ink-400); font-size: var(--text-xs); font-style: normal; }
 
-.signing-primary { min-height: 48px; margin-top: var(--space-2); border: 0; border-radius: var(--radius-md); background: var(--primary-600); color: var(--surface); font-size: var(--text-base); font-weight: 600; }
+/* 归档 / 打印按钮：右栏放不下时贴住右栏底部，状态卡在上方滚动，按钮始终可点 */
+.signing-actions { position: sticky; bottom: 0; z-index: 1; display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-2); background: var(--surface); }
+.signing-primary { min-height: 46px; border: 0; border-radius: var(--radius-md); background: var(--primary-600); color: var(--surface); font-size: var(--text-base); font-weight: 600; }
 .signing-primary:hover:not(:disabled) { background: var(--primary-700); }
 .signing-primary:disabled { background: var(--surface-muted); color: var(--ink-300); cursor: not-allowed; }
 .signing-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 42px; border: 1px solid var(--line-300); border-radius: var(--radius-md); background: var(--surface); color: var(--primary-600); font-size: var(--text-base); }

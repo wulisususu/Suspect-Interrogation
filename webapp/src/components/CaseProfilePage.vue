@@ -297,6 +297,8 @@ onMounted(syncFromProps)
 .progress-checks .is-ok { color: var(--success-700); }
 .progress-checks .is-pending { color: var(--warning-700); }
 
+/* 宽屏：身份信息两列排（与「询问信息」一致），整页一屏放下，不必滚动 */
+@media (min-width: 1300px) { .identity-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2) var(--space-4); } }
 @media (max-width: 1280px) { .profile-body { grid-template-columns: 340px minmax(0, 1fr); } }
 @media (max-width: 1100px) { .profile-body, .inquiry-grid { grid-template-columns: 1fr; } }
 </style>

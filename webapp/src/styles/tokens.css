@@ -138,40 +138,28 @@ body {
 /*
  * 视口高度自适应
  *
- * 一体机与笔记本的可视高度差别很大：1920×1080 全屏约 950px，1366×768 扣掉浏览器
- * 约 600px，再用 90% 缩放只剩 500px 出头。间距如果写死成 32/40px，后两种尺寸下首页、
- * 选模板、自助建档都会溢出成滚动条。这里按可视高度分两档收紧间距与栏高，
- * 让常见机型都能一屏看完，宽屏不受影响。
+ * 一体机与笔记本的可视高度差别很大：1920×1080 全屏约 950px，浏览器不全屏时 900 出头，
+ * 1366×768 扣掉浏览器约 650px。间距、栏高与大号标题按可视高度连续缩放：
+ * 1000px 及以上为设计原值，往下线性收紧，到 640px 时取下限，再矮不再缩小（正文字号不随之变化，保证可读）。
+ * 页面自身的布局（卡片填满剩余高度、列表区内部滚动）配合这组变量，常见尺寸一屏放下。
  */
-@media (max-height: 820px) {
+@media (max-height: 999px) {
   :root {
-    --space-4: 12px;
-    --space-5: 14px;
-    --space-6: 16px;
-    --space-7: 20px;
-    --space-8: 22px;
-    --space-10: 26px;
-    --space-12: 30px;
-    --height-topbar: 48px;
-    --height-stepbar: 38px;
-    --height-toolbar: 38px;
-  }
-}
-
-@media (max-height: 640px) {
-  :root {
-    --space-3: 8px;
-    --space-4: 8px;
-    --space-5: 10px;
-    --space-6: 10px;
-    --space-7: 12px;
-    --space-8: 14px;
-    --space-10: 14px;
-    --space-12: 16px;
-    --height-topbar: 42px;
-    --height-stepbar: 34px;
-    --height-toolbar: 34px;
-    --text-3xl: 24px;
-    --text-4xl: 28px;
+    --space-3: clamp(8px, calc(1.1111vh + 0.889px), 12px);
+    --space-4: clamp(8px, calc(2.2222vh - 6.222px), 16px);
+    --space-5: clamp(10px, calc(2.7778vh - 7.778px), 20px);
+    --space-6: clamp(10px, calc(3.8889vh - 14.889px), 24px);
+    --space-7: clamp(12px, calc(4.4444vh - 16.444px), 28px);
+    --space-8: clamp(14px, calc(5.0vh - 18.0px), 32px);
+    --space-10: clamp(14px, calc(7.2222vh - 32.222px), 40px);
+    --space-12: clamp(16px, calc(8.8889vh - 40.889px), 48px);
+    --height-topbar: clamp(42px, calc(3.8889vh + 17.111px), 56px);
+    --height-stepbar: clamp(34px, calc(2.7778vh + 16.222px), 44px);
+    --height-toolbar: clamp(34px, calc(2.7778vh + 16.222px), 44px);
+    --text-xl: clamp(18px, calc(0.5556vh + 14.444px), 20px);
+    --text-2xl: clamp(20px, calc(1.1111vh + 12.889px), 24px);
+    --text-3xl: clamp(24px, calc(1.6667vh + 13.333px), 30px);
+    --text-4xl: clamp(28px, calc(2.2222vh + 13.778px), 36px);
+    --text-display: clamp(30px, calc(4.4444vh + 1.556px), 46px);
   }
 }
