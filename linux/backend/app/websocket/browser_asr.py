@@ -35,7 +35,10 @@ def _browser_input(websocket: WebSocket):
 # lease instead of corrupting the real stream.
 _LEASE_ATTR = "browser_asr_socket_leases"
 _LEASE_LOCK = threading.Lock()
-_LEASE_STALE_SECONDS = 60.0
+# 60 秒太长：前端停止录音时若有一帧没被确认，socket 会留在原处继续占着租约，
+# 民警再点录音就被 4429 拒绝（表现是"第二次点了一点反应都没有"），要等满一分钟才恢复。
+# 15 秒足够跨过正常的网络抖动，也让这种残留自己很快过期。
+_LEASE_STALE_SECONDS = 15.0
 
 
 def _leases(app) -> dict:

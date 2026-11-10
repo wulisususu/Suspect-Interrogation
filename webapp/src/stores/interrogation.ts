@@ -283,7 +283,7 @@ export const useInterrogationStore = defineStore('interrogation', () => {
   }
 
   function checkSilentInput(sample: AudioLevelSample, scope: CaseScope) {
-    const next = nextSilentInputState(silentInput, sample.peak, Date.now())
+    const next = nextSilentInputState(silentInput, sample, Date.now())
     silentInput = { startedAt: next.startedAt, settled: next.settled }
     if (!next.warn) return
     const message = silentInputMessage(sample.deviceLabel)

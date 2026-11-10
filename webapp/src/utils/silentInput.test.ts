@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   initialSilentInputState,
   nextSilentInputState,
-  SILENT_INPUT_PEAK,
+  SILENT_INPUT_RMS,
   SILENT_INPUT_WINDOW_MS,
   silentInputMessage,
 } from './silentInput'
@@ -26,17 +26,17 @@ describe('silent microphone detection', () => {
   })
 
   it('never warns once real speech has been heard', () => {
-    let state = nextSilentInputState(initialSilentInputState(), SILENT_INPUT_PEAK, 1_000)
+    let state = nextSilentInputState(initialSilentInputState(), { rms: SILENT_INPUT_RMS, peak: 0 }, 1_000)
     expect(state.warn).toBe(false)
     expect(state.settled).toBe(true)
     // 之后即使安静下来也不再告警
-    expect(nextSilentInputState(state, 80, 99_000).warn).toBe(false)
+    expect(nextSilentInputState(state, { rms: 80, peak: 4_000 }, 99_000).warn).toBe(false)
   })
 
   it('accepts a quieter-but-real voice as sound', () => {
-    const state = nextSilentInputState(initialSilentInputState(), 1_200, 1_000)
+    const state = nextSilentInputState(initialSilentInputState(), { rms: 1_200, peak: 0 }, 1_000)
     expect(state.settled).toBe(true)
-    expect(nextSilentInputState(state, 100, 9_000).warn).toBe(false)
+    expect(nextSilentInputState(state, { rms: 100, peak: 0 }, 9_000).warn).toBe(false)
   })
 
   it('names the device so the fault points at something concrete', () => {

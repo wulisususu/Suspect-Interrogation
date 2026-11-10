@@ -2,10 +2,13 @@
  * 录音开始后检测"麦克风到底有没有收到声音"。
  *
  * 以前的失败表现是：录完只提示"没有识别到语音"，民警无从判断是识别坏了、
- * 网络断了，还是麦克风选错/被静音。实测底噪峰值约 300、正常说话在 1500 以上，
- * 所以用 900 作为分界，开始录音 3 秒内一直没有超过它就直接报"麦克风没有收到声音"。
+ * 网络断了，还是麦克风选错/被静音。
+ *
+ * 判据用 RMS 而不是峰值：底噪的瞬时尖峰也能到几千（实测一段纯噪声峰值 9100），
+ * 用峰值会把"完全没采到人声"误判成"有声音"，提示永远不出现。按 0.5 秒窗口实测，
+ * 正常说话 RMS 在 1000 以上，而设备底噪稳定在 260–630，所以取 700 作分界。
  */
-export const SILENT_INPUT_PEAK = 900
+export const SILENT_INPUT_RMS = 700
 export const SILENT_INPUT_WINDOW_MS = 3000
 
 export interface SilentInputState {
@@ -21,11 +24,11 @@ export function initialSilentInputState(): SilentInputState {
 
 export function nextSilentInputState(
   state: SilentInputState,
-  peak: number,
+  level: { rms: number; peak: number },
   now: number,
 ): SilentInputState & { warn: boolean } {
   if (state.settled) return { ...state, warn: false }
-  if (peak >= SILENT_INPUT_PEAK) return { startedAt: state.startedAt, settled: true, warn: false }
+  if (level.rms >= SILENT_INPUT_RMS) return { startedAt: state.startedAt, settled: true, warn: false }
   const startedAt = state.startedAt || now
   if (now - startedAt < SILENT_INPUT_WINDOW_MS) return { startedAt, settled: false, warn: false }
   return { startedAt, settled: true, warn: true }
