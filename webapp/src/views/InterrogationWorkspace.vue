@@ -241,8 +241,11 @@ watch(
       void stopQuestionPreparationDictation(previousCaseId).catch(() => undefined)
     }
     resetQuestionDictationState()
-    activePage.value = 'profile'
-    flowStep.value = 'intake'
+    // 从大厅新建的案件直奔①选模板；这里必须一开始就落在正确步骤，
+    // 否则会先渲染②建档、等案件与模板加载完再跳回①，肉眼就是"跳了一下"。
+    const landingStep = props.startAtTemplate ? 'template' : 'intake'
+    flowStep.value = landingStep
+    activePage.value = pageForStep(landingStep)
     preparationDevices.value = null
     void checkPreparationDevices()
     store.resetCaseContext(nextCaseId)
