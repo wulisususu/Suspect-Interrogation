@@ -65,7 +65,11 @@ export function useAnswerCapture(guard: () => SessionStartGuard) {
     if (!(await store.stopCapture(undefined, false))) return null
     const caseId = store.caseId
     if (!caseId) return null
-    await templateStore.initialize(caseId)
+    // 只重读片段列表。以前这里调 initialize()：它先 reset() 把题目和片段清空、
+    // 再整页重载，于是每次结束录音左栏都先变空白、计数跳动、题卡回到录音中/草稿，
+    // 最后才出现转写文字。工作台本身已是本案时不需要重置。
+    if (templateStore.caseId === caseId) await templateStore.loadDialogueHistory()
+    else await templateStore.initialize(caseId)
     const collect = () => templateStore.dialogueHistory
       .filter((item) => item.captureSessionId === captureId && !['DISCARDED', 'SUPERSEDED'].includes(item.state) && (item.editedText || item.rawText).trim())
       .sort((a, b) => a.startedAtMs - b.startedAtMs || a.ordinal - b.ordinal)
