@@ -203,7 +203,7 @@ onUnmounted(() => {
 .kiosk-police-entry:hover { background: rgba(255, 255, 255, 0.16); }
 
 /* 样板 P04：内容左右约 48px，标题与两张模式卡片占据主要屏幕 */
-.kiosk-body { flex: 1 1 auto; width: 100%; padding: var(--space-10) var(--space-12) var(--space-6); display: flex; flex-direction: column; gap: var(--space-6); }
+.kiosk-body { flex: 1 1 auto; min-height: 0; width: 100%; padding: var(--space-10) var(--space-12) var(--space-6); display: flex; flex-direction: column; gap: var(--space-6); }
 
 .kiosk-greeting { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-6); }
 .kiosk-greeting h1 { margin: 0; color: var(--ink-900); font-size: var(--text-display); font-weight: 650; line-height: 1.2; }
@@ -254,5 +254,18 @@ onUnmounted(() => {
 
 @media (max-width: 1100px) {
   .kiosk-modes, .kiosk-strip { grid-template-columns: 1fr; }
+}
+
+/* 矮屏（1366×768 扣浏览器、或 90% 缩放后只剩 500px 上下）：流程说明与底部提示属于
+   辅助信息，优先保证两张模式卡与「开始」按钮留在首屏，不出现滚动条。 */
+@media (max-height: 640px) {
+  .kiosk-home { overflow: hidden; }
+  .kiosk-body { padding: var(--space-3) var(--space-4); gap: var(--space-3); }
+  .kiosk-greeting h1 { font-size: 24px; }
+  .kiosk-greeting p { display: none; }
+  .kiosk-card { gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+  .kiosk-card-head h2 { font-size: var(--text-lg); }
+  .kiosk-flow, .kiosk-strip { display: none; }
+  .kiosk-primary { min-height: 46px; font-size: var(--text-lg); }
 }
 </style>

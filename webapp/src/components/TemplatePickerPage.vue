@@ -165,7 +165,7 @@ const circled = (index: number) => String.fromCharCode(0x2460 + index)
 </template>
 
 <style scoped>
-.template-picker { display: flex; flex-direction: column; min-height: 100%; background: var(--surface-sunken); }
+.template-picker { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; background: var(--surface-sunken); }
 .picker-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-8); background: var(--surface); }
 .picker-head h1 { margin: 0; color: var(--ink-900); font-size: var(--text-3xl); font-weight: 650; line-height: 1.25; }
 .picker-head p { margin: var(--space-1) 0 0; color: var(--ink-500); font-size: var(--text-sm); }
@@ -174,7 +174,7 @@ const circled = (index: number) => String.fromCharCode(0x2460 + index)
 .picker-primary { border: 0; background: var(--primary-600); color: var(--surface); box-shadow: var(--shadow-card); }
 .picker-secondary { border: 1px solid var(--primary-600); background: var(--surface); color: var(--primary-600); }
 
-.picker-body { display: grid; grid-template-columns: minmax(0, 1fr) 520px; gap: var(--space-5); padding: var(--space-5) var(--space-6) var(--space-6); }
+.picker-body { display: grid; grid-template-columns: minmax(0, 1fr) 520px; gap: var(--space-5); padding: var(--space-5) var(--space-6) var(--space-6); flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; }
 .picker-main { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
 .picker-toolbar { display: flex; align-items: center; gap: var(--space-4); }
 .picker-search { flex: 0 1 300px; min-width: 160px; min-height: 44px; padding: 0 var(--space-3); border: 0; background: transparent; color: var(--ink-900); font-size: var(--text-sm); }
@@ -220,4 +220,14 @@ const circled = (index: number) => String.fromCharCode(0x2460 + index)
 
 @media (max-width: 1600px) { .picker-body { grid-template-columns: minmax(0, 1fr) 400px; } .picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 1100px) { .picker-body, .picker-grid { grid-template-columns: 1fr; } .picker-toolbar { flex-wrap: wrap; } }
+
+/* 矮屏：卡片压矮、预览栏收窄，「确认模板」始终在首屏头部，只有卡片列表区域滚动 */
+@media (max-height: 640px) {
+  .picker-head { padding: 6px 12px; }
+  .picker-head h1 { font-size: 18px; }
+  .picker-head p { display: none; }
+  .picker-body { grid-template-columns: minmax(0, 1fr) 360px; padding: 8px 12px 10px; gap: 10px; }
+  .template-card { min-height: 168px; padding: 10px 12px; gap: 8px; }
+  .picker-toolbar { gap: 6px; }
+}
 </style>
