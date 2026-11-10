@@ -10,7 +10,7 @@ import { computed, onMounted, ref } from 'vue'
 import { fetchAuthSession, loginOfficer } from '../api/officers'
 import type { LoginTarget } from '../utils/rootRoute'
 
-const props = defineProps<{ next?: LoginTarget }>()
+const props = defineProps<{ next?: LoginTarget; /** 在首页以弹窗形式出现：登录成功后留在原页，不自动跳转 */ dialog?: boolean }>()
 const emit = defineEmits<{ back: []; authenticated: [] }>()
 
 const SUBTITLES: Record<LoginTarget, string> = {
@@ -57,8 +57,8 @@ async function submitLogin() {
 </script>
 
 <template>
-  <main class="login-preview-page">
-    <section class="login-card" aria-labelledby="login-title">
+  <main :class="dialog ? 'login-dialog-backdrop' : 'login-preview-page'">
+    <section class="login-card" :role="dialog ? 'dialog' : undefined" :aria-modal="dialog ? 'true' : undefined" aria-labelledby="login-title">
       <h1 id="login-title">民警身份验证</h1>
       <p class="login-subtitle">{{ subtitle }}</p>
       <p v-if="!checking && !configured" class="login-warning">
@@ -73,7 +73,7 @@ async function submitLogin() {
         <input id="login-password" v-model="password" type="password" name="current-password" autocomplete="current-password" placeholder="密码" required />
         <div class="login-actions">
           <button type="button" class="login-secondary" @click="emit('back')">取消</button>
-          <button class="login-primary" type="submit" :disabled="busy || !configured">{{ busy ? '验证中…' : '验证并进入' }}</button>
+          <button class="login-primary" type="submit" :disabled="busy || !configured">{{ busy ? '验证中…' : dialog ? '验证身份' : '验证并进入' }}</button>
         </div>
       </form>
       <p v-if="feedback" class="login-feedback" role="alert">{{ feedback }}</p>
@@ -83,6 +83,7 @@ async function submitLogin() {
 </template>
 
 <style scoped>
+.login-dialog-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: var(--space-5); background: rgba(15, 23, 42, 0.55); backdrop-filter: blur(2px); }
 .login-preview-page { min-height: 100vh; min-width: 320px; display: grid; place-items: center; padding: var(--space-10) var(--space-5); background: var(--navy-700); }
 .login-card { width: min(452px, 100%); padding: var(--space-6); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-pop); }
 .login-card h1 { margin: 0 0 var(--space-2); color: var(--ink-900); font-size: var(--text-lg); font-weight: 650; }

@@ -33,8 +33,13 @@ describe('root navigation query handling', () => {
 
   it('gates both lobby modes behind the officer login and opens self-service cases in their own workspace', () => {
     expect(source).toContain('<KioskHomeView v-else-if="route.page === \'home\'" @enter="enter" />')
-    expect(source).toContain('if (await officerSessionActive()) afterLogin(target)')
-    expect(source).toContain("go({ page: 'login', next: target })")
+    // 当天第一次点击三个入口之一：在首页弹验证框，而不是跳到登录页
+    expect(source).toContain('if (await officerSessionActive()) {')
+    expect(source).toContain('loginOpen.value = true')
+    expect(source).not.toContain("go({ page: 'login', next: target })")
+    // 验证成功后只关弹窗，仍停在首页，等民警再点一次才进入
+    expect(source).toContain('function finishDialogLogin() {')
+    expect(source).toContain('loginOpen.value = false')
     expect(source).toContain('v-if="route.page === \'case\' && route.selfService"')
     expect(source).toContain('@handover="openCase(route.caseId)"')
   })

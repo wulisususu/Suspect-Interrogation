@@ -51,10 +51,33 @@ function startNewRecord(selfService = false) {
 }
 const openLogin = () => go({ page: 'login' })
 
-/** 大厅入口：人工模式、自助模式与管理面板都要民警先验证身份，登录当天有效。 */
+/** 大厅入口：人工模式、自助模式与管理面板都要民警先验证身份，登录当天有效。
+ *
+ * 当天第一次点击时在首页弹出验证框；验证成功后留在首页，等民警再点一次才进入对应页面，
+ * 避免"点了人工模式却被直接带进建档"这种替民警做决定的行为。
+ */
+const loginOpen = ref(false)
+const loginTarget = ref<LoginTarget>('admin')
+
 async function enter(target: LoginTarget) {
-  if (await officerSessionActive()) afterLogin(target)
-  else go({ page: 'login', next: target })
+  if (await officerSessionActive()) {
+    afterLogin(target)
+    return
+  }
+  loginTarget.value = target
+  loginOpen.value = true
+}
+
+/** 弹窗里验证通过：只关掉弹窗，页面停在首页，并提示民警再点一次进入。 */
+const loginHint = ref('')
+let loginHintTimer = 0
+const TARGET_LABELS: Record<LoginTarget, string> = { manual: '人工模式', self: '自助模式', admin: '管理面板' }
+
+function finishDialogLogin() {
+  loginOpen.value = false
+  loginHint.value = `身份已验证 · 请再次点击「${TARGET_LABELS[loginTarget.value]}」进入`
+  window.clearTimeout(loginHintTimer)
+  loginHintTimer = window.setTimeout(() => { loginHint.value = '' }, 5000)
 }
 function afterLogin(target: LoginTarget = 'admin') {
   if (target === 'admin') openAdmin()
@@ -129,6 +152,19 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
         @new-cancelled="openHome"
       />
     </AdminShell>
+    <p v-if="loginHint" class="login-success-toast" role="status">{{ loginHint }}</p>
+    <!-- 首页验证弹窗：与路由链并列，登录成功后停留原页 -->
+    <LoginView
+      v-if="loginOpen"
+      dialog
+      :next="loginTarget"
+      @back="loginOpen = false"
+      @authenticated="finishDialogLogin"
+    />
   </MaintenanceGate>
   <OnScreenKeyboard />
 </template>
+
+<style scoped>
+.login-success-toast { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 61; margin: 0; padding: 12px 20px; border-radius: 999px; background: var(--success-700, #15803d); color: #fff; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+</style>
