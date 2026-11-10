@@ -260,7 +260,10 @@ onUnmounted(() => {
    辅助信息，优先保证两张模式卡与「开始」按钮留在首屏，不出现滚动条。 */
 @media (max-height: 640px) {
   .kiosk-home { overflow: hidden; }
-  .kiosk-body { padding: var(--space-3) var(--space-4); gap: var(--space-3); }
+  /* 1100px 以下的宽度断点会把两张卡改成一列；矮屏时竖排必然放不下，
+     这里强制恢复并排，宁可窄一点也不让第二张卡被切掉。 */
+  .kiosk-modes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+  .kiosk-body { padding: 6px 8px 4px; gap: 6px; }
   .kiosk-greeting h1 { font-size: 24px; }
   .kiosk-greeting p { display: none; }
   .kiosk-card { gap: var(--space-3); padding: var(--space-3) var(--space-4); }
