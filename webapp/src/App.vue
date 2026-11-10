@@ -195,6 +195,6 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
 </template>
 
 <style scoped>
-.lobby-error-toast { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 62; margin: 0; padding: 12px 20px; border-radius: 12px; background: var(--danger-700, #b91c1c); color: #fff; font-size: 14px; max-width: min(640px, 90vw); }
-.login-success-toast { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 61; margin: 0; padding: 12px 20px; border-radius: 999px; background: var(--success-700, #15803d); color: #fff; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.lobby-error-toast { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 62; margin: 0; padding: 12px 20px; border-radius: 12px; background: var(--danger-700); color: var(--surface); font-size: var(--text-sm); max-width: min(640px, 90vw); }
+.login-success-toast { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 61; margin: 0; padding: 12px 20px; border-radius: 999px; background: var(--success-700); color: var(--surface); font-size: var(--text-sm); box-shadow: 0 8px 24px rgba(0,0,0,.18); }
 </style>

@@ -71,7 +71,8 @@ def test_actual_freeze_preserves_identity_roster_location_session_and_canonical_
             with zipfile.ZipFile(path) as archive:
                 xml = archive.read('word/document.xml').decode()
             for expected in ('冻结身份姓名', 'ID-FROZEN-001', '冻结询问人', '冻结记录人', '冻结询问室',
-                             '2026-10-28 10:00:00', '2026-10-28 11:05:00', '冻结正本回答'):
+                             # Word 版纸面抬头的时间写作 2026/10/28 10:00:00（与纸面格式一致）
+                             '2026/10/28 10:00:00', '2026/10/28 11:05:00', '冻结正本回答'):
                 assert expected in xml
             assert '变更后' not in xml and 'ID-MUTATED' not in xml and '草稿不得导出' not in xml
             assert snapshot.content_json == original_json and snapshot.content_hash == original_hash
