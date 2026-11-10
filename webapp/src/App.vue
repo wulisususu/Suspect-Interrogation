@@ -17,17 +17,19 @@ import KnowledgeAdminView from './views/KnowledgeAdminView.vue'
 import OfficerSignatureAdminView from './views/OfficerSignatureAdminView.vue'
 import RecordingAdminView from './views/RecordingAdminView.vue'
 import SelfServiceWorkspace from './views/SelfServiceWorkspace.vue'
+import { fetchAuthSession } from './api/officers'
+import { backendErrorMessage, createCaseWithIdentity } from './api/interrogation'
 import { officerSessionActive } from './utils/officerAuth'
 import { parseRootRoute, rootRouteUrl, type AdminPanel, type LoginTarget, type RootRoute } from './utils/rootRoute'
 
 const route = ref<RootRoute>(parseRootRoute(location.search))
-/** 大厅「开始新建笔录」进入台账时直接打开身份录入；仅本次导航有效，不写入地址栏。 */
-const startNew = ref(false)
+/** 大厅入口新建案件时，是否正在建案（防止连点建出多个空案）。 */
+const creatingCase = ref(false)
+const lobbyError = ref('')
 /** 手动锁屏：锁定期间业务页面整体卸载，只留锁屏遮罩。 */
 const locked = ref(false)
 
 function go(next: RootRoute) {
-  startNew.value = false
   freshCaseId.value = ''
   route.value = next
   history.replaceState(null, '', rootRouteUrl(location.href, next))
@@ -44,10 +46,33 @@ function openNewCase(caseId: string) {
   freshCaseId.value = caseId
 }
 const openCases = () => go({ page: 'cases' })
-function startNewRecord(selfService = false) {
-  go({ page: 'cases' })
-  startNew.value = true
+
+/**
+ * 从大厅直接开始一次新询问。
+ *
+ * 以前这里先进台账再弹"新建询问"浮窗读身份证；现在身份信息在 ② 建档页录入，
+ * 所以直接建一个待录入的空案并落到 ① 选模板，少一次打断、也少一次读卡依赖。
+ */
+async function startNewRecord(selfService = false) {
+  if (creatingCase.value) return
+  creatingCase.value = true
+  lobbyError.value = ''
   newCaseSelfService.value = selfService
+  try {
+    const session = await fetchAuthSession()
+    const officer = session.officer
+    const item = await createCaseWithIdentity({
+      operatorId: officer?.badgeNumber ?? '',
+      officerName: officer?.name ?? '',
+      caseType: 'suspect_interrogation',
+      identity: { name: '待录入', source: 'MANUAL' },
+    })
+    openNewCase(item.id)
+  } catch (error) {
+    lobbyError.value = backendErrorMessage(error)
+  } finally {
+    creatingCase.value = false
+  }
 }
 const openLogin = () => go({ page: 'login' })
 
@@ -79,9 +104,12 @@ function finishDialogLogin() {
   window.clearTimeout(loginHintTimer)
   loginHintTimer = window.setTimeout(() => { loginHint.value = '' }, 5000)
 }
-function afterLogin(target: LoginTarget = 'admin') {
-  if (target === 'admin') openAdmin()
-  else startNewRecord(target === 'self')
+async function afterLogin(target: LoginTarget = 'admin') {
+  if (target === 'admin') {
+    openAdmin()
+    return
+  }
+  await startNewRecord(target === 'self')
 }
 const openHome = () => go({ page: 'home' })
 const lock = () => { locked.value = true }
@@ -145,7 +173,7 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
     </AdminShell>
     <AdminShell v-else title="全部案件记录" @back="openAdmin" @lock="lock">
       <CaseDashboardView
-        :auto-new="startNew"
+        :auto-new="false"
         @open="openCase"
         @created="openNewCase"
         @detail="(caseId) => go({ page: 'admin-case', adminCaseId: caseId })"
@@ -153,6 +181,7 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
       />
     </AdminShell>
     <p v-if="loginHint" class="login-success-toast" role="status">{{ loginHint }}</p>
+    <p v-if="lobbyError" class="lobby-error-toast" role="alert">{{ lobbyError }}</p>
     <!-- 首页验证弹窗：与路由链并列，登录成功后停留原页 -->
     <LoginView
       v-if="loginOpen"
@@ -166,5 +195,6 @@ const PANEL_TITLES: Record<AdminPanel, string> = {
 </template>
 
 <style scoped>
+.lobby-error-toast { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 62; margin: 0; padding: 12px 20px; border-radius: 12px; background: var(--danger-700, #b91c1c); color: #fff; font-size: 14px; max-width: min(640px, 90vw); }
 .login-success-toast { position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 61; margin: 0; padding: 12px 20px; border-radius: 999px; background: var(--success-700, #15803d); color: #fff; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
 </style>

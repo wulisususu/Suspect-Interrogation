@@ -27,7 +27,12 @@ describe('root navigation query handling', () => {
 
   it('continues to the entry the officer picked after login, admin panel by default', () => {
     expect(source).toContain('@authenticated="afterLogin(route.next)"')
-    expect(source).toContain("if (target === 'admin') openAdmin()")
+    // 登录后按民警点的入口进入；人工/自助模式改为直接建"待录入"空案并从①选模板开始，
+    // 身份信息留到②建档页录入，不再弹读卡浮窗
+    expect(source).toContain("if (target === 'admin') {")
+    expect(source).toContain("await startNewRecord(target === 'self')")
+    expect(source).toContain("identity: { name: '待录入', source: 'MANUAL' }")
+    expect(source).not.toContain(':auto-new="startNew"')
     expect(source).not.toContain('@admin="openAdmin"')
   })
 
