@@ -44,7 +44,12 @@ _SAMPLE_WIDTH_BYTES = 2
 # sherpa 的尾部静音阈值（rule1=2.4s），1.5s 不够。
 _FINALIZE_SILENCE_MS = 2500
 _FINALIZE_CHUNK_MS = 160
+# 无消息进展时的等待上限；只要对端还在吐结果就顺延，但总时长不超过 _FINALIZE_MAX_WAIT_S。
 _FINALIZE_WAIT_S = 4.0
+_FINALIZE_MAX_WAIT_S = 30.0
+# asr-stack 按到达顺序逐条处理消息：在补静音之后发一条 snapshot 请求，收到它的
+# text.snapshot 回复就说明此前推入的音频（含补的静音）都已解码完毕，可以安全收尾。
+_FINALIZE_BARRIER = json.dumps({"type": "snapshot"})
 
 
 @dataclass(frozen=True)
@@ -202,24 +207,41 @@ class AsrStackSpeechSession:
             ) from exc
         self._pad_ms += _FINALIZE_SILENCE_MS
 
+        send_text = getattr(client, "send_text", None)
+        barrier_sent = False
+        if callable(send_text):
+            try:
+                send_text(_FINALIZE_BARRIER)
+                barrier_sent = True
+            except WebSocketError:
+                logger.warning("asr-stack 收尾屏障发送失败，退回按空闲判断：%s", self.session_id, exc_info=True)
+
+        # 以前收到第一条 final 就结束收尾：对端若还积压着更早推入的音频（追赶回放、
+        # 上游卡顿），后面的句子会在 close 时整段丢掉。现在一直读到屏障回复为止。
         events: list[SpeechEvent] = []
-        deadline = time.monotonic() + self.finalize_timeout
+        started = time.monotonic()
+        hard_deadline = started + max(self.finalize_timeout, _FINALIZE_MAX_WAIT_S)
+        deadline = started + self.finalize_timeout
         idle = 0.0
         while True:
-            remaining = deadline - time.monotonic()
+            now = time.monotonic()
+            remaining = min(deadline, hard_deadline) - now
             if remaining <= 0:
+                if barrier_sent:
+                    logger.warning("asr-stack 收尾超时，未等到屏障回复：%s", self.session_id)
                 break
             payloads = self._poll(min(0.1, remaining))
             if payloads:
                 idle = 0.0
-                produced = self._translate(payloads)
-                events.extend(produced)
-                if any(event.type in (SpeechEventType.ASR_FINAL, SpeechEventType.VAD_END) for event in produced):
-                    break  # 对端已经收口
+                deadline = time.monotonic() + self.finalize_timeout
+                barrier_reached = any(payload.get("type") == "text.snapshot" for payload in payloads)
+                events.extend(self._translate(payloads))
+                if barrier_reached:
+                    break  # 屏障之前的音频已全部解码，结果都已收到
                 continue
             idle += 0.1
-            if idle >= 0.5 and self._utterance_start_ms is None:
-                break  # 没有未收口的句子，对端也彻底没动静了
+            if not barrier_sent and idle >= 0.5 and self._utterance_start_ms is None:
+                break  # 无法发屏障时的旧判据：没有未收口的句子，对端也彻底没动静了
 
         if self._utterance_start_ms is not None:
             # 对端始终没给 final：把已收到的文本当作最终稿收掉，避免丢内容。
