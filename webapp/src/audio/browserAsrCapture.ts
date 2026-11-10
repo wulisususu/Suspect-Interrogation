@@ -5,6 +5,8 @@ import {
 } from './browserVoiceprintCapture'
 
 const TARGET_SAMPLE_RATE = 16_000
+/** 输入增益。现场麦克风偏弱时靠它把语音抬到 ASR 可用的电平；过大只会放大底噪。 */
+const INPUT_GAIN = 2
 
 type CaptureKind = 'FORMAL' | 'QUESTION_PREP'
 type BrowserAudioLevelSample = { sampleCount: number; sampleRate: number; rms: number; peak: number; deviceLabel?: string }
@@ -721,8 +723,14 @@ class BrowserPcmStreamer {
         }
       }
 
+      // 实测现场麦克风电平只有正常说话的十分之一（说话段 RMS 1478，底噪 330–450），
+      // ASR 对这种强度的输入基本出不了字。这里补一级线性增益，只放大送识别的那一路；
+      // 电平条与静音判定仍读 analyser 上的原始信号，避免"放大底噪"把提示骗过去。
+      const inputGain = context.createGain()
+      inputGain.gain.value = INPUT_GAIN
       source.connect(analyser)
-      analyser.connect(processor)
+      analyser.connect(inputGain)
+      inputGain.connect(processor)
       processor.connect(mute)
       mute.connect(context.destination)
       this.source = source
