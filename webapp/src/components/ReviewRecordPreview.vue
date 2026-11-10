@@ -8,7 +8,7 @@ import RecordPaper from './RecordPaper.vue'
  * ④ 定稿校验 · 右栏「询问笔录预览」
  *
  * 与签署页、打印件同一份纸面（A4 逐页、宋体、横线、页码），定稿前看到的就是将要打印的样子。
- * 未作答的题如实印「（未获取）」；已录音但未摘入正本的题在纸面上方单独提醒，回到③处理。
+ * 未作答的题在「答：」后印「/」；已录音但未摘入正本的题在纸面上方单独提醒，回到③处理。
  */
 const props = defineProps<{
   summary: CaseSummary
@@ -38,7 +38,7 @@ const drafted = computed(() => entries.value.filter((entry) => entry.drafted))
       <small>与打印件一致</small>
     </header>
     <p v-if="drafted.length" class="review-preview-drafted">
-      第 {{ drafted.map((entry) => entry.ordinal).join('、') }} 题已录音但未摘入正本，纸面上印为「（未获取）」，可「返回修改」到③摘入
+      第 {{ drafted.map((entry) => entry.ordinal).join('、') }} 题已录音但未摘入正本，纸面上印为「/」，可「返回修改」到③摘入
     </p>
     <div class="review-preview-paper">
       <RecordPaper :summary="summary" :facts="facts" :session="session" :questions="questions" />

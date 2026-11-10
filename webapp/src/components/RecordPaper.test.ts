@@ -47,9 +47,9 @@ describe('RecordPaper (police print format)', () => {
     expect(html.match(/class="sig"/g)).toHaveLength(1)
   })
 
-  it('skips removed questions and prints unanswered ones as （未获取）', async () => {
+  it('skips removed questions and prints unanswered ones as /', async () => {
     const html = await render({ questions: [question('a', '你叫什么？', '', 1), { ...question('b', '已删除的题', '', 2), active: false }] })
-    expect(html).toContain('答：（未获取）')
+    expect(html).toContain('答：/')
     expect(html).not.toContain('已删除的题')
   })
 

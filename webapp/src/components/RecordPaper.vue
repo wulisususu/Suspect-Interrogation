@@ -27,7 +27,7 @@ const props = withDefaults(defineProps<{
   footerRows?: number
   /** 未作答的题在「答：」后显示的文字 */
   emptyAnswer?: string
-}>(), { scale: undefined, footerRows: 5, emptyAnswer: '（未获取）' })
+}>(), { scale: undefined, footerRows: 5, emptyAnswer: '/' })
 
 const slots = useSlots()
 const root = ref<HTMLElement | null>(null)

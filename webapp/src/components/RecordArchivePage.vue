@@ -49,7 +49,7 @@ function exportWord() {
     + `<p>被询问人：${props.summary.suspectName || '未填写'}　证件号码：${props.summary.idNumber || '未填写'}</p>`
     + `<p>案件编号：${props.summary.id}　卷号：${volumeNo.value}</p>`
   const body = questions.value
-    .map((question) => `<p>问：${escapeHtml(question.text)}</p><p>答：${escapeHtml(question.formalAnswerText || '（未获取）')}</p>`)
+    .map((question) => `<p>问：${escapeHtml(question.text)}</p><p>答：${escapeHtml(question.formalAnswerText || '/')}</p>`)
     .join('')
   const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">`
     + `<head><meta charset="utf-8"><title>询问笔录</title></head>`

@@ -169,7 +169,7 @@ function dotState(item: SelfQuestion, index: number) {
         <section class="ss-side-card">
           <h2>答完后，笔录会是这样</h2>
           <p class="ss-paper">问：{{ question.text }}</p>
-          <p class="ss-paper">答：{{ previewAnswer || '（未获取）' }}</p>
+          <p class="ss-paper">答：{{ previewAnswer || '/' }}</p>
           <small class="ss-side-muted">文字会先转成初稿，由在场民警核对后定稿；你答过的每一句都会保留。</small>
         </section>
 

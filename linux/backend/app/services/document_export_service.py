@@ -293,11 +293,11 @@ def _write_docx(path: Path, content: dict, snapshot, signatures: list) -> None:
             if question.get('active') is False:
                 continue
             pairs.extend([('问', str(question.get('text') or '')),
-                          ('答', str(question.get('formalAnswerText') or '（未获取）'))])
+                          ('答', str(question.get('formalAnswerText') or '/'))])
     else:
         for entry in transcript.get('entries') or []:
             pairs.extend([('问', str(entry.get('formalQuestionText') or entry.get('questionText') or '')),
-                          ('答', str(entry.get('answerText') or '（未获取）'))])
+                          ('答', str(entry.get('answerText') or '/'))])
 
     if pairs:
         from docx.enum.table import WD_ROW_HEIGHT_RULE

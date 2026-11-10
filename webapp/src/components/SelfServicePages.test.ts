@@ -83,7 +83,7 @@ describe('SelfServiceAnswerPage', () => {
     const html = await render(SelfServiceAnswerPage, { ...base, recording: false, liveText: '', blockedReason: '暂时不能录音：待完成 设备自检，请找在场民警处理' })
     expect(html).toMatch(/<button[^>]*disabled[^>]*>.*开始回答/s)
     expect(html).toContain('暂时不能录音')
-    expect(html).toContain('答：（未获取）')
+    expect(html).toContain('答：/')
   })
 })
 

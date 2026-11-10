@@ -87,7 +87,7 @@ describe('ReviewRecordPreview (design P13 right column)', () => {
     const html = await renderToString(createSSRApp(ReviewRecordPreview, { summary: { id: 'C-1', suspectName: '王某某' }, facts, session, questions }))
     expect(html).toContain('1 问已答 · 2 题未获取')
     expect(html).toContain('答：今天早上 7 时 20 分。')
-    expect(html).toContain('答：（未获取）')
+    expect(html).toContain('答：/')
     expect(html).toContain('第 2 题已录音但未摘入正本')
     // 与打印件同一份纸面：A4 逐页、页码
     expect(html).toContain('class="record-sheet"')
