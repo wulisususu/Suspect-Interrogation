@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from pathlib import Path
 import threading
 import time
-from typing import Iterator
+from typing import Any, Iterator
 import weakref
 
 from sqlalchemy import Engine, create_engine, event
@@ -14,7 +16,7 @@ _SQLITE_LOCK_RETRY_SECONDS = 15.0
 _SQLITE_LOCK_RETRY_INTERVAL = 0.02
 _SQLITE_BUSY_TIMEOUT_MS = 30_000
 _SQLITE_WRITE_LOCKS_GUARD = threading.Lock()
-_SQLITE_WRITE_LOCKS: weakref.WeakKeyDictionary[Engine, threading.Lock] = weakref.WeakKeyDictionary()
+_SQLITE_WRITE_LOCKS: weakref.WeakKeyDictionary[Engine, Any] = weakref.WeakKeyDictionary()
 
 
 def default_database_url() -> str:
@@ -43,7 +45,7 @@ def make_engine(database_url: str | None = None) -> Engine:
     return engine
 
 
-def sqlite_write_lock(engine: Engine | None) -> threading.Lock | None:
+def sqlite_write_lock(engine: Engine | None) -> Any:
     if engine is None or engine.dialect.name != "sqlite":
         return None
     with _SQLITE_WRITE_LOCKS_GUARD:
