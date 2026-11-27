@@ -2163,3 +2163,245 @@ def test_disk_failure_marks_capture_incomplete_and_publishes_storage_error(tmp_p
     finally:
         capture_service.shutdown()
         coordinator.shutdown()
+
+
+def test_live_capture_preempts_startup_recovery_backlog(tmp_path: Path):
+    """A newly started live capture must jump ahead of queued startup recovery chunks."""
+    factory, case_id, session_id = _seed_database(tmp_path)
+    with factory() as db:
+        old_capture = asr_repo.create_capture_session(
+            db,
+            case_id=case_id,
+            interrogation_session_id=session_id,
+            sample_rate=16_000,
+        )
+        old_capture_id = old_capture.id
+        live_capture = asr_repo.create_capture_session(
+            db,
+            case_id=case_id,
+            interrogation_session_id=session_id,
+            sample_rate=16_000,
+        )
+        live_capture_id = live_capture.id
+        # Mark live capture as not yet recorded so startup only recovers old_capture.
+        live_capture.recording_status = "PENDING"
+        live_capture.asr_status = "PENDING"
+        db.commit()
+
+    data_dir = tmp_path / "data"
+    archive = DurableAudioArchive(data_dir, factory)
+    archive.open_capture(old_capture_id, case_id=case_id)
+    # 4 seconds = 4 separate 16_000-sample recovery chunks.
+    for _ in range(4):
+        archive.append(old_capture_id, b"\x01\x00" * 16_000)
+    archive.finalize_capture(old_capture_id)
+
+    class OrderedPreemptionWorker(BlockingSpeechWorker):
+        def __init__(self) -> None:
+            super().__init__()
+            self.call_log: list[tuple[str, str]] = []
+            self.first_recovery_started = threading.Event()
+            self.release_first_recovery = threading.Event()
+            self._first_blocked = False
+
+        def push_speech_pcm(self, session_id: str, pcm: bytes, sample_rate: int = 16000) -> list[SpeechEvent]:
+            self.call_log.append(("push", session_id))
+            if session_id == old_capture_id and not self._first_blocked:
+                self._first_blocked = True
+                self.first_recovery_started.set()
+                assert self.release_first_recovery.wait(timeout=5)
+            return []
+
+        def finalize_speech_session(self, session_id: str) -> list[SpeechEvent]:
+            self.call_log.append(("finalize", session_id))
+            return []
+
+    worker = OrderedPreemptionWorker()
+    capture_service = _source_service(factory, FakeDevice([]), worker, EventCollector())
+    coordinator = LiveSpeechCoordinator(
+        data_dir=data_dir,
+        session_factory=factory,
+        capture_service=capture_service,
+        ai_supervisor=worker,
+    )
+    coordinator.start()
+    try:
+        assert worker.first_recovery_started.wait(timeout=2)
+
+        with factory() as db:
+            live_row = db.get(ASRCaptureSession, live_capture_id)
+            assert live_row is not None
+            live_runtime = capture_service.build_recovery_runtime(live_row)
+        assert live_runtime is not None
+
+        coordinator.open_capture(live_runtime)
+        coordinator.append_audio(live_runtime, b"\x02\x00" * 1600)
+        coordinator.append_audio(live_runtime, b"\x03\x00" * 1600)
+        coordinator.finish_capture(live_runtime)
+
+        worker.release_first_recovery.set()
+
+        _wait_for(lambda: _asr_status(factory, live_capture_id) == "COMPLETE")
+        _wait_for(lambda: _asr_status(factory, old_capture_id) == "COMPLETE")
+
+        live_finalize_idx = worker.call_log.index(("finalize", live_capture_id))
+        old_push_indices = [i for i, item in enumerate(worker.call_log) if item == ("push", old_capture_id)]
+        assert len(old_push_indices) == 4
+        # Chunk 1 of old recovery started first, then the entire live capture finished
+        # before chunk 2..4 of old recovery were processed.
+        assert old_push_indices[0] < live_finalize_idx < old_push_indices[1]
+        assert _asr_cursor(factory, live_capture_id) == 3200
+        assert _asr_cursor(factory, old_capture_id) == 16_000 * 4
+    finally:
+        worker.release_first_recovery.set()
+        coordinator.shutdown()
+
+
+def test_shutdown_preempts_queued_recovery_backlog(tmp_path: Path):
+    """Shutdown must exit after the current chunk instead of draining hours of recovery backlog."""
+    factory, case_id, session_id = _seed_database(tmp_path)
+    with factory() as db:
+        capture = asr_repo.create_capture_session(
+            db,
+            case_id=case_id,
+            interrogation_session_id=session_id,
+            sample_rate=16_000,
+        )
+        capture_id = capture.id
+        db.commit()
+
+    data_dir = tmp_path / "data"
+    archive = DurableAudioArchive(data_dir, factory)
+    archive.open_capture(capture_id, case_id=case_id)
+    for _ in range(8):
+        archive.append(capture_id, b"\x04\x00" * 16_000)
+    archive.finalize_capture(capture_id)
+
+    worker = BlockingSpeechWorker()
+    capture_service = _source_service(factory, FakeDevice([]), worker, EventCollector())
+    coordinator = LiveSpeechCoordinator(
+        data_dir=data_dir,
+        session_factory=factory,
+        capture_service=capture_service,
+        ai_supervisor=worker,
+    )
+    coordinator.start()
+    try:
+        assert worker.push_started.wait(timeout=2)
+        # Queue shutdown sentinel while chunk 1 is still blocked and chunks 2..8 are waiting.
+        shutdown_thread = threading.Thread(target=coordinator.shutdown)
+        shutdown_thread.start()
+        _wait_for(lambda: coordinator._stopping.is_set())
+        worker.release_push.set()
+        shutdown_thread.join(timeout=2)
+        assert not shutdown_thread.is_alive()
+        assert len(worker.pushed) == 1
+    finally:
+        worker.release_push.set()
+        coordinator.shutdown()
+
+
+def test_startup_recovery_skips_asr_for_terminal_case_while_finalizing_archive(tmp_path: Path):
+    """Frozen or voided cases must still seal interrupted WAV archives without burning CPU on ASR."""
+    from app.database.models import Case
+
+    factory, case_id, session_id = _seed_database(tmp_path)
+    with factory() as db:
+        capture = asr_repo.create_capture_session(
+            db,
+            case_id=case_id,
+            interrogation_session_id=session_id,
+            sample_rate=16_000,
+        )
+        capture_id = capture.id
+        db.commit()
+
+    data_dir = tmp_path / "data"
+    archive = DurableAudioArchive(data_dir, factory)
+    archive.open_capture(capture_id, case_id=case_id)
+    archive.append(capture_id, b"\x05\x00" * 1600)
+
+    with factory() as db:
+        case = db.get(Case, case_id)
+        assert case is not None
+        case.workflow_state = "FROZEN"
+        case.document_status = "FROZEN"
+        db.commit()
+
+    worker = BlockingSpeechWorker()
+    worker.release_push.set()
+    capture_service = _source_service(factory, FakeDevice([]), worker, EventCollector())
+    coordinator = LiveSpeechCoordinator(
+        data_dir=data_dir,
+        session_factory=factory,
+        capture_service=capture_service,
+        ai_supervisor=worker,
+    )
+    coordinator.start()
+    try:
+        coordinator.asr_queue.join()
+        assert worker.pushed == []
+        with factory() as db:
+            row = db.get(ASRCaptureSession, capture_id)
+            assert row is not None
+            assert row.recording_status == "COMPLETE"
+            assert row.audio_sample_count == 1600
+        assert coordinator.archive.read_samples(capture_id, 0, 1600) == b"\x05\x00" * 1600
+    finally:
+        coordinator.shutdown()
+
+
+def test_startup_recovery_defers_stale_capture_until_session_waits(tmp_path: Path):
+    """Unfinished captures older than the boot cutoff do not hog CPU on startup, but still recover on demand."""
+    from datetime import timedelta
+    from app.database.base import utc_now
+
+    factory, case_id, session_id = _seed_database(tmp_path)
+    stale_time = utc_now() - timedelta(hours=48)
+    with factory() as db:
+        capture = asr_repo.create_capture_session(
+            db,
+            case_id=case_id,
+            interrogation_session_id=session_id,
+            sample_rate=16_000,
+        )
+        capture_id = capture.id
+        db.commit()
+
+    data_dir = tmp_path / "data"
+    archive = DurableAudioArchive(data_dir, factory)
+    archive.open_capture(capture_id, case_id=case_id)
+    archive.append(capture_id, b"\x06\x00" * 1600)
+    archive.finalize_capture(capture_id)
+
+    with factory() as db:
+        row = db.get(ASRCaptureSession, capture_id)
+        assert row is not None
+        row.started_at = stale_time
+        row.ended_at = stale_time
+        row.asr_status = "FINALIZING"
+        db.commit()
+
+    worker = BlockingSpeechWorker()
+    worker.release_push.set()
+    capture_service = _source_service(factory, FakeDevice([]), worker, EventCollector())
+    coordinator = LiveSpeechCoordinator(
+        data_dir=data_dir,
+        session_factory=factory,
+        capture_service=capture_service,
+        ai_supervisor=worker,
+    )
+    coordinator.start()
+    try:
+        coordinator.asr_queue.join()
+        # Boot did not auto-enqueue the 48h-old stale capture.
+        assert worker.pushed == []
+        assert _asr_status(factory, capture_id) == "FINALIZING"
+
+        # When the session explicitly finishes and waits, on-demand recovery completes it cleanly.
+        coordinator.wait_for_session_processing(session_id, timeout=5)
+        assert _asr_status(factory, capture_id) == "COMPLETE"
+        assert _asr_cursor(factory, capture_id) == 1600
+        assert worker.pushed == [b"\x06\x00" * 1600]
+    finally:
+        coordinator.shutdown()

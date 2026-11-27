@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections import deque
+from datetime import datetime, timezone
 import logging
 import hashlib
+import os
 import queue
 import threading
 import time
@@ -15,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.ai.legacy_voiceprint import legacy_voiceprint_enabled
 from app.ai.speech.types import SpeechEvent, SpeechEventType
+from app.database.base import utc_now
 from app.database.models import ASRAudioFrame, ASRCaptureSession, ASRFragment, Case, LiveSpeechJob
 from app.repositories import audio_archive as archive_repo
 from app.repositories import asr_fragments as asr_repo
@@ -36,6 +40,38 @@ _SPEAKER_MIN_FINAL_FRAGMENTS = 3
 # The worker caps a VAD segment at 5 seconds and SpeechSession retains
 # 1.2 seconds of pre-roll, so a 6.2-second tail covers finalization output.
 _FINALIZE_REPLAY_WINDOW_MS = 6_200
+_ASR_PRIORITY_LIVE = 0
+_ASR_PRIORITY_RECOVERY = 1
+_RECOVERY_YIELD_SECONDS = 0.3
+_DEFAULT_STARTUP_RECOVERY_MAX_AGE_HOURS = 24.0
+_TERMINAL_CASE_WORKFLOW_STATES = frozenset({"FROZEN", "SIGNED", "REPORT_GENERATED", "VOIDED"})
+_TERMINAL_CASE_DOCUMENT_STATUSES = frozenset({"FROZEN", "LOCKED", "VOIDED"})
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _default_startup_recovery_max_age_seconds() -> float | None:
+    raw = os.getenv("SUSPECT_STARTUP_ASR_RECOVERY_MAX_AGE_HOURS", "").strip()
+    if not raw:
+        return _DEFAULT_STARTUP_RECOVERY_MAX_AGE_HOURS * 3600.0
+    try:
+        hours = float(raw)
+    except ValueError:
+        logger.warning(
+            "invalid SUSPECT_STARTUP_ASR_RECOVERY_MAX_AGE_HOURS=%r; falling back to %.1fh",
+            raw,
+            _DEFAULT_STARTUP_RECOVERY_MAX_AGE_HOURS,
+        )
+        return _DEFAULT_STARTUP_RECOVERY_MAX_AGE_HOURS * 3600.0
+    if hours <= 0:
+        return None
+    return hours * 3600.0
 
 
 @dataclass(frozen=True)
@@ -43,11 +79,70 @@ class _AudioRange:
     runtime: Any
     start_sample: int
     end_sample: int
+    priority: int = _ASR_PRIORITY_LIVE
 
 
 @dataclass(frozen=True)
 class _FinishCapture:
     runtime: Any
+    priority: int = _ASR_PRIORITY_LIVE
+
+
+class _AsrTaskQueue(queue.Queue):
+    """Priority ASR queue: shutdown > live capture > startup recovery.
+
+    Within each priority band, items stay strictly FIFO so every capture's
+    durable sample ranges remain contiguous.
+    """
+
+    def _init(self, maxsize: int) -> None:
+        self._shutdown: deque[Any] = deque()
+        self._live: deque[Any] = deque()
+        self._recovery: deque[Any] = deque()
+
+    def _qsize(self) -> int:
+        return len(self._shutdown) + len(self._live) + len(self._recovery)
+
+    def _put(self, item: Any) -> None:
+        if item is None:
+            self._shutdown.append(item)
+        elif getattr(item, "priority", _ASR_PRIORITY_LIVE) > _ASR_PRIORITY_LIVE:
+            self._recovery.append(item)
+        else:
+            self._live.append(item)
+
+    def _get(self) -> Any:
+        if self._shutdown:
+            return self._shutdown.popleft()
+        if self._live:
+            return self._live.popleft()
+        return self._recovery.popleft()
+
+    def get_prioritized(
+        self,
+        *,
+        has_active_live_capture: Callable[[], bool],
+        recovery_yield_seconds: float = _RECOVERY_YIELD_SECONDS,
+    ) -> Any:
+        with self.not_empty:
+            while True:
+                while not self._qsize():
+                    self.not_empty.wait()
+                if self._shutdown or self._live:
+                    item = self._get()
+                    self.not_full.notify()
+                    return item
+                if recovery_yield_seconds > 0 and has_active_live_capture():
+                    self.not_empty.wait(timeout=recovery_yield_seconds)
+                    if not self._qsize():
+                        continue
+                    if self._shutdown or self._live:
+                        item = self._get()
+                        self.not_full.notify()
+                        return item
+                item = self._get()
+                self.not_full.notify()
+                return item
 
 
 @dataclass(frozen=True)
@@ -72,17 +167,23 @@ class LiveSpeechCoordinator:
         capture_service: Any,
         ai_supervisor: Any,
         min_free_bytes: int = 0,
+        startup_recovery_max_age_seconds: float | None = None,
     ) -> None:
         self.legacy_voiceprint_enabled = legacy_voiceprint_enabled()
         self.session_factory = session_factory
         self.capture_service = capture_service
         self.ai_supervisor = ai_supervisor
+        self.startup_recovery_max_age_seconds = (
+            _default_startup_recovery_max_age_seconds()
+            if startup_recovery_max_age_seconds is None
+            else (None if startup_recovery_max_age_seconds <= 0 else float(startup_recovery_max_age_seconds))
+        )
         self.archive = DurableAudioArchive(
             data_dir,
             session_factory,
             min_free_bytes=min_free_bytes,
         )
-        self.asr_queue: queue.Queue[_AudioRange | _FinishCapture | None] = queue.Queue()
+        self.asr_queue: _AsrTaskQueue = _AsrTaskQueue()
         self.speaker_queue: queue.Queue[_SpeakerJob | Callable[[], None] | None] = queue.Queue()
         self._lock = threading.RLock()
         self._speaker_work_condition = threading.Condition(self._lock)
@@ -94,6 +195,7 @@ class LiveSpeechCoordinator:
         self._append_locks: dict[str, threading.Lock] = {}
         self._asr_cursors: dict[str, int] = {}
         self._asr_blocked: set[str] = set()
+        self._active_live_captures: set[str] = set()
         self._runtimes: dict[str, Any] = {}
         self._open_asr_sessions: set[str] = set()
         self._process_lock = threading.RLock()
@@ -148,6 +250,7 @@ class LiveSpeechCoordinator:
                     )
                 )
             recovered = list(dict.fromkeys([*recovered, *completed_with_backlog]))
+            startup_now = utc_now()
             recovery_jobs: list[_AudioRange | _FinishCapture] = []
             resumable_browser_runtimes: list[Any] = []
             for capture_id in recovered:
@@ -156,6 +259,7 @@ class LiveSpeechCoordinator:
                     capture = db.get(ASRCaptureSession, capture_id)
                     if capture is None:
                         continue
+                    case = db.get(Case, capture.case_id)
                     resumable_browser = (
                         capture.recording_status == "CAPTURING"
                         and capture_id in browser_capture_ids
@@ -164,8 +268,15 @@ class LiveSpeechCoordinator:
                     should_finalize = capture.recording_status == "CAPTURING" and not resumable_browser
                     has_interrogation_session = capture.interrogation_session_id is not None
                     sample_rate = int(capture.sample_rate)
+                    terminal_case = self._is_terminal_case(case)
+                    stale_capture = not resumable_browser and self._is_stale_recovery_capture(
+                        capture,
+                        now=startup_now,
+                    )
                     needs_asr = (
                         has_interrogation_session
+                        and not terminal_case
+                        and not stale_capture
                         and (
                             resumable_browser
                             or should_finalize
@@ -176,15 +287,22 @@ class LiveSpeechCoordinator:
                             or capture.asr_finalize_checkpoint_sample is not None
                         )
                     )
-                if not has_interrogation_session:
+                if not has_interrogation_session or terminal_case or stale_capture:
                     if should_finalize:
                         try:
                             self._finalize_archive(capture_id)
                         except Exception:
                             logger.exception(
-                                "failed to finalize orphan audio capture %s",
+                                "failed to finalize archived audio capture %s",
                                 capture_id,
                             )
+                    if has_interrogation_session and (terminal_case or stale_capture):
+                        logger.info(
+                            "deferring startup ASR recovery for capture %s (terminal_case=%s, stale=%s)",
+                            capture_id,
+                            terminal_case,
+                            stale_capture,
+                        )
                     continue
                 if not needs_asr:
                     continue
@@ -249,14 +367,17 @@ class LiveSpeechCoordinator:
                 if finalization_error is not None:
                     self._mark_storage_error(runtime, finalization_error)
                     self._asr_blocked.add(capture_id)
+                job_priority = _ASR_PRIORITY_LIVE if resumable_browser else _ASR_PRIORITY_RECOVERY
+                if resumable_browser:
+                    self._active_live_captures.add(capture_id)
                 while cursor < end:
                     next_cursor = min(end, cursor + _MAX_INFERENCE_SAMPLES)
-                    recovery_jobs.append(_AudioRange(runtime, cursor, next_cursor))
+                    recovery_jobs.append(_AudioRange(runtime, cursor, next_cursor, priority=job_priority))
                     cursor = next_cursor
                 if resumable_browser:
                     resumable_browser_runtimes.append(runtime)
                 else:
-                    recovery_jobs.append(_FinishCapture(runtime))
+                    recovery_jobs.append(_FinishCapture(runtime, priority=job_priority))
 
             for job in recovery_jobs:
                 if isinstance(job, _FinishCapture):
@@ -368,6 +489,7 @@ class LiveSpeechCoordinator:
             self._durable_cursors[runtime.capture_session_id] = 0
             self._asr_cursors[runtime.capture_session_id] = 0
             self._runtimes[runtime.capture_session_id] = runtime
+            self._active_live_captures.add(runtime.capture_session_id)
 
     def register_browser_capture(self, capture_id: str) -> None:
         """Persist a source marker so a just-started browser capture can resume."""
@@ -813,6 +935,7 @@ class LiveSpeechCoordinator:
 
             if pending_asr:
                 capture_id = pending_asr[0]
+                self._ensure_capture_recovery_queued(capture_id)
                 event = self._capture_finish_event(capture_id)
                 remaining = deadline - time.monotonic()
                 if remaining <= 0 or not event.wait(remaining):
@@ -893,9 +1016,85 @@ class LiveSpeechCoordinator:
         except Exception:
             logger.exception("failed to publish audio storage error for capture %s", runtime.capture_session_id)
 
+    def _has_active_live_capture(self) -> bool:
+        with self._lock:
+            return bool(self._active_live_captures)
+
+    @staticmethod
+    def _is_terminal_case(case: Case | None) -> bool:
+        if case is None:
+            return False
+        workflow = str(case.workflow_state or "").upper()
+        doc_status = str(case.document_status or "").upper()
+        return workflow in _TERMINAL_CASE_WORKFLOW_STATES or doc_status in _TERMINAL_CASE_DOCUMENT_STATUSES
+
+    def _is_stale_recovery_capture(self, capture: ASRCaptureSession, *, now: datetime) -> bool:
+        max_age = self.startup_recovery_max_age_seconds
+        if max_age is None:
+            return False
+        anchor = _as_utc(capture.ended_at) or _as_utc(capture.started_at) or _as_utc(capture.created_at)
+        if anchor is None:
+            return False
+        return (now - anchor).total_seconds() > max_age
+
+    def _ensure_capture_recovery_queued(self, capture_id: str) -> None:
+        """Queue a deferred historical capture on demand when its session waits on it."""
+        normalized_id = str(capture_id)
+        with self._lock:
+            if not self._started or normalized_id in self._runtimes:
+                return
+        with self.session_factory() as db:
+            capture = db.get(ASRCaptureSession, normalized_id)
+            if capture is None or capture.interrogation_session_id is None:
+                return
+            if str(capture.asr_status or "").upper() == "COMPLETE":
+                return
+            sample_rate = int(capture.sample_rate)
+            recording_status = capture.recording_status
+        try:
+            self._begin_asr_finalization(normalized_id, sample_rate)
+            if recording_status == "CAPTURING":
+                self._finalize_archive(normalized_id)
+        except Exception:
+            logger.exception("failed to prepare on-demand recovery for capture %s", normalized_id)
+            return
+        with self.session_factory() as db:
+            capture = db.get(ASRCaptureSession, normalized_id)
+            if capture is None or capture.interrogation_session_id is None:
+                return
+            runtime = self.capture_service.build_recovery_runtime(capture)
+            unfinished_start = capture.asr_unfinished_start_sample
+            cursor = max(0, int(capture.asr_cursor_sample or 0))
+            checkpoint = capture.asr_finalize_checkpoint_sample
+            if checkpoint is not None:
+                cursor = min(cursor, max(0, int(checkpoint)))
+            if unfinished_start is not None:
+                cursor = min(cursor, max(0, int(unfinished_start)))
+            end = max(cursor, int(capture.audio_sample_count or 0))
+            audio_end = int(capture.audio_sample_count or 0)
+        if runtime is None:
+            return
+        jobs: list[_AudioRange | _FinishCapture] = []
+        with self._lock:
+            if normalized_id in self._runtimes:
+                return
+            self._runtimes[normalized_id] = runtime
+            self._asr_cursors[normalized_id] = cursor
+            self._durable_cursors[normalized_id] = audio_end
+            self._capture_finish_event(normalized_id)
+            while cursor < end:
+                next_cursor = min(end, cursor + _MAX_INFERENCE_SAMPLES)
+                jobs.append(_AudioRange(runtime, cursor, next_cursor, priority=_ASR_PRIORITY_LIVE))
+                cursor = next_cursor
+            jobs.append(_FinishCapture(runtime, priority=_ASR_PRIORITY_LIVE))
+        for job in jobs:
+            self.asr_queue.put(job)
+
     def _asr_loop(self) -> None:
         while True:
-            task = self.asr_queue.get()
+            task = self.asr_queue.get_prioritized(
+                has_active_live_capture=self._has_active_live_capture,
+            )
             if task is None:
                 self.asr_queue.task_done()
                 return
@@ -992,6 +1191,8 @@ class LiveSpeechCoordinator:
                                 runtime.capture_session_id,
                             )
                         finally:
+                            with self._lock:
+                                self._active_live_captures.discard(runtime.capture_session_id)
                             self._signal_capture_finished(runtime.capture_session_id)
                             self.asr_queue.task_done()
                 continue
