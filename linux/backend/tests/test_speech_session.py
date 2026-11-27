@@ -326,3 +326,83 @@ def test_short_utterance_is_transcribed_without_speaker_inference():
     assert [(event.start_ms, event.end_ms) for event in finals] == [(0, 1200)]
     assert finals[0].details["stage_one_asr_only"] is True
     assert runtime.speaker_calls == []
+
+
+def test_streaming_final_keeps_trailing_600ms_chunk_straddling_vad_end():
+    """Regression: a 600ms streaming chunk straddling VAD end_ms must not be dropped on finalization.
+
+    When speech spans [0, 1760ms], streaming emits chunks [0-600], [600-1200], [1200-1800].
+    Previously `chunk_end <= end_ms` dropped [1200-1800] ("清楚了"), rolling the live preview
+    "我听清楚了" back to "我听".
+    """
+
+    class ScriptedStreamingRuntime(StreamingRuntime):
+        def __init__(self, vad_outputs: list[list[list[int]]], texts: list[str]):
+            super().__init__(vad_outputs)
+            self._texts = list(texts)
+
+        def transcribe_stream(self, pcm: bytes, sample_rate: int, *, cache: dict, is_final: bool = False) -> str:
+            self.stream_calls.append(bytes(pcm))
+            return self._texts.pop(0) if self._texts else ""
+
+    runtime = ScriptedStreamingRuntime(
+        vad_outputs=[
+            [[0, -1]],    # 600ms
+            [],           # 1200ms
+            [],           # 1800ms -> streaming chunk [1200, 1800] emits "清楚了"
+            [[-1, 1760]], # 2000ms -> VAD closes at 1760ms (< 1800ms)
+        ],
+        texts=["", "我听", "清楚了"],
+    )
+    session = SpeechSession("session-straddle", 16000, runtime, chunk_size_ms=200)
+
+    session.push_pcm(_pcm(600))
+    ev2 = session.push_pcm(_pcm(600))
+    ev3 = session.push_pcm(_pcm(600))
+    ev4 = session.push_pcm(_pcm(200))
+
+    partials_2 = [e.text for e in ev2 if e.type is SpeechEventType.ASR_PARTIAL]
+    partials_3 = [e.text for e in ev3 if e.type is SpeechEventType.ASR_PARTIAL]
+    finals = [e for e in ev4 if e.type is SpeechEventType.ASR_FINAL]
+    assert partials_2 == ["我听"]
+    assert partials_3 == ["我听清楚了"]
+    assert len(finals) == 1
+    assert finals[0].text == "我听清楚了"
+    assert runtime.transcribe_calls == []
+
+
+def test_streaming_final_ignores_late_silence_noise_beyond_lookahead():
+    """Streaming noise emitted well after VAD end_ms (>300ms lookahead) falls back to offline ASR."""
+
+    class LateNoiseRuntime(StreamingRuntime):
+        def __init__(self, vad_outputs: list[list[list[int]]], texts: list[str]):
+            super().__init__(vad_outputs)
+            self._texts = list(texts)
+
+        def transcribe_stream(self, pcm: bytes, sample_rate: int, *, cache: dict, is_final: bool = False) -> str:
+            self.stream_calls.append(bytes(pcm))
+            return self._texts.pop(0) if self._texts else ""
+
+        def transcribe(self, pcm: bytes, sample_rate: int) -> dict:
+            self.transcribe_calls.append((pcm, sample_rate))
+            return {"text": "好的", "confidence": 0.95}
+
+    runtime = LateNoiseRuntime(
+        vad_outputs=[
+            [[0, -1]],   # 600ms -> [0, 600] ""
+            [],          # 1200ms -> [600, 1200] ""
+            [],          # 1800ms -> [1200, 1800] "嗯" (starts 610ms after end_ms=590)
+            [[-1, 590]], # 2000ms -> VAD closes at 590ms
+        ],
+        texts=["", "", "嗯"],
+    )
+    session = SpeechSession("session-late-noise", 16000, runtime, chunk_size_ms=200)
+    session.push_pcm(_pcm(600))
+    session.push_pcm(_pcm(600))
+    session.push_pcm(_pcm(600))
+    ev4 = session.push_pcm(_pcm(200))
+
+    finals = [e for e in ev4 if e.type is SpeechEventType.ASR_FINAL]
+    assert len(finals) == 1
+    assert finals[0].text == "好的"
+    assert len(runtime.transcribe_calls) == 1

@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 PCM_SAMPLE_WIDTH_BYTES = 2
 _PRODUCT_SPEAKER_BACKEND = "eres2net_large"
 _STREAMING_CHUNK_MS = 600  # Align with Paraformer's ten 60 ms output frames.
+# Paraformer online uses chunk_size=[0, 10, 5] (5 * 60ms = 300ms right-context
+# lookahead), so final tokens of an utterance may flush in the chunk straddling
+# or immediately following VAD end_ms.
+_STREAMING_LOOKAHEAD_MS = 300
 
 
 class SpeechRuntime(Protocol):
@@ -331,20 +335,24 @@ class SpeechSession:
                         )
 
             if self._streaming_enabled:
+                # A 600ms streaming chunk that overlaps the end of speech often
+                # has chunk_end > vad_end_ms (e.g. [2800, 3400] for end_ms=3360),
+                # and Paraformer's 300ms right-context lookahead can emit the
+                # final characters in the chunk starting right at end_ms.
+                # Requiring chunk_end <= end_ms dropped the tail of every
+                # utterance and visibly rolled back the live transcript.
+                cutoff_ms = end_ms + _STREAMING_LOOKAHEAD_MS
                 current_chunks = [
                     item for item in self._stream_text_chunks
                     if item[0] >= self._stream_text_floor_ms
                     and item[1] > start_ms
-                    and item[1] <= end_ms
+                    and item[0] < cutoff_ms
                 ]
                 assembled_text = "".join(item[2] for item in current_chunks).strip()
                 if assembled_text:
                     streaming_text = assembled_text
 
         self._stream_text_floor_ms = max(self._stream_text_floor_ms, end_ms)
-        self._stream_text_chunks = [
-            item for item in self._stream_text_chunks if item[0] >= self._stream_text_floor_ms
-        ]
         self._reset_utterance()
         self._set_pre_roll_after_boundary(trailing_pcm, end_ms)
 
@@ -527,6 +535,7 @@ class SpeechSession:
         self._last_partial_end_ms = None
         self._last_partial_text = ""
         self._stream_staging.clear()
+        self._stream_text_chunks.clear()
         self.streaming_cache.clear()
         self._stream_prime_pending = False
         self._stream_chunk_start_sample = self._stream_samples
