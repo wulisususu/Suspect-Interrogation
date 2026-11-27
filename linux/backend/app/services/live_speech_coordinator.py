@@ -144,6 +144,44 @@ class _AsrTaskQueue(queue.Queue):
                 self.not_full.notify()
                 return item
 
+    def coalesce_contiguous_range(
+        self,
+        first: _AudioRange,
+        *,
+        max_samples: int = _MAX_INFERENCE_SAMPLES,
+    ) -> tuple[_AudioRange, int]:
+        """Merge backlogged contiguous ranges for the same capture up to max_samples."""
+        merged = 0
+        capture_id = first.runtime.capture_session_id
+        start_sample = first.start_sample
+        end_sample = first.end_sample
+        with self.not_empty:
+            band = self._recovery if first.priority > _ASR_PRIORITY_LIVE else self._live
+            while band:
+                nxt = band[0]
+                if (
+                    not isinstance(nxt, _AudioRange)
+                    or nxt.runtime.capture_session_id != capture_id
+                    or nxt.start_sample != end_sample
+                    or nxt.end_sample - start_sample > max_samples
+                ):
+                    break
+                band.popleft()
+                end_sample = nxt.end_sample
+                merged += 1
+                self.not_full.notify()
+        if not merged:
+            return first, 0
+        return (
+            _AudioRange(
+                first.runtime,
+                start_sample,
+                end_sample,
+                priority=first.priority,
+            ),
+            merged,
+        )
+
 
 @dataclass(frozen=True)
 class _ProcessedAudioRange:
@@ -185,12 +223,15 @@ class LiveSpeechCoordinator:
         )
         self.asr_queue: _AsrTaskQueue = _AsrTaskQueue()
         self.speaker_queue: queue.Queue[_SpeakerJob | Callable[[], None] | None] = queue.Queue()
+        self._original_queue: queue.Queue[str | None] = queue.Queue()
         self._lock = threading.RLock()
         self._speaker_work_condition = threading.Condition(self._lock)
         self._started = False
         self._stopping = threading.Event()
         self._asr_thread: threading.Thread | None = None
         self._speaker_thread: threading.Thread | None = None
+        self._original_thread: threading.Thread | None = None
+        self._pending_originals: set[str] = set()
         self._durable_cursors: dict[str, int] = {}
         self._append_locks: dict[str, threading.Lock] = {}
         self._asr_cursors: dict[str, int] = {}
@@ -462,11 +503,45 @@ class LiveSpeechCoordinator:
                     name="live-speech-speaker",
                 )
                 self._speaker_thread.start()
+            self._original_thread = threading.Thread(
+                target=self._original_loop,
+                daemon=True,
+                name="live-speech-original",
+            )
+            self._original_thread.start()
             self._started = True
+
+    def _original_loop(self) -> None:
+        while True:
+            capture_id = self._original_queue.get()
+            try:
+                if capture_id is None:
+                    return
+                self._finalize_original(capture_id)
+            finally:
+                if capture_id is not None:
+                    with self._lock:
+                        self._pending_originals.discard(capture_id)
+                self._original_queue.task_done()
+
+    def _schedule_finalize_original(self, capture_id: str) -> None:
+        normalized_id = str(capture_id)
+        with self._lock:
+            if not self._started or self._stopping.is_set():
+                run_async = False
+            elif normalized_id in self._pending_originals:
+                return
+            else:
+                self._pending_originals.add(normalized_id)
+                run_async = True
+        if run_async:
+            self._original_queue.put(normalized_id)
+        else:
+            self._finalize_original(normalized_id)
 
     def _finalize_archive(self, capture_id: str, **options) -> None:
         self.archive.finalize_capture(capture_id, **options)
-        self._finalize_original(capture_id)
+        self._schedule_finalize_original(capture_id)
 
     def _finalize_original(self, capture_id: str) -> None:
         from app.services.recording_service import RecordingService
@@ -867,6 +942,7 @@ class LiveSpeechCoordinator:
         return pending_ids
 
     def finish_capture(self, runtime: Any) -> None:
+        finalized_archive = False
         if runtime.storage_error is None:
             try:
                 self._begin_asr_finalization(
@@ -877,7 +953,11 @@ class LiveSpeechCoordinator:
                     capture = db.get(ASRCaptureSession, runtime.capture_session_id)
                     recording_status = None if capture is None else capture.recording_status
                 if recording_status == "CAPTURING":
-                    self._finalize_archive(runtime.capture_session_id)
+                    # Close the active WAV header synchronously, but defer full
+                    # original.wav concatenation + SHA-256 until after ASR
+                    # finalization so /asr/capture/stop never stalls on disk I/O.
+                    self.archive.finalize_capture(runtime.capture_session_id)
+                    finalized_archive = True
                 elif recording_status not in {"INCOMPLETE", "COMPLETE"}:
                     raise RuntimeError("capture cannot be finalized from its current state")
             except Exception as exc:
@@ -886,6 +966,24 @@ class LiveSpeechCoordinator:
         else:
             self._asr_blocked.add(runtime.capture_session_id)
         self._enqueue_finish_capture(runtime)
+        if finalized_archive and not self._started:
+            self._finalize_original(runtime.capture_session_id)
+
+    def wait_for_capture_finalized(self, capture_id: str, *, timeout: float = 2.5) -> bool:
+        """Best-effort bounded wait for a live capture's ASR finalization."""
+        wait_seconds = max(0.0, float(timeout))
+        if wait_seconds <= 0.0:
+            return False
+        normalized_id = str(capture_id)
+        with self._lock:
+            if not self._started:
+                return False
+            event = self._capture_finish_events.get(normalized_id)
+        if event is not None:
+            return event.wait(timeout=wait_seconds)
+        with self.session_factory() as db:
+            capture = db.get(ASRCaptureSession, normalized_id)
+            return capture is not None and str(capture.asr_status or "").upper() == "COMPLETE"
 
     def wait_for_session_processing(self, session_id: str, *, timeout: float) -> None:
         """Wait until final ASR and queued speaker analysis for a session have settled."""
@@ -1194,9 +1292,16 @@ class LiveSpeechCoordinator:
                             with self._lock:
                                 self._active_live_captures.discard(runtime.capture_session_id)
                             self._signal_capture_finished(runtime.capture_session_id)
+                            if runtime.storage_error is None:
+                                self._schedule_finalize_original(runtime.capture_session_id)
                             self.asr_queue.task_done()
                 continue
+            merged_count = 0
             try:
+                task, merged_count = self.asr_queue.coalesce_contiguous_range(
+                    task,
+                    max_samples=_MAX_INFERENCE_SAMPLES,
+                )
                 if runtime.capture_session_id in self._asr_blocked:
                     continue
                 expected_start = self._asr_cursors.setdefault(
@@ -1219,7 +1324,8 @@ class LiveSpeechCoordinator:
                     logger.exception("failed to report inference error for capture %s", runtime.capture_session_id)
             finally:
                 self._asr_busy.clear()
-                self.asr_queue.task_done()
+                for _ in range(merged_count + 1):
+                    self.asr_queue.task_done()
 
     def process_asr_range(
         self,
@@ -1347,19 +1453,19 @@ class LiveSpeechCoordinator:
             capture.asr_status = "FINALIZING"
 
     def _rewind_asr_cursor(self, capture_id: str, start_sample: int) -> None:
+        target = max(0, int(start_sample))
         with self.session_factory() as db:
             capture = db.get(ASRCaptureSession, capture_id)
             if capture is not None:
-                capture.asr_cursor_sample = min(
-                    max(0, int(capture.asr_cursor_sample or 0)),
-                    max(0, int(start_sample)),
-                )
-                db.commit()
+                current = max(0, int(capture.asr_cursor_sample or 0))
+                if target < current:
+                    capture.asr_cursor_sample = target
+                    db.commit()
         with self._lock:
             if capture_id in self._asr_cursors:
                 self._asr_cursors[capture_id] = min(
                     self._asr_cursors[capture_id],
-                    max(0, int(start_sample)),
+                    target,
                 )
 
     def _replace_unfinished_asr_start(self, capture_id: str, start_sample: int | None) -> None:
@@ -2013,10 +2119,14 @@ class LiveSpeechCoordinator:
             self._stopping.set()
             self.asr_queue.put(None)
             self.speaker_queue.put(None)
+            self._original_queue.put(None)
             asr_thread = self._asr_thread
             speaker_thread = self._speaker_thread
+            original_thread = self._original_thread
             self._started = False
         if asr_thread is not None:
             asr_thread.join(timeout=5)
         if speaker_thread is not None:
             speaker_thread.join(timeout=2)
+        if original_thread is not None:
+            original_thread.join(timeout=2)

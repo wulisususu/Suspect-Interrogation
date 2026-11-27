@@ -284,7 +284,7 @@ function submitQuestion() {
             <div class="draft-recording-meter">
               <span class="draft-timer">录音中 {{ elapsedText }}</span>
               <RecorderWaveformCanvas v-if="audioLevels?.length" class="draft-wave" :samples="audioLevels" :max-height="22" :bar-width="3" :bar-gap="3" :sample-limit="24" />
-              <button type="button" class="draft-stop" :disabled="captureBusy" @click.stop="emit('stop')"><Square :size="14" aria-hidden="true" />结束并转写</button>
+              <button type="button" class="draft-stop" :disabled="captureBusy" @click.stop="emit('stop')"><Square :size="14" aria-hidden="true" />{{ captureBusy ? '正在转写…' : '结束并转写' }}</button>
             </div>
             <p class="draft-live-text">{{ liveText || '请对着话筒回答，转写文字会实时出现在这里……' }}</p>
           </div>

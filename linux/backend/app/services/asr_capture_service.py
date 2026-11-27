@@ -145,6 +145,7 @@ class AsrCaptureService:
         capture_finished_sink: CaptureFinishedSink | None = None,
         speaker_model_key: str = "eres2net_large",
         speaker_authoritative_backend: str | None = None,
+        stop_asr_wait_seconds: float = 2.5,
     ) -> None:
         self.session_factory = session_factory
         self.device_manager = device_manager
@@ -152,6 +153,7 @@ class AsrCaptureService:
         self.publish_event = publish_event
         self.sample_rate = int(sample_rate)
         self.read_timeout = max(0.001, float(read_timeout))
+        self.stop_asr_wait_seconds = max(0.0, float(stop_asr_wait_seconds))
         self.calibration_resolver = calibration_resolver
         self.secondary_calibration_resolver = secondary_calibration_resolver
         self.fragment_sink = fragment_sink
@@ -429,6 +431,15 @@ class AsrCaptureService:
                 raise DomainError("ASR_CAPTURE_STOP_TIMEOUT", "语音采集线程未能及时停止", 504)
         if runtime.local_inference_thread is not None:
             runtime.local_inference_done.wait(timeout=max(1.0, self.read_timeout * 5.0))
+        elif (
+            self._live_speech_coordinator is not None
+            and self.stop_asr_wait_seconds > 0
+            and hasattr(self._live_speech_coordinator, "wait_for_capture_finalized")
+        ):
+            self._live_speech_coordinator.wait_for_capture_finalized(
+                runtime.capture_session_id,
+                timeout=self.stop_asr_wait_seconds,
+            )
         return self.status(case_id)
 
     def status(self, case_id: str) -> dict[str, Any]:

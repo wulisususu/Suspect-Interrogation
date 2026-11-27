@@ -2465,6 +2465,104 @@ def test_concurrent_archive_appends_and_asr_commits_never_starve_sqlite_lock(tmp
         _wait_for(lambda: _asr_status(factory, capture_id) == "COMPLETE", timeout=10)
         assert errors == []
         assert _asr_cursor(factory, capture_id) == 25 * 1600
-        assert len(_fragments(factory, capture_id)) == 25
+        fragments = _fragments(factory, capture_id)
+        assert 1 <= len(fragments) <= 25
+        assert sum(f.ended_at_ms - f.started_at_ms for f in fragments) == 25 * 100
     finally:
         coordinator.shutdown()
+
+
+def test_stop_capture_waits_for_asr_finalization_and_defers_original_wav(tmp_path: Path, monkeypatch):
+    """stop() waits briefly for ASR finalization without blocking on original.wav assembly."""
+    factory, case_id, _session_id = _seed_database(tmp_path)
+    frames = [b"\x02\x00" * 1600]
+    device = FakeDevice(frames)
+
+    class FinalOnCloseWorker(BlockingSpeechWorker):
+        def push_speech_pcm(self, session_id: str, pcm: bytes, sample_rate: int = 16000) -> list[SpeechEvent]:
+            return []
+
+        def finalize_speech_session(self, session_id: str) -> list[SpeechEvent]:
+            time.sleep(0.08)
+            return [
+                SpeechEvent(
+                    type=SpeechEventType.ASR_FINAL,
+                    session_id=session_id,
+                    text="我听清楚了",
+                    start_ms=0,
+                    end_ms=100,
+                    confidence=0.96,
+                )
+            ]
+
+    speech = FinalOnCloseWorker()
+    capture_service = _source_service(factory, device, speech, EventCollector())
+    coordinator = LiveSpeechCoordinator(
+        data_dir=tmp_path / "data",
+        session_factory=factory,
+        capture_service=capture_service,
+        ai_supervisor=speech,
+    )
+    original_started = threading.Event()
+    release_original = threading.Event()
+    original_done = threading.Event()
+    real_finalize_original = coordinator._finalize_original
+
+    def slow_finalize_original(capture_id: str) -> None:
+        original_started.set()
+        release_original.wait(timeout=5)
+        real_finalize_original(capture_id)
+        original_done.set()
+
+    monkeypatch.setattr(coordinator, "_finalize_original", slow_finalize_original)
+    coordinator.start()
+    try:
+        started = capture_service.start(case_id)
+        capture_id = started["captureSessionId"]
+        _wait_for(lambda: device.read_count >= 2)
+
+        t0 = time.monotonic()
+        stopped = capture_service.stop(case_id)
+        elapsed = time.monotonic() - t0
+
+        assert stopped["active"] is False
+        assert stopped["asrStatus"] == "COMPLETE"
+        assert stopped["finalFragmentCount"] == 1
+        assert elapsed < 1.5
+        assert [f.raw_text for f in _fragments(factory, capture_id)] == ["我听清楚了"]
+        assert original_started.wait(timeout=2)
+        assert not original_done.is_set()
+        release_original.set()
+        assert original_done.wait(timeout=2)
+    finally:
+        release_original.set()
+        capture_service.shutdown()
+        coordinator.shutdown()
+
+
+def test_asr_queue_coalesces_backlogged_contiguous_ranges():
+    """Backlogged contiguous ranges for one capture merge up to max_samples and stop at boundaries."""
+    from types import SimpleNamespace
+    from app.services.live_speech_coordinator import _AsrTaskQueue, _AudioRange, _FinishCapture
+
+    q = _AsrTaskQueue()
+    rt_a = SimpleNamespace(capture_session_id="cap-a")
+    rt_b = SimpleNamespace(capture_session_id="cap-b")
+    q.put(_AudioRange(rt_a, 0, 4000))
+    q.put(_AudioRange(rt_a, 4000, 8000))
+    q.put(_AudioRange(rt_a, 8000, 12000))
+    q.put(_AudioRange(rt_a, 12000, 20000))  # would exceed 16000 -> must stay queued
+    q.put(_FinishCapture(rt_a))
+    q.put(_AudioRange(rt_b, 0, 4000))
+
+    first = q.get_nowait()
+    merged, count = q.coalesce_contiguous_range(first, max_samples=16000)
+    assert count == 2
+    assert (merged.start_sample, merged.end_sample) == (0, 12000)
+
+    nxt = q.get_nowait()
+    merged2, count2 = q.coalesce_contiguous_range(nxt, max_samples=16000)
+    assert count2 == 0
+    assert (merged2.start_sample, merged2.end_sample) == (12000, 20000)
+    assert isinstance(q.get_nowait(), _FinishCapture)
+    assert q.get_nowait().runtime.capture_session_id == "cap-b"

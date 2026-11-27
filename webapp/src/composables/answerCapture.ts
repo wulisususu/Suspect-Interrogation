@@ -59,25 +59,35 @@ export function useAnswerCapture(guard: () => SessionStartGuard) {
   }
 
   /** 停止录音并取回这一次录音的全部最终片段。
-   * 收尾片段在采集线程退出时才提交，实测比停止响应晚约一秒；立即读取会扑空，
-   * 把已识别成功的答案误报成"没有听清"。片段缺席时轮询补读。 */
+   * 后端 /stop 会先短等收尾转写提交；若已通过 WebSocket 收到全部定稿片段则零额外
+   * 请求直接返回，否则补读一次并在极少数慢收尾场景下短间隔轮询，避免误报"没有听清"。 */
   async function finishCapture(captureId: string) {
     if (!(await store.stopCapture(undefined, false))) return null
     const caseId = store.caseId
     if (!caseId) return null
-    // 只重读片段列表。以前这里调 initialize()：它先 reset() 把题目和片段清空、
-    // 再整页重载，于是每次结束录音左栏都先变空白、计数跳动、题卡回到录音中/草稿，
-    // 最后才出现转写文字。工作台本身已是本案时不需要重置。
-    if (templateStore.caseId === caseId) await templateStore.loadDialogueHistory()
-    else await templateStore.initialize(caseId)
     const collect = () => templateStore.dialogueHistory
       .filter((item) => item.captureSessionId === captureId && !['DISCARDED', 'SUPERSEDED'].includes(item.state) && (item.editedText || item.rawText).trim())
       .sort((a, b) => a.startedAtMs - b.startedAtMs || a.ordinal - b.ordinal)
-    let fragments = collect()
+    const expectedCount = store.capture.finalFragmentCount ?? 0
+    let fragments = templateStore.caseId === caseId ? collect() : []
+    const alreadySynced = (
+      templateStore.caseId === caseId
+      && store.capture.asrStatus === 'COMPLETE'
+      && fragments.length > 0
+      && fragments.length >= expectedCount
+    )
+    if (!alreadySynced) {
+      // 只重读片段列表。以前这里调 initialize()：它先 reset() 把题目和片段清空、
+      // 再整页重载，于是每次结束录音左栏都先变空白、计数跳动、题卡回到录音中/草稿，
+      // 最后才出现转写文字。工作台本身已是本案时不需要重置。
+      if (templateStore.caseId === caseId) await templateStore.loadDialogueHistory()
+      else await templateStore.initialize(caseId)
+      fragments = collect()
+    }
     const deadline = Date.now() + 8000
     let emptyReads = 0
     while (!fragments.length && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      await new Promise((resolve) => setTimeout(resolve, 150))
       await templateStore.loadDialogueHistory()
       fragments = collect()
       if (fragments.length) break
