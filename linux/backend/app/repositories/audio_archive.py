@@ -9,11 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database.models import ASRAudioFrame, ASRAudioSegment, ASRCaptureSession, Case
-from app.database.session import begin_sqlite_immediate
+from app.database.session import begin_sqlite_immediate, sqlite_write_lock
 
 
 @contextmanager
 def archive_transaction(factory: sessionmaker[Session], *, immediate: bool = True) -> Iterator[Session]:
+    bind = getattr(factory, "kw", {}).get("bind") or getattr(factory, "bind", None)
+    lock = sqlite_write_lock(bind) if immediate else None
+    if lock is not None:
+        lock.acquire()
     db = factory()
     try:
         if immediate:
@@ -25,6 +29,8 @@ def archive_transaction(factory: sessionmaker[Session], *, immediate: bool = Tru
         raise
     finally:
         db.close()
+        if lock is not None:
+            lock.release()
 
 
 def get_capture(db: Session, capture_id: str) -> ASRCaptureSession | None:

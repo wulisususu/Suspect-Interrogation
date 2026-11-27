@@ -2405,3 +2405,66 @@ def test_startup_recovery_defers_stale_capture_until_session_waits(tmp_path: Pat
         assert worker.pushed == [b"\x06\x00" * 1600]
     finally:
         coordinator.shutdown()
+
+
+def test_concurrent_archive_appends_and_asr_commits_never_starve_sqlite_lock(tmp_path: Path):
+    """High-frequency durable appends must not starve concurrent ASR DB commits with database-is-locked."""
+    factory, case_id, session_id = _seed_database(tmp_path)
+    with factory() as db:
+        capture = asr_repo.create_capture_session(
+            db,
+            case_id=case_id,
+            interrogation_session_id=session_id,
+            sample_rate=16_000,
+        )
+        capture_id = capture.id
+        db.commit()
+
+    class FinalEmittingWorker(BlockingSpeechWorker):
+        def __init__(self) -> None:
+            super().__init__()
+            self._offset_ms = 0
+
+        def push_speech_pcm(self, session_id: str, pcm: bytes, sample_rate: int = 16000) -> list[SpeechEvent]:
+            start_ms = self._offset_ms
+            end_ms = start_ms + max(1, len(pcm) // 32)
+            self._offset_ms = end_ms
+            return [
+                SpeechEvent(
+                    type=SpeechEventType.ASR_FINAL,
+                    session_id=session_id,
+                    text=f"片段{start_ms}",
+                    start_ms=start_ms,
+                    end_ms=end_ms,
+                    confidence=0.95,
+                )
+            ]
+
+    worker = FinalEmittingWorker()
+    capture_service = _source_service(factory, FakeDevice([]), worker, EventCollector())
+    coordinator = LiveSpeechCoordinator(
+        data_dir=tmp_path / "data",
+        session_factory=factory,
+        capture_service=capture_service,
+        ai_supervisor=worker,
+    )
+    coordinator.start()
+    errors: list[Exception] = []
+    try:
+        with factory() as db:
+            row = db.get(ASRCaptureSession, capture_id)
+            assert row is not None
+            runtime = capture_service.build_recovery_runtime(row)
+        assert runtime is not None
+        runtime.inference_error_sink = errors.append
+        coordinator.open_capture(runtime)
+
+        for _ in range(25):
+            coordinator.append_audio(runtime, b"\x02\x00" * 1600)
+        coordinator.finish_capture(runtime)
+        _wait_for(lambda: _asr_status(factory, capture_id) == "COMPLETE", timeout=10)
+        assert errors == []
+        assert _asr_cursor(factory, capture_id) == 25 * 1600
+        assert len(_fragments(factory, capture_id)) == 25
+    finally:
+        coordinator.shutdown()

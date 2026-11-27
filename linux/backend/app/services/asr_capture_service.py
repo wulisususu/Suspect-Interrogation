@@ -561,22 +561,52 @@ class AsrCaptureService:
 
     def _capture_loop(self, runtime: _CaptureRuntime) -> None:
         failure: Exception | None = None
+        # When backed by the durable SQLite/WAV archive, coalesce tiny ALSA
+        # frames (64ms each) into ~250ms appends so eMMC fsync + SQLite write
+        # transactions drop ~4x while keeping live audio levels at full frame
+        # rate and live ASR latency low.
+        pending = bytearray()
+        target_batch_bytes = max(2, int(runtime.sample_rate) * 2 // 4)
+        max_batch_seconds = 0.25
+        last_flush = time.monotonic()
+
+        def flush_pending() -> None:
+            nonlocal last_flush
+            if not pending:
+                return
+            data = bytes(pending)
+            pending.clear()
+            last_flush = time.monotonic()
+            for offset in range(0, len(data), 32_000):
+                chunk = data[offset : offset + 32_000]
+                assert self._live_speech_coordinator is not None
+                self._live_speech_coordinator.append_audio(runtime, chunk)
+
         try:
             while not runtime.stop_event.is_set():
                 pcm = self.device_manager.read_audio_frames(timeout=self.read_timeout)
                 if not pcm:
+                    flush_pending()
                     continue
                 payload = bytes(pcm)
-                self._publish_audio_level(runtime, payload, now=time.monotonic())
-                for offset in range(0, len(payload), 32_000):
-                    chunk = payload[offset : offset + 32_000]
-                    if self._live_speech_coordinator is not None:
-                        self._live_speech_coordinator.append_audio(runtime, chunk)
-                    else:
-                        runtime.local_inference_queue.put(chunk)
+                now = time.monotonic()
+                self._publish_audio_level(runtime, payload, now=now)
+                if self._live_speech_coordinator is not None:
+                    pending.extend(payload)
+                    if len(pending) >= target_batch_bytes or (now - last_flush) >= max_batch_seconds:
+                        flush_pending()
+                else:
+                    for offset in range(0, len(payload), 32_000):
+                        runtime.local_inference_queue.put(payload[offset : offset + 32_000])
+            flush_pending()
         except Exception as exc:
             failure = exc
         finally:
+            if failure is None and pending:
+                try:
+                    flush_pending()
+                except Exception as exc:
+                    failure = exc
             try:
                 self.device_manager.stop_record()
             except Exception as exc:
